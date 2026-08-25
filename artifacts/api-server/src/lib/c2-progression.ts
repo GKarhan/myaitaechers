@@ -4,7 +4,7 @@ import {
   type TargetCognitiveDemand,
 } from "./c2-target-demand.js";
 
-export const C2_PROGRESSION_CONTRACT_VERSION = "c2-3.1";
+export const C2_PROGRESSION_CONTRACT_VERSION = "c2-4.0";
 
 export type ProgressionConfidence = "HIGH" | "MEDIUM" | "LOW";
 export type ProgressionDecision = "MINIMAL" | "REVIEW_REQUIRED";
@@ -41,6 +41,37 @@ export type CognitiveProgressionDecision = {
   reviewReasonCodes: ProgressionReviewReason[];
   levelDiagnostics: CognitiveLevelDiagnostic[];
   contractVersion: string;
+};
+
+/**
+ * Provider-free canonical route selection. The planner is the sole authority
+ * for the levels, their order, and the target-ceiling position; a provider may
+ * only fill pedagogical content inside this route.
+ */
+export type CognitiveProgressionPlan = {
+  targetLevel: TargetDemandLevel;
+  orderedLevels: TargetDemandLevel[];
+  omittedLowerLevels: TargetDemandLevel[];
+  plannerDecision: "PLANNED" | "REVIEW_REQUIRED";
+  plannerConfidence: ProgressionConfidence;
+  plannerReasonCodes: ProgressionReasonCode[];
+  plannerReviewReasonCodes: Extract<ProgressionReviewReason, "PROGRESSION_UNCERTAIN">[];
+  contractVersion: string;
+};
+
+export type CognitivePathPlanConformanceCode =
+  | "MISSING_PLANNED_LEVEL"
+  | "EXTRA_UNPLANNED_LEVEL"
+  | "DUPLICATE_LEVEL"
+  | "REORDERED_ROUTE"
+  | "WRONG_DECLARED_LEVEL"
+  | "TARGET_MISSING"
+  | "TARGET_DUPLICATED"
+  | "TARGET_NOT_FINAL";
+
+export type CognitivePathPlanConformance = {
+  conforms: boolean;
+  firstMismatch: CognitivePathPlanConformanceCode | null;
 };
 
 export type CognitiveProgressionInput = {
@@ -303,6 +334,104 @@ function inferRequiredPrerequisites(input: CognitiveProgressionInput): {
 
 export function inferCognitivePrerequisites(input: CognitiveProgressionInput): TargetDemandLevel[] {
   return inferRequiredPrerequisites(input).levels;
+}
+
+/**
+ * Build the canonical minimal C2 route from trusted server-side evidence only.
+ * It deliberately does not inspect provider output or generate content.
+ */
+export function planCognitiveProgression(input: CognitiveProgressionInput): CognitiveProgressionPlan {
+  const target = input.targetDemand.targetLevel;
+  const prerequisiteAnalysis = inferRequiredPrerequisites(input);
+  const targetEvidenceIsUncertain = input.targetDemand.confidence === "LOW"
+    || input.targetDemand.reviewReasons.includes("OBJECTIVE_SOURCE_CONFLICT")
+    || input.targetDemand.reviewReasons.includes("INSUFFICIENT_CURRICULUM_EVIDENCE");
+  const orderedLevels = targetEvidenceIsUncertain
+    ? []
+    : [...prerequisiteAnalysis.levels, target];
+  const omittedLowerLevels = TARGET_DEMAND_LEVELS
+    .filter((level) => RANK[level] < RANK[target] && !orderedLevels.includes(level));
+  const plannerReasonCodes = [...new Set(prerequisiteAnalysis.reasons)];
+  if (!targetEvidenceIsUncertain && prerequisiteAnalysis.levels.length === 0) {
+    plannerReasonCodes.push("TARGET_ONLY_SUFFICIENT");
+  }
+  if (!targetEvidenceIsUncertain && omittedLowerLevels.some(
+    (level) => !prerequisiteAnalysis.levels.includes(level),
+  )) {
+    plannerReasonCodes.push("NON_CONTIGUOUS_LEVEL_JUSTIFIED");
+  }
+  if (!targetEvidenceIsUncertain) plannerReasonCodes.push("TARGET_LEVEL_IS_FINAL");
+
+  return {
+    targetLevel: target,
+    orderedLevels,
+    omittedLowerLevels,
+    plannerDecision: targetEvidenceIsUncertain ? "REVIEW_REQUIRED" : "PLANNED",
+    plannerConfidence: targetEvidenceIsUncertain
+      ? "LOW"
+      : input.targetDemand.confidence === "HIGH" ? "HIGH" : "MEDIUM",
+    plannerReasonCodes,
+    plannerReviewReasonCodes: targetEvidenceIsUncertain ? ["PROGRESSION_UNCERTAIN"] : [],
+    contractVersion: C2_PROGRESSION_CONTRACT_VERSION,
+  };
+}
+
+/**
+ * Verifies that a provider echoed the canonical route exactly. Content fields
+ * are intentionally excluded here and remain the responsibility of the
+ * existing semantic/content validators that run after this gate.
+ */
+export function assessCognitivePathPlanConformance(
+  plan: CognitiveProgressionPlan,
+  levels: ReadonlyArray<Pick<CognitiveProgressionLevel, "cognitiveLevel" | "sequence" | "isTargetCeiling">>,
+): CognitivePathPlanConformance {
+  if (plan.plannerDecision !== "PLANNED") {
+    return { conforms: false, firstMismatch: "MISSING_PLANNED_LEVEL" };
+  }
+
+  const expected = plan.orderedLevels;
+  const candidateLevels = levels.map((level) => levelOrNull(level.cognitiveLevel));
+  const targetCount = levels.filter((level) => level.cognitiveLevel === plan.targetLevel).length;
+  if (targetCount === 0) return { conforms: false, firstMismatch: "TARGET_MISSING" };
+  if (targetCount > 1) return { conforms: false, firstMismatch: "TARGET_DUPLICATED" };
+  if (levels.at(-1)?.cognitiveLevel !== plan.targetLevel || !levels.at(-1)?.isTargetCeiling) {
+    return { conforms: false, firstMismatch: "TARGET_NOT_FINAL" };
+  }
+  if (levels.filter((level) => level.isTargetCeiling).length !== 1) {
+    return { conforms: false, firstMismatch: "TARGET_DUPLICATED" };
+  }
+  if (new Set(candidateLevels).size !== candidateLevels.length) {
+    return { conforms: false, firstMismatch: "DUPLICATE_LEVEL" };
+  }
+
+  const hasMissingPlannedLevel = expected.some((level) => !candidateLevels.includes(level));
+  const hasExtraUnplannedLevel = candidateLevels.some((level) => !level || !expected.includes(level));
+  if (!hasMissingPlannedLevel && !hasExtraUnplannedLevel && levels.length === expected.length
+    && candidateLevels.some((level, index) => level !== expected[index])) {
+    return { conforms: false, firstMismatch: "REORDERED_ROUTE" };
+  }
+  const expectedBySequence = new Map(expected.map((level, index) => [index + 1, level]));
+  for (const level of levels) {
+    const expectedAtSequence = expectedBySequence.get(level.sequence);
+    if (expectedAtSequence && level.cognitiveLevel !== expectedAtSequence) {
+      return { conforms: false, firstMismatch: "WRONG_DECLARED_LEVEL" };
+    }
+  }
+  if (hasMissingPlannedLevel) {
+    return { conforms: false, firstMismatch: "MISSING_PLANNED_LEVEL" };
+  }
+  if (hasExtraUnplannedLevel) {
+    return { conforms: false, firstMismatch: "EXTRA_UNPLANNED_LEVEL" };
+  }
+  if (
+    levels.length !== expected.length
+    || levels.some((level, index) =>
+      level.sequence !== index + 1 || level.cognitiveLevel !== expected[index],
+    )
+  ) {
+    return { conforms: false, firstMismatch: "REORDERED_ROUTE" };
+  }
+  return { conforms: true, firstMismatch: null };
 }
 
 export function assessCognitivePathProgression(

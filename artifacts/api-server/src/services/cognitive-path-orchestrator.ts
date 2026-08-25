@@ -16,6 +16,8 @@ import type { TargetCognitiveDemand } from "../lib/c2-target-demand.js";
 import {
   progressionAllowsPersistence,
   type CognitiveLevelDiagnostic,
+  type CognitivePathPlanConformanceCode,
+  type CognitiveProgressionPlan,
   type CognitiveProgressionDecision,
 } from "../lib/c2-progression.js";
 
@@ -72,9 +74,11 @@ export type CognitivePathAttempt = {
 export type CognitivePathFirstBlockingGate =
   | "C1_PREFLIGHT"
   | "TARGET_DEMAND"
+  | "PROGRESSION_PLANNING"
   | "PROVIDER_REQUEST"
   | "PROVIDER_RESPONSE"
   | "CANDIDATE_SCHEMA"
+  | "PLAN_CONFORMANCE"
   | "STRUCTURAL_VALIDATION"
   | "OBJECTIVE_FLOOR_VALIDATION"
   | "TARGET_CEILING_VALIDATION"
@@ -88,6 +92,14 @@ export type CognitivePathAttemptTrace = {
   targetDemandConfidence: "HIGH" | "MEDIUM" | "LOW" | null;
   targetDemandEvidence: string[];
   targetDemandReviewReasons: string[];
+  plannerDecision: CognitiveProgressionPlan["plannerDecision"] | null;
+  plannerConfidence: CognitiveProgressionPlan["plannerConfidence"] | null;
+  plannedLevelSequence: string[];
+  omittedPlannedLevels: string[];
+  plannerReasonCodes: string[];
+  plannerReviewReasonCodes: string[];
+  planConformance: "NOT_EVALUATED" | "CONFORMS" | "REJECTED";
+  firstPlanMismatch: CognitivePathPlanConformanceCode | null;
   candidateLevelCount: number;
   candidateLevelSequence: number[];
   candidateTargetLevel: string | null;
@@ -243,6 +255,7 @@ export function canCommitCognitivePathReplacement(
   return !result.skipped
     && result.levels.length > 0
     && result.levels.filter((level) => level.isTargetCeiling).length === 1
+    && result.planConformance?.conforms === true
     && !!result.progression
     && progressionAllowsPersistence(result.progression);
 }
@@ -313,6 +326,9 @@ export function classifyCognitivePathResult(
   if (result.skipCode === "C2_TARGET_DEMAND_REVIEW_REQUIRED") {
     return { state: "BLOCKED_TARGET_REVIEW", reasonCode: result.skipCode };
   }
+  if (result.skipCode === "C2_PLANNER_REVIEW_REQUIRED") {
+    return { state: "BLOCKED_PROGRESSION_REVIEW", reasonCode: result.skipCode };
+  }
   if (result.skipCode === "C2_PROVIDER_REQUEST_FAILED") {
     return { state: "PROVIDER_FAILURE", reasonCode: result.skipCode };
   }
@@ -331,6 +347,7 @@ export function classifyCognitivePathResult(
 export function isRetryableCognitivePathResult(result: CogPathGenerationResult): boolean {
   return result.skipped
     && [
+      "C2_PLAN_CONFORMANCE_REJECTED",
       "C2_PATH_STRUCTURE_REJECTED",
       "C2_TARGET_DEMAND_MISMATCH",
       "C2_CEILING_VIOLATION",
@@ -357,10 +374,14 @@ function firstBlockingGateFor(
       return "PROVIDER_REQUEST";
     case "C2_TARGET_DEMAND_REVIEW_REQUIRED":
       return "TARGET_DEMAND";
+    case "C2_PLANNER_REVIEW_REQUIRED":
+      return "PROGRESSION_PLANNING";
     case "C2_RESPONSE_PARSE_FAILED":
       return "PROVIDER_RESPONSE";
     case "C2_RESPONSE_SCHEMA_REJECTED":
       return "CANDIDATE_SCHEMA";
+    case "C2_PLAN_CONFORMANCE_REJECTED":
+      return "PLAN_CONFORMANCE";
     case "C2_PATH_STRUCTURE_REJECTED":
       return "STRUCTURAL_VALIDATION";
     case "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION":
@@ -396,6 +417,7 @@ export function buildCognitivePathAttemptTrace(input: {
     : generated?.candidateDiagnostics
     ?? [];
   const targetDemand = generated?.targetDemand;
+  const planner = generated?.planner;
   const progression = generated?.progression;
   const ceilings = diagnostics.filter((level) => level.isTargetCeiling);
   return {
@@ -404,6 +426,16 @@ export function buildCognitivePathAttemptTrace(input: {
     targetDemandConfidence: targetDemand?.confidence ?? null,
     targetDemandEvidence: targetDemand?.evidence ?? [],
     targetDemandReviewReasons: targetDemand?.reviewReasons ?? [],
+    plannerDecision: planner?.plannerDecision ?? null,
+    plannerConfidence: planner?.plannerConfidence ?? null,
+    plannedLevelSequence: planner?.orderedLevels ?? [],
+    omittedPlannedLevels: planner?.omittedLowerLevels ?? [],
+    plannerReasonCodes: planner?.plannerReasonCodes ?? [],
+    plannerReviewReasonCodes: planner?.plannerReviewReasonCodes ?? [],
+    planConformance: !generated?.planConformance
+      ? "NOT_EVALUATED"
+      : generated.planConformance.conforms ? "CONFORMS" : "REJECTED",
+    firstPlanMismatch: generated?.planConformance?.firstMismatch ?? null,
     candidateLevelCount: diagnostics.length,
     candidateLevelSequence: diagnostics.map((level) => level.sequence),
     candidateTargetLevel: ceilings.length === 1 ? ceilings[0]?.declaredLevel ?? null : null,
@@ -676,7 +708,7 @@ export async function runCognitivePathOrchestrator(input: {
       const decisionTrace: CognitivePathAttemptTrace[] = [];
       try {
         generated = await generateCognitivePath(node.cogInput);
-        if (isRetryableCognitivePathResult(generated)) {
+        if (isRetryableCognitivePathResult(generated) && generated.planner) {
           const firstClassification = classifyCognitivePathResult(generated);
           retryCount = 1;
           decisionTrace.push(buildCognitivePathAttemptTrace({
@@ -687,7 +719,7 @@ export async function runCognitivePathOrchestrator(input: {
             finalState: firstClassification.state,
             finalReasonCode: firstClassification.reasonCode,
           }));
-          generated = await generateCognitivePath(node.cogInput);
+          generated = await generateCognitivePath(node.cogInput, { planner: generated.planner });
         }
       } catch (error) {
         const completedAt = new Date().toISOString();

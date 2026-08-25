@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   C2_PROGRESSION_CONTRACT_VERSION,
+  assessCognitivePathPlanConformance,
   assessCognitivePathProgression,
   inferCognitivePrerequisites,
+  planCognitiveProgression,
 } from "../c2-progression.js";
 import type { TargetCognitiveDemand, TargetDemandLevel } from "../c2-target-demand.js";
 
@@ -333,4 +335,124 @@ test("C2P-24: objective-only dependency wording cannot force an unsupported lowe
     [level("apply", 1, true, "Կիրառել կանոնը", "Ստանալ ճիշտ արդյունքը")],
   );
   assert.equal(result.progressionDecision, "MINIMAL");
+});
+
+test("C2P-25: planner creates a target-only route and explicitly records omitted lower levels", () => {
+  const plan = planCognitiveProgression(input("analyze", "Աղյուսակ։"));
+  assert.equal(plan.plannerDecision, "PLANNED");
+  assert.deepEqual(plan.orderedLevels, ["analyze"]);
+  assert.deepEqual(plan.omittedLowerLevels, ["remember", "understand", "apply"]);
+  assert.equal(plan.orderedLevels.at(-1), plan.targetLevel);
+});
+
+test("C2P-26: planner includes only a source-backed prerequisite", () => {
+  const plan = planCognitiveProgression(input(
+    "analyze",
+    "Նախ կիրառիր ընթացակարգը, ապա վերլուծիր արդյունքի մասերը։",
+  ));
+  assert.deepEqual(plan.orderedLevels, ["apply", "analyze"]);
+  assert.ok(plan.plannerReasonCodes.includes("PROCEDURAL_PREREQUISITE_REQUIRED"));
+  assert.ok(plan.omittedLowerLevels.includes("remember"));
+  assert.ok(plan.omittedLowerLevels.includes("understand"));
+});
+
+test("C2P-27: low-confidence target evidence produces a provider-free planning review", () => {
+  const uncertainDemand: TargetCognitiveDemand = {
+    ...demand("apply"),
+    confidence: "LOW",
+    reviewReasons: ["TARGET_DEMAND_LOW_CONFIDENCE"],
+  };
+  const plan = planCognitiveProgression({
+    ...input("apply", "Կիրառիր կանոնը։"),
+    targetDemand: uncertainDemand,
+  });
+  assert.equal(plan.plannerDecision, "REVIEW_REQUIRED");
+  assert.deepEqual(plan.orderedLevels, []);
+  assert.deepEqual(plan.plannerReviewReasonCodes, ["PROGRESSION_UNCERTAIN"]);
+});
+
+test("C2P-28: plan conformance rejects provider-owned route changes before semantic validation", () => {
+  const plan = planCognitiveProgression(input(
+    "analyze",
+    "Նախ կիրառիր ընթացակարգը, ապա վերլուծիր արդյունքի մասերը։",
+  ));
+  const conforming = [
+    level("apply", 1, false),
+    level("analyze", 2, true),
+  ];
+  assert.deepEqual(
+    assessCognitivePathPlanConformance(plan, conforming),
+    { conforms: true, firstMismatch: null },
+  );
+  assert.equal(
+    assessCognitivePathPlanConformance(plan, [
+      level("analyze", 2, true),
+    ]).firstMismatch,
+    "MISSING_PLANNED_LEVEL",
+  );
+  assert.equal(
+    assessCognitivePathPlanConformance(plan, [
+      level("apply", 1, false),
+      level("apply", 2, false),
+      level("analyze", 3, true),
+    ]).firstMismatch,
+    "DUPLICATE_LEVEL",
+  );
+  assert.equal(
+    assessCognitivePathPlanConformance(plan, [
+      level("analyze", 1, false),
+      level("apply", 2, false),
+      level("analyze", 3, true),
+    ]).firstMismatch,
+    "TARGET_DUPLICATED",
+  );
+  assert.equal(
+    assessCognitivePathPlanConformance(planCognitiveProgression(
+      input("analyze", "Վերլուծիր կառուցվածքը։"),
+    ), [
+      level("apply", 0, false),
+      level("analyze", 1, true),
+    ]).firstMismatch,
+    "EXTRA_UNPLANNED_LEVEL",
+  );
+});
+
+test("C2P-29: plan conformance distinguishes reordered, reclassified, and target failures", () => {
+  const plan = planCognitiveProgression(input(
+    "create",
+    "Նախ կիրառիր ընթացակարգը, նախ վերլուծիր արդյունքը, ապա ստեղծիր նոր մոդել։",
+  ));
+  assert.deepEqual(plan.orderedLevels, ["apply", "analyze", "create"]);
+  assert.equal(
+    assessCognitivePathPlanConformance(plan, [
+      level("analyze", 2, false),
+      level("apply", 1, false),
+      level("create", 3, true),
+    ]).firstMismatch,
+    "REORDERED_ROUTE",
+  );
+  assert.equal(
+    assessCognitivePathPlanConformance(plan, [
+      level("understand", 1, false),
+      level("analyze", 2, false),
+      level("create", 3, true),
+    ]).firstMismatch,
+    "WRONG_DECLARED_LEVEL",
+  );
+  assert.equal(
+    assessCognitivePathPlanConformance(plan, [
+      level("apply", 1, false),
+      level("analyze", 2, true),
+      level("create", 3, false),
+    ]).firstMismatch,
+    "TARGET_NOT_FINAL",
+  );
+  assert.equal(
+    assessCognitivePathPlanConformance(plan, [
+      level("apply", 1, false),
+      level("analyze", 2, false),
+      level("create", 3, false),
+    ]).firstMismatch,
+    "TARGET_NOT_FINAL",
+  );
 });

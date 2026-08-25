@@ -50,8 +50,19 @@ const validGenerated: Parameters<typeof canCommitCognitivePathReplacement>[0] = 
     progressionReasonCodes: ["TARGET_ONLY_SUFFICIENT", "TARGET_LEVEL_IS_FINAL"],
     reviewReasonCodes: [],
     levelDiagnostics: [],
-    contractVersion: "c2-3.1",
+    contractVersion: "c2-4.0",
   },
+  planner: {
+    targetLevel: "remember",
+    orderedLevels: ["remember"],
+    omittedLowerLevels: [],
+    plannerDecision: "PLANNED",
+    plannerConfidence: "HIGH",
+    plannerReasonCodes: ["TARGET_ONLY_SUFFICIENT", "TARGET_LEVEL_IS_FINAL"],
+    plannerReviewReasonCodes: [],
+    contractVersion: "c2-4.0",
+  },
+  planConformance: { conforms: true, firstMismatch: null },
 };
 
 const traceDemand: TargetCognitiveDemand = {
@@ -111,6 +122,10 @@ it("6. a complete generated candidate is the only kind eligible for replacement"
   assert.equal(canCommitCognitivePathReplacement(validGenerated), true);
   assert.equal(canCommitCognitivePathReplacement({ ...validGenerated, skipped: true }), false);
   assert.equal(canCommitCognitivePathReplacement({ ...validGenerated, levels: [] }), false);
+  assert.equal(canCommitCognitivePathReplacement({
+    ...validGenerated,
+    planConformance: { conforms: false, firstMismatch: "REORDERED_ROUTE" },
+  }), false);
   assert.equal(canCommitCognitivePathReplacement({ ...validGenerated, progression: undefined }), false);
 });
 
@@ -337,6 +352,36 @@ it("20. unnecessary lower levels identify the redundant level in the persisted t
   assert.ok(trace.levelDiagnostics[0]?.levelReviewReasonCodes.includes("REDUNDANT_LEVEL"));
   assert.deepEqual(trace.levelDiagnostics[0]?.redundancyReasonCodes, ["REDUNDANT_LEVEL"]);
   assert.equal(trace.levelDiagnostics[0]?.redundancyDecision, "REDUNDANT");
+});
+
+it("21. retry history records the identical frozen plan without provider content", () => {
+  const first = buildCognitivePathAttemptTrace({
+    generated: {
+      ...validGenerated,
+      skipped: true,
+      skipCode: "C2_PLAN_CONFORMANCE_REJECTED",
+      levels: [],
+      planConformance: { conforms: false, firstMismatch: "REORDERED_ROUTE" },
+    },
+    attemptNumber: 1,
+    retryTriggered: true,
+    retryTriggerCode: "C2_PLAN_CONFORMANCE_REJECTED",
+    finalState: "VALIDATION_FAILURE",
+    finalReasonCode: "C2_PLAN_CONFORMANCE_REJECTED",
+  });
+  const second = buildCognitivePathAttemptTrace({
+    generated: validGenerated,
+    attemptNumber: 2,
+    retryTriggered: false,
+    retryTriggerCode: null,
+    finalState: "GENERATED_NEEDS_REVIEW",
+    finalReasonCode: "GENERATED_AND_PERSISTED",
+  });
+
+  assert.deepEqual(first.plannedLevelSequence, second.plannedLevelSequence);
+  assert.deepEqual(first.omittedPlannedLevels, second.omittedPlannedLevels);
+  assert.equal(first.firstPlanMismatch, "REORDERED_ROUTE");
+  assert.equal(second.planConformance, "CONFORMS");
 });
 
 let passed = 0;

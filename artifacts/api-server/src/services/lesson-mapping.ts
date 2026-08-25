@@ -57,10 +57,14 @@ import {
   type TargetCognitiveDemand,
 } from "../lib/c2-target-demand.js";
 import {
+  assessCognitivePathPlanConformance,
   assessCognitivePathProgression,
   buildCognitiveLevelDiagnostics,
+  planCognitiveProgression,
   progressionAllowsPersistence,
+  type CognitivePathPlanConformance,
   type CognitiveLevelDiagnostic,
+  type CognitiveProgressionPlan,
   type CognitiveProgressionDecision,
 } from "../lib/c2-progression.js";
 
@@ -8869,11 +8873,13 @@ export interface CogPathLevel {
 export interface CogPathGenerationResult {
   nodeId:      number;
   skipped:     boolean;
-  skipCode?:   C2GenerationBlockCode | "C2_PROVIDER_REQUEST_FAILED" | "C2_RESPONSE_PARSE_FAILED" | "C2_RESPONSE_SCHEMA_REJECTED" | "C2_TARGET_DEMAND_REVIEW_REQUIRED" | "C2_TARGET_DEMAND_MISMATCH" | "C2_PROGRESSION_REVIEW_REQUIRED" | "C2_CEILING_VIOLATION" | "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
+  skipCode?:   C2GenerationBlockCode | "C2_PROVIDER_REQUEST_FAILED" | "C2_RESPONSE_PARSE_FAILED" | "C2_RESPONSE_SCHEMA_REJECTED" | "C2_TARGET_DEMAND_REVIEW_REQUIRED" | "C2_PLANNER_REVIEW_REQUIRED" | "C2_PLAN_CONFORMANCE_REJECTED" | "C2_TARGET_DEMAND_MISMATCH" | "C2_PROGRESSION_REVIEW_REQUIRED" | "C2_CEILING_VIOLATION" | "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
   skipReason?: string;
   levels:      CogPathLevel[];
   groundingAudit?: CognitivePathGroundingAudit;
   targetDemand?: TargetCognitiveDemand;
+  planner?: CognitiveProgressionPlan;
+  planConformance?: CognitivePathPlanConformance;
   progression?: CognitiveProgressionDecision;
   candidateDiagnostics?: CognitiveLevelDiagnostic[];
 }
@@ -8943,8 +8949,7 @@ SOURCE-GROUNDING CONTRACT:
 
 Return only the requested JSON object. No markdown and no prose.`;
 
-export function buildCogPathPrompt(input: CogPathInput): string {
-  const targetDemand = resolveTargetCognitiveDemand(input);
+export function buildCogPathPrompt(input: CogPathInput, planner: CognitiveProgressionPlan): string {
   const exList = input.exercises.length
     ? input.exercises.map((e) => `[${e.exerciseId}] ${e.exerciseText}`).join("\n")
     : "(no source exercises linked)";
@@ -8968,7 +8973,8 @@ blockType: ${input.blockType ?? "(unknown)"}
 C1 target ceiling: ${input.targetBloomLevel && input.targetBloomLevel >= 1 && input.targetBloomLevel <= 6
   ? `${input.targetBloomLevel} (${BLOOM_LEVEL_BY_INT[input.targetBloomLevel - 1]})`
   : "(not specified)"}
-Resolved Target Cognitive Demand (server authority): ${JSON.stringify(targetDemand)}
+Resolved Target Cognitive Demand (server authority): ${planner.targetLevel}
+Canonical Route Plan (server authority): ${JSON.stringify(planner.orderedLevels)}
 
 theoryContent:
 ${input.theoryContent ?? "(empty)"}
@@ -8978,10 +8984,11 @@ Linked Source Exercises (${input.exercises.length}):
 ${exList}
 ${existingSection}
 
-Return the smallest source-grounded cognitive progression for this MicroNode. The final
-target ceiling must be "${targetDemand.targetLevel}". Include a lower level only when
-the objective/source/exercise evidence makes it an independently meaningful prerequisite.
-Skipped Bloom levels are valid; do not add levels just to make the sequence contiguous.
+Write content for every and only level in this exact server-owned route, in exactly this
+order: ${JSON.stringify(planner.orderedLevels)}. Do not add, omit, duplicate, reclassify,
+or reorder levels. The final route level "${planner.targetLevel}" must be the only
+isTargetCeiling=true level. You do not choose the route; you only write source-grounded
+pedagogical content for each planned level.
 {
   "levels": [
     {
@@ -9010,7 +9017,10 @@ function tryParseCogPath(raw: string): Record<string, unknown> | null {
  * Returns skipped=true if theoryContent is too thin for grounded generation.
  * Does NOT write to the database — caller handles persistence.
  */
-export async function generateCognitivePath(input: CogPathInput): Promise<CogPathGenerationResult> {
+export async function generateCognitivePath(
+  input: CogPathInput,
+  options: { planner?: CognitiveProgressionPlan } = {},
+): Promise<CogPathGenerationResult> {
   const preflight = assessC2GenerationPreflight({
     nodeStatus: input.nodeStatus,
     learningObjective: input.learningObjective,
@@ -9037,6 +9047,22 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       targetDemand,
     };
   }
+  const planner = options.planner ?? planCognitiveProgression({ ...input, targetDemand });
+  if (
+    planner.plannerDecision !== "PLANNED"
+    || planner.targetLevel !== targetDemand.targetLevel
+    || planner.orderedLevels.at(-1) !== targetDemand.targetLevel
+  ) {
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: "C2_PLANNER_REVIEW_REQUIRED",
+      skipReason: "server-owned Cognitive Path route cannot be planned with sufficient confidence",
+      levels: [],
+      targetDemand,
+      planner,
+    };
+  }
 
   async function callModel(): Promise<string> {
     const r = await openrouter.chat.completions.create({
@@ -9046,7 +9072,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: COGNITIVE_PATH_SYSTEM },
-        { role: "user",   content: buildCogPathPrompt(input) },
+        { role: "user",   content: buildCogPathPrompt(input, planner) },
       ],
     });
     return r.choices[0]?.message?.content ?? "";
@@ -9068,6 +9094,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: "AI provider request failed",
       levels: [],
       targetDemand,
+      planner,
     };
   }
   if (!parsed) {
@@ -9079,6 +9106,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: "AI returned unparseable JSON after retry",
       levels: [],
       targetDemand,
+      planner,
     };
   }
 
@@ -9092,23 +9120,25 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: "AI output failed validation",
       levels: [],
       targetDemand,
+      planner,
     };
   }
 
   const levels = validated.data.levels;
   const candidateDiagnostics = buildCognitiveLevelDiagnostics(levels);
-
-  // Enforce exactly-one ceiling (in case model produced 0 or >1)
-  const ceilingCount = levels.filter((l) => l.isTargetCeiling).length;
-  if (ceilingCount === 0) {
-    // Make the last level the ceiling
-    levels[levels.length - 1].isTargetCeiling = true;
-  } else if (ceilingCount > 1) {
-    // Keep only the highest-sequence ceiling
-    const maxSeq = Math.max(...levels.filter((l) => l.isTargetCeiling).map((l) => l.sequence));
-    for (const l of levels) {
-      if (l.isTargetCeiling && l.sequence !== maxSeq) l.isTargetCeiling = false;
-    }
+  const planConformance = assessCognitivePathPlanConformance(planner, levels);
+  if (!planConformance.conforms) {
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: "C2_PLAN_CONFORMANCE_REJECTED",
+      skipReason: "provider response did not conform to the server-owned Cognitive Path route",
+      levels: [],
+      targetDemand,
+      planner,
+      planConformance,
+      candidateDiagnostics,
+    };
   }
   const structuralReason = assessCognitivePathStructure(levels);
   if (structuralReason) {
@@ -9119,6 +9149,8 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: `generated Cognitive Path violates required structure: ${structuralReason}`,
       levels: [],
       targetDemand,
+      planner,
+      planConformance,
       candidateDiagnostics,
     };
   }
@@ -9130,6 +9162,8 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: "generated Cognitive Path falls below the canonical Learning Objective cognitive floor",
       levels: [],
       targetDemand,
+      planner,
+      planConformance,
       candidateDiagnostics,
     };
   }
@@ -9142,6 +9176,8 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: `generated Cognitive Path target does not match resolved target demand ${targetDemand.targetLevel}`,
       levels: [],
       targetDemand,
+      planner,
+      planConformance,
       progression,
       candidateDiagnostics,
     };
@@ -9155,6 +9191,8 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: "generated Cognitive Path is redundant or omits an evidence-backed prerequisite",
       levels: [],
       targetDemand,
+      planner,
+      planConformance,
       progression,
       candidateDiagnostics,
     };
@@ -9173,6 +9211,8 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       levels: [],
       groundingAudit,
       targetDemand,
+      planner,
+      planConformance,
       progression,
       candidateDiagnostics,
     };
@@ -9184,6 +9224,8 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
     levels: levels as CogPathLevel[],
     groundingAudit,
     targetDemand,
+    planner,
+    planConformance,
     progression,
     candidateDiagnostics,
   };

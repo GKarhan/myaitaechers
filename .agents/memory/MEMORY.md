@@ -68,6 +68,7 @@
 - [Mapping completeness and learner-state merges](mapping-completeness.md) — automatic merges need explicit SAME learner-state certification; only exact, exclusively sourced missing candidates may be restored.
 - [Pass 2 block-survival invariant](pass2-block-survival.md) — verify exact group membership before Step 2 and rescue omitted output references to review-safe placement, never fabricated ownership.
 - [C2 generation orchestration](c2-generation-orchestration.md) — use mapping-job JSON ledgers for C2 attempts; claim only non-overlapping MicroNodes and preserve changed paths at the commit lock.
+- [C2 backend-owned route planning](c2-backend-owned-route-planning.md) — server fixes C2 route shape before generation; providers may only supply pedagogical content within it.
 - [C2 target-demand resolver](c2-target-demand-resolver.md) — resolve a deterministic performance-backed C2 target; C1 is diagnostic, and evidence disagreement fails closed to teacher review.
 - [C2 minimal progression](c2-minimal-progression.md) — C2 paths persist only with a deterministic minimality decision; lower checkpoints require source-backed prerequisite competency, never contiguous Bloom padding.
 - [Provider diagnostic safety](provider-diagnostic-safety.md) — persisted provider diagnostics must use fixed messages and allowlisted enums; never retain provider-controlled free-form text.
