@@ -1,0 +1,107 @@
+READ-ONLY AUDIT — LATEST FAILED LESSON 717 REMAP AFTER TASK #191
+
+DO NOT CHANGE CODE.
+DO NOT CHANGE DATA.
+DO NOT RERUN MAPPING.
+DO NOT RESTART SERVICES.
+DO NOT TOUCH C2.
+
+We just reran Lesson 717 after implementing the M3-2 technical
+availability / zero-MicroNode persistence safety gate.
+
+Teacher UI now reports:
+
+«Քարտեզագրումը չհաջողվեց։ Խնդրում ենք փորձել կրկին։»
+
+The previously persisted 0-MicroNode map is still visible.
+
+We need to verify whether Task #191 behaved exactly as intended.
+
+1. Find the newest mapping job for lesson 717.
+
+Report:
+- job ID
+- status
+- failure code/type
+- exact failure reason
+- candidate count
+- valid M3-2 semantic decision count
+- missing semantic decision count
+- semantic/atomicity provider attempts
+- provider responses
+- final technical state
+- PROMOTE count
+- canonical MicroNode count
+
+2. Determine whether the new M3 technical-availability gate triggered.
+
+Report:
+TECHNICAL AVAILABILITY GATE TRIGGERED: YES / NO
+
+If YES, provide its exact persisted reason code and diagnostics.
+
+3. Confirm whether this run attempted any canonical replacement.
+
+Report:
+CANONICAL REPLACEMENT STARTED: YES / NO
+
+PREVIOUS MAPPING PRESERVED: YES / NO
+
+4. Determine why the teacher UI still displays:
+- 7 topics
+- 0 MicroNodes
+- 34 exercises
+
+Specifically confirm whether these rows are the PREVIOUS mapping saved by
+the earlier completed zero-node run, rather than data created by this
+latest failed run.
+
+5. Compare the latest run with successful job 189.
+
+Answer:
+
+- Did important candidates again get discovered?
+- Did M3-2 provider review again fail technically?
+- Is this the SAME technical availability failure?
+- Did Task #191 prevent the bad zero-node result from being persisted this time?
+
+6. If provider review succeeded in the newest run, report the actual
+M3-2 decision counts instead and identify the different failure.
+
+FINAL OUTPUT:
+
+LATEST JOB:
+...
+
+FAILURE CODE:
+...
+
+CANDIDATES DISCOVERED:
+...
+
+VALID M3-2 DECISIONS:
+...
+
+PROVIDER TECHNICAL FAILURE:
+YES / NO
+
+TECHNICAL AVAILABILITY GATE TRIGGERED:
+YES / NO
+
+NEW ZERO-NODE MAP WAS PERSISTED:
+YES / NO
+
+OLD ZERO-NODE MAP IS WHAT UI CURRENTLY SHOWS:
+YES / NO
+
+TASK #191 WORKED AS DESIGNED:
+YES / NO
+
+NEXT ROOT CAUSE:
+<one exact subsystem>
+
+SAFE TO CHANGE CODE NOW:
+YES / NO
+
+READ-ONLY ONLY.
+DO NOT IMPLEMENT ANYTHING.
