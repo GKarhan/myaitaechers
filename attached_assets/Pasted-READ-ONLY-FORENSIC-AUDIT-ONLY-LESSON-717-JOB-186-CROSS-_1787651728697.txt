@@ -1,0 +1,270 @@
+READ-ONLY FORENSIC AUDIT ONLY —
+LESSON 717 / JOB 186 /
+CROSS-CATEGORY SOURCE OWNERSHIP CONFLICTS
+
+IMPORTANT:
+
+DO NOT edit code.
+DO NOT modify DB data.
+DO NOT rerun mapping.
+DO NOT restart services.
+DO NOT change source validator behavior.
+DO NOT touch M3-1.
+DO NOT touch candidate promotion.
+DO NOT touch C2-1/C2-2/C2-3.
+DO NOT automatically remove any placement.
+
+We have a confirmed failed automatic mapping run:
+
+lessonId: 717
+mappingJobId: 186
+
+failureCode:
+SOURCE_PLACEMENT_FAILED_PRE_PERSISTENCE
+
+verified blocks: 88
+
+missingIndices: []
+invalidIndices: []
+
+duplicateIndices:
+[45, 46]
+
+duplicatePlacements:
+
+45:
+- src:Ձևի մակբայների կիրառություն
+- additionalEx
+
+46:
+- unmapped
+- additionalEx
+
+The final validator correctly failed closed.
+
+The purpose of this audit is to determine the FIRST stage that gave
+indices 45 and 46 conflicting ownership.
+
+==================================================
+1. IDENTIFY SOURCE BLOCKS 45 AND 46
+==================================================
+
+Recover, if possible from current-job retained source data/logs/runtime
+diagnostics:
+
+For index 45 and 46:
+
+- verified block index
+- original provider block index if different
+- block type
+- physical page
+- source text / short identifying excerpt
+- whether it is theory/example/exercise/activity/etc.
+- source verification state
+- semantic scope state
+- provisional topic
+
+If the failed job itself does not persist this identity, inspect other
+READ-ONLY retained structures/logs produced during job 186.
+
+Do not rerun extraction.
+
+If identity is still unavailable, report NOT RECOVERABLE.
+
+==================================================
+2. TRACE INDEX 45 END-TO-END
+==================================================
+
+Trace index 45 through:
+
+verified source
+→ semantic scope
+→ topic grouping
+→ Step 2 topic organization
+→ MicroNode source/support
+→ exercise extraction
+→ instructional repair
+→ candidate promotion
+→ review-safe cleanup
+→ additionalExercises assembly
+→ final normalization
+→ validateSourceCoverage()
+
+Find the FIRST stage where index 45 acquires:
+
+src:Ձևի մակբայների կիրառություն
+
+and separately the FIRST stage where it acquires:
+
+additionalEx
+
+Then answer:
+
+Why were both ownership labels allowed to survive?
+
+==================================================
+3. TRACE INDEX 46 END-TO-END
+==================================================
+
+Do the same for index 46.
+
+Find:
+
+- first stage it becomes unmapped
+- first stage it becomes additionalEx
+- whether those states were created by:
+  - provider output
+  - exercise reattachment
+  - candidate rejection cleanup
+  - review-safe rescue
+  - activity normalization
+  - promotion cleanup
+  - another exact function
+
+==================================================
+4. ADDITIONAL-EXERCISE CONTRACT AUDIT
+==================================================
+
+Trace the exact current contract for `additionalExercises`.
+
+Answer:
+
+A. What is an additional exercise supposed to mean?
+
+B. Can a source block legitimately be:
+   - MicroNode source AND additionalExercise?
+   - unmapped AND additionalExercise?
+   - exercise-owned AND additionalExercise?
+
+C. Which combinations are explicitly forbidden by current source
+   ownership contract?
+
+D. Where are additionalExercises assembled?
+
+E. Does that logic check existing final ownership before appending?
+
+F. Can a candidate removal/promotion cleanup move an exercise to
+   additionalExercises after another stage already assigned that same
+   block elsewhere?
+
+==================================================
+5. DETERMINE ROOT CAUSE
+==================================================
+
+Choose one primary classification:
+
+A. ADDITIONAL_EXERCISE_REATTACHMENT_BUG
+B. PROMOTION_CLEANUP_OWNERSHIP_BUG
+C. REVIEW_SAFE_RESCUE_OWNERSHIP_BUG
+D. PROVIDER_DUPLICATE_PLACEMENT
+E. ACTIVITY_NORMALIZATION_BUG
+F. FINAL_NORMALIZATION_GAP
+G. MULTIPLE_CAUSES
+H. OTHER
+
+Support the classification with exact:
+- function names
+- file paths
+- pipeline order
+- job/log evidence
+
+==================================================
+6. CHECK WHETHER ONE GENERAL INVARIANT IS MISSING
+==================================================
+
+Determine whether the pipeline lacks a deterministic rule equivalent to:
+
+"Before adding a source block to additionalExercises, verify that the
+same verified source block is not already owned by source,
+supportingMaterial, exercise, or explicit unmapped review placement."
+
+Do NOT implement this rule yet.
+
+First determine whether such a rule would be semantically correct.
+
+Important:
+
+We must NOT solve this by blindly deleting one side of every
+cross-category conflict.
+
+The correct ownership must come from the mapping contract.
+
+==================================================
+7. CHECK REGRESSION SCOPE
+==================================================
+
+Determine whether the same code path could affect:
+
+- short lessons
+- long lessons
+- all subjects
+- only exercise-heavy lessons
+- only review-heavy mappings
+
+Search existing tests for this ownership pattern.
+
+Report whether current tests already cover:
+
+source + additionalEx
+unmapped + additionalEx
+exercise + additionalEx
+
+==================================================
+8. M3-1 RELATION
+==================================================
+
+Determine whether M3-1 caused either duplicate.
+
+Answer exactly:
+
+RELATED
+NOT RELATED
+UNKNOWN
+
+Use code-path evidence.
+
+Do not infer from timing.
+
+==================================================
+9. RECOMMEND ONE NARROW FIX — DO NOT IMPLEMENT
+==================================================
+
+At the end recommend the smallest general fix.
+
+The fix must:
+
+- preserve source ownership semantics
+- preserve additional exercises
+- preserve review-safe material
+- keep validateSourceCoverage() unchanged
+- keep cross-category conflicts fail-closed unless the upstream
+  ownership rule deterministically resolves them
+- not touch Mapping prompts unless absolutely necessary
+- not touch candidate promotion
+- not touch M3-1
+- not touch C2
+
+Do not implement it in this task.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Block 45 identity
+2. Block 46 identity
+3. Block 45 ownership trace
+4. Block 46 ownership trace
+5. additionalExercises contract
+6. first conflict creation point
+7. exact root cause
+8. M3-1 relation
+9. current test gap
+10. safest narrow fix
+
+Finish with:
+
+SAFE TO IMPLEMENT THE NARROW FIX: YES / NO
+
+NO CODE OR DATA CHANGES.
