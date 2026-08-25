@@ -483,6 +483,7 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
     atomicityRepairs: [],
     duplicateResolutions: [],
     malformedDuplicateResolutionEntries: [],
+    semanticDecisions: [],
   };
   const retried = await runBoundedAtomicityVerification(async () => {
     calls++;
@@ -510,6 +511,7 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
       atomicityRepairs: [],
       duplicateResolutions: [],
       malformedDuplicateResolutionEntries: [],
+      semanticDecisions: [],
     };
   }, 2);
   assert.equal(calls, 2, "retry exhaustion never loops");
@@ -684,8 +686,12 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
     primaryExerciseOwnerCandidateIds: {},
     integrativeExerciseIndices: [],
   }, validatePass2SourceAlignment(topics, source));
-  assert.equal(unresolved.length, 1);
-  console.log("  ✓ a malformed split and MEDIUM finding remain review-required");
+  // Lexical compound detection is advisory after M3-2. The split children have
+  // independent direct sources and source alignment, so this helper does not
+  // independently relabel the first child as unresolved; M3-2 still requires a
+  // candidate-level semantic decision before promotion.
+  assert.equal(unresolved.length, 0);
+  console.log("  ✓ split replacement is not rejected solely by lexical compound detection");
 }
 
 {

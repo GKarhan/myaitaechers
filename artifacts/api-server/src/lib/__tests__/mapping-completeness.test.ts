@@ -56,6 +56,13 @@ function promotion(ids: string[]): KnowledgeCandidatePromotionDiagnostics {
       collisions: [],
       duplicateDecisionCandidateIds: [],
     },
+    semanticDecisionDiagnostics: {
+      providedByReview: false,
+      decisionCount: 0,
+      missingCandidateIds: [],
+      invalidCandidateIds: [],
+      decisions: [],
+    },
     reviewCandidateSummary: {
       count: 0,
       byPromotionState: {},

@@ -18,6 +18,7 @@
     "test:mapping-completeness": "tsx src/lib/__tests__/mapping-completeness.test.ts",
     "test:pass2-placement": "tsx src/lib/__tests__/pass2-placement-invariant.test.ts",
     "test:atomicity-review": "tsx src/lib/__tests__/atomicity-review.test.ts",
+    "test:m3-2-semantic-contract": "tsx src/lib/__tests__/m3-2-semantic-decision-contract.test.ts",
     "test:verified-source-subset": "tsx src/lib/__tests__/verified-source-subset.test.ts",
     "test:final-approval": "tsx src/lib/__tests__/lesson-final-approval.test.ts",
     "test:phase18-seq": "tsx src/lib/__tests__/sequential-deps-phase18.test.ts",

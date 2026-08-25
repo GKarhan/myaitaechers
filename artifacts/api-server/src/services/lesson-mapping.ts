@@ -2232,10 +2232,68 @@ export const KNOWLEDGE_CANDIDATE_REVIEW_REASON_CODES = [
   "DUPLICATE_UNCERTAIN",
   "SUPPORTING_ONLY",
   "EXERCISE_CANNOT_CREATE_CANDIDATE",
+  "SEMANTIC_DECISION_MISSING",
+  "SEMANTIC_DECISION_INVALID",
+  "SEMANTIC_SPLIT_REQUIRED",
+  "SEMANTIC_MERGE_OR_SUPPORT",
+  "COGNITIVE_PATH_VARIATION",
+  "SEMANTIC_REVIEW_REQUIRED",
+  "SEMANTIC_TARGET_UNRESOLVED",
 ] as const;
 
 export type KnowledgeCandidateReviewReasonCode =
   typeof KNOWLEDGE_CANDIDATE_REVIEW_REASON_CODES[number];
+
+/**
+ * M3-2 separates curriculum knowledge identity from the cognitive operations
+ * used to learn or demonstrate it. These are provider proposals only; the
+ * promotion boundary validates every consequence deterministically.
+ */
+export const M3_2_SEMANTIC_DECISIONS = [
+  "KEEP_ATOMIC",
+  "SPLIT_REQUIRED",
+  "MERGE_OR_SUPPORT_EXISTING",
+  "COGNITIVE_PATH_VARIATION",
+  "REVIEW_REQUIRED",
+] as const;
+
+export type M32SemanticDecisionKind = (typeof M3_2_SEMANTIC_DECISIONS)[number];
+
+export interface M32ProposedChild {
+  title: string;
+  learningObjective: string;
+  sourceBlockIndices: number[];
+  independentSuccessCriterion: string;
+}
+
+/**
+ * Safe, parsed M3-2 output. It intentionally has no source text and is only
+ * meaningful for the current mapping run's stable candidate IDs.
+ */
+export interface M32SemanticDecision {
+  candidateId: string;
+  decision: M32SemanticDecisionKind;
+  /** Armenian-language explanation supplied by the semantic reviewer. */
+  reason: string;
+  evidenceSourceIndices: number[];
+  exerciseReferences: number[];
+  confidence: "HIGH" | "MEDIUM";
+  targetCandidateId?: string;
+  independentSuccessCriteria?: string[];
+  proposedChildren?: M32ProposedChild[];
+}
+
+export interface M32SemanticDecisionValidation {
+  candidateId: string;
+  decision: M32SemanticDecisionKind | "MISSING";
+  valid: boolean;
+  reasonCode:
+    | "VALID"
+    | "MISSING_DECISION"
+    | "INVALID_DECISION"
+    | "TARGET_UNRESOLVED"
+    | "SPLIT_NOT_VALIDATED";
+}
 
 export const KNOWLEDGE_CANDIDATE_SEMANTIC_STATUSES = [
   "UNASSESSED",
@@ -2281,6 +2339,9 @@ export interface KnowledgeCandidate {
   semanticStatus: KnowledgeCandidateSemanticStatus;
   sourceSupport: KnowledgeCandidateSourceSupport;
   reviewReasonCodes: KnowledgeCandidateReviewReasonCode[];
+  /** M3-2 proposal and deterministic validation, never raw provider output. */
+  semanticDecision?: M32SemanticDecision;
+  semanticDecisionValidation?: M32SemanticDecisionValidation;
   assessment: KnowledgeCandidateAssessment;
 }
 
@@ -2466,6 +2527,15 @@ export interface KnowledgeCandidateReviewArtifact {
   /** Numeric/enum references only; source paragraph strings never leave Pass 2. */
   practiceReferences: KnowledgeCandidateReviewPracticeReference[];
   semanticStatus: KnowledgeCandidateSemanticStatus;
+  semanticDecision?: {
+    decision: M32SemanticDecisionKind;
+    reason: string;
+    evidenceSourceIndices: number[];
+    exerciseReferences: number[];
+    confidence: "HIGH" | "MEDIUM";
+    targetCandidateId?: string;
+    validation: M32SemanticDecisionValidation;
+  };
   assessment: KnowledgeCandidateAssessment;
   promotion: {
     state: Exclude<KnowledgeCandidatePromotionState, "PROMOTE">;
@@ -2520,6 +2590,19 @@ function buildKnowledgeCandidateReviewArtifact(
       kind,
     })),
     semanticStatus: candidate.semanticStatus,
+    ...(candidate.semanticDecision && candidate.semanticDecisionValidation ? {
+      semanticDecision: {
+        decision: candidate.semanticDecision.decision,
+        reason: candidate.semanticDecision.reason,
+        evidenceSourceIndices: [...candidate.semanticDecision.evidenceSourceIndices],
+        exerciseReferences: [...candidate.semanticDecision.exerciseReferences],
+        confidence: candidate.semanticDecision.confidence,
+        ...(candidate.semanticDecision.targetCandidateId
+          ? { targetCandidateId: candidate.semanticDecision.targetCandidateId }
+          : {}),
+        validation: { ...candidate.semanticDecisionValidation },
+      },
+    } : {}),
     assessment: { ...candidate.assessment },
     promotion: {
       state: decision.state,
@@ -2548,6 +2631,192 @@ function hasActivityBlockType(block: Pass1Block): boolean {
 
 function hasUniqueIndices(indices: readonly number[]): boolean {
   return new Set(indices).size === indices.length;
+}
+
+/**
+ * M3-2 validates the safe shape and referential integrity of a semantic
+ * decision. It deliberately does not treat the provider as authority over
+ * source alignment, ownership, or promotion; those existing gates run later.
+ */
+export function validateM32SemanticDecision(input: {
+  candidate: Pick<KnowledgeCandidate,
+    "candidateId" | "coreSourceBlockIndices" | "supportingSourceBlockIndices" | "practiceReferences">;
+  decision?: M32SemanticDecision;
+  knownCandidateIds: ReadonlySet<string>;
+  splitWasApplied?: boolean;
+}): M32SemanticDecisionValidation {
+  const candidateId = input.candidate.candidateId;
+  const decision = input.decision;
+  if (!decision) {
+    return { candidateId, decision: "MISSING", valid: false, reasonCode: "MISSING_DECISION" };
+  }
+  const ownedSources = new Set([
+    ...input.candidate.coreSourceBlockIndices,
+    ...input.candidate.supportingSourceBlockIndices,
+  ]);
+  const ownedExercises = new Set(input.candidate.practiceReferences.map((reference) => reference.blockIndex));
+  const hasSafeEvidence =
+    decision.candidateId === candidateId
+    && decision.reason.trim().length > 0
+    && decision.evidenceSourceIndices.length > 0
+    && hasUniqueIndices(decision.evidenceSourceIndices)
+    && decision.evidenceSourceIndices.every((index) => ownedSources.has(index))
+    && hasUniqueIndices(decision.exerciseReferences)
+    && decision.exerciseReferences.every((index) => ownedExercises.has(index));
+  if (!hasSafeEvidence) {
+    return {
+      candidateId,
+      decision: decision.decision,
+      valid: false,
+      reasonCode: "INVALID_DECISION",
+    };
+  }
+  if (
+    decision.decision === "MERGE_OR_SUPPORT_EXISTING"
+    || decision.decision === "COGNITIVE_PATH_VARIATION"
+  ) {
+    if (
+      !decision.targetCandidateId
+      || decision.targetCandidateId === candidateId
+      || !input.knownCandidateIds.has(decision.targetCandidateId)
+    ) {
+      return {
+        candidateId,
+        decision: decision.decision,
+        valid: false,
+        reasonCode: "TARGET_UNRESOLVED",
+      };
+    }
+  }
+  if (decision.decision === "SPLIT_REQUIRED") {
+    const children = decision.proposedChildren ?? [];
+    const criteria = decision.independentSuccessCriteria ?? [];
+    const claimedCoreSources = children.flatMap((child) => child.sourceBlockIndices);
+    const uniqueClaimedCoreSources = [...new Set(claimedCoreSources)].sort((left, right) => left - right);
+    const expectedCoreSources = [...input.candidate.coreSourceBlockIndices].sort((left, right) => left - right);
+    const isExactDisjointCorePartition =
+      claimedCoreSources.length === uniqueClaimedCoreSources.length
+      && uniqueClaimedCoreSources.length === expectedCoreSources.length
+      && uniqueClaimedCoreSources.every((index, position) => index === expectedCoreSources[position]);
+    const proposedSplitIsWellFormed =
+      children.length >= 2
+      && criteria.length >= 2
+      && isExactDisjointCorePartition
+      && criteria.every((criterion) => criterion.trim().length > 0)
+      && new Set(criteria.map((criterion) => criterion.trim())).size === criteria.length
+      && children.every((child) =>
+        child.title.trim().length > 0
+        && child.learningObjective.trim().length > 0
+        && child.independentSuccessCriterion.trim().length > 0
+        && child.sourceBlockIndices.length > 0
+        && hasUniqueIndices(child.sourceBlockIndices)
+        && child.sourceBlockIndices.every((index) => ownedSources.has(index)),
+      );
+    const childCriteria = children.map((child) => child.independentSuccessCriterion.trim());
+    const criteriaExactlyMatchChildren =
+      childCriteria.length === criteria.length
+      && childCriteria.every((criterion, index) => criterion === criteria[index]?.trim())
+      && new Set(childCriteria).size === childCriteria.length;
+    if (!proposedSplitIsWellFormed || !criteriaExactlyMatchChildren || !input.splitWasApplied) {
+      return {
+        candidateId,
+        decision: decision.decision,
+        valid: false,
+        reasonCode: "SPLIT_NOT_VALIDATED",
+      };
+    }
+  }
+  return { candidateId, decision: decision.decision, valid: true, reasonCode: "VALID" };
+}
+
+/**
+ * A semantic SPLIT_REQUIRED proposal cannot be used as a loose label for a
+ * separate repair plan. Before the existing bounded repair mutates the map,
+ * prove that it is the same split: same parent, children, objective wording,
+ * and exact direct-source partition. The repair itself still validates source
+ * alignment and exercise ownership authoritatively.
+ */
+export function getM32ValidatedSplitRepairs(input: {
+  topics: ReadonlyArray<Pass2TopicResult>;
+  semanticDecisions: ReadonlyArray<M32SemanticDecision>;
+  atomicityRepairs: ReadonlyArray<AtomicityRepairDecision>;
+}): Map<AtomicityRepairDecision, M32SemanticDecision> {
+  const nodeByCandidateId = new Map(
+    input.topics.flatMap((topic) => topic.microNodes
+      .filter((node): node is Pass2MicroNode & { candidateId: string } => !!node.candidateId)
+      .map((node) => [node.candidateId, node] as const)),
+  );
+  const knownCandidateIds = new Set(nodeByCandidateId.keys());
+  const semanticByCandidateId = new Map(
+    input.semanticDecisions.map((decision) => [decision.candidateId, decision]),
+  );
+  const validated = new Map<AtomicityRepairDecision, M32SemanticDecision>();
+  const sameIndices = (left: readonly number[], right: readonly number[]) =>
+    left.length === right.length
+    && [...left].sort((a, b) => a - b).every((value, index) =>
+      value === [...right].sort((a, b) => a - b)[index],
+    );
+
+  for (const repair of input.atomicityRepairs) {
+    if (repair.action !== "SPLIT_MICRONODE" || !repair.microNodeId) continue;
+    const parent = nodeByCandidateId.get(repair.microNodeId);
+    const semantic = semanticByCandidateId.get(repair.microNodeId);
+    if (!parent || semantic?.decision !== "SPLIT_REQUIRED") continue;
+    const semanticValidation = validateM32SemanticDecision({
+      candidate: {
+        candidateId: parent.candidateId,
+        coreSourceBlockIndices: parent.sourceBlockIndices,
+        supportingSourceBlockIndices: parent.supportingMaterialIndices,
+        practiceReferences: parent.exercises.map((exercise) => ({
+          blockIndex: exercise.blockIndex,
+          sourceParagraph: exercise.sourceParagraph,
+          kind: "EXERCISE" as const,
+        })),
+      },
+      decision: semantic,
+      knownCandidateIds,
+      splitWasApplied: true,
+    });
+    const proposedChildren = semantic.proposedChildren ?? [];
+    const repairChildren = repair.splitMicroNodes ?? [];
+    const sameChildren =
+      proposedChildren.length === repairChildren.length
+      && proposedChildren.every((proposal, index) => {
+        const actual = repairChildren[index];
+        return !!actual
+          && proposal.title.trim() === actual.title.trim()
+          && proposal.learningObjective.trim() === actual.learningObjective.trim()
+          && sameIndices(proposal.sourceBlockIndices, actual.sourceBlockIndices);
+      });
+    if (semanticValidation.valid && sameChildren) {
+      validated.set(repair, semantic);
+    }
+  }
+  return validated;
+}
+
+/** Source-safe convenience diagnostic for callers that only need parent IDs. */
+export function getM32ValidatedSplitRepairCandidateIds(input: {
+  topics: ReadonlyArray<Pass2TopicResult>;
+  semanticDecisions: ReadonlyArray<M32SemanticDecision>;
+  atomicityRepairs: ReadonlyArray<AtomicityRepairDecision>;
+}): Set<string> {
+  return new Set(
+    [...getM32ValidatedSplitRepairs(input).values()].map((decision) => decision.candidateId),
+  );
+}
+
+function semanticDecisionReasonCodes(
+  validation: M32SemanticDecisionValidation,
+): KnowledgeCandidateReviewReasonCode[] {
+  if (validation.reasonCode === "MISSING_DECISION") return ["SEMANTIC_DECISION_MISSING"];
+  if (validation.reasonCode === "INVALID_DECISION") return ["SEMANTIC_DECISION_INVALID"];
+  if (validation.reasonCode === "TARGET_UNRESOLVED") return ["SEMANTIC_TARGET_UNRESOLVED"];
+  if (validation.reasonCode === "SPLIT_NOT_VALIDATED") return ["SEMANTIC_SPLIT_REQUIRED"];
+  if (validation.decision === "MERGE_OR_SUPPORT_EXISTING") return ["SEMANTIC_MERGE_OR_SUPPORT"];
+  if (validation.decision === "COGNITIVE_PATH_VARIATION") return ["COGNITIVE_PATH_VARIATION"];
+  if (validation.decision === "REVIEW_REQUIRED") return ["SEMANTIC_REVIEW_REQUIRED"];
+  return [];
 }
 
 /**
@@ -2732,6 +3001,13 @@ export interface KnowledgeCandidatePromotionDiagnostics {
   rejectedNonKnowledgeCount: number;
   consolidatedCandidateCount: number;
   candidateIdentity: KnowledgeCandidateIdentityDiagnostics;
+  semanticDecisionDiagnostics: {
+    providedByReview: boolean;
+    decisionCount: number;
+    missingCandidateIds: string[];
+    invalidCandidateIds: string[];
+    decisions: M32SemanticDecisionValidation[];
+  };
   reviewCandidateSummary: KnowledgeCandidateReviewSummary;
   /**
    * Source-safe review-only records. These are diagnostics, never ownership or
@@ -2762,6 +3038,14 @@ export function applyKnowledgeCandidatePromotion(input: {
   candidateIdentity?: KnowledgeCandidateIdentityDiagnostics;
   atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
   prePromotionRemovedCandidates?: ReadonlyArray<PrePromotionRemovedCandidate>;
+  /**
+   * Explicitly pass `semanticDecisionsProvided: true` for production Pass 2B
+   * output. The optional shape preserves direct pure-function callers from
+   * before M3-2; production missing/malformed output is handled as review-only.
+   */
+  semanticDecisions?: ReadonlyArray<M32SemanticDecision>;
+  semanticDecisionsProvided?: boolean;
+  splitReplacementCandidateIds?: Readonly<Record<string, readonly string[]>>;
 }): KnowledgeCandidatePromotionDiagnostics {
   const candidateIdentity = mergeKnowledgeCandidateIdentityDiagnostics(
     input.candidateIdentity,
@@ -2786,6 +3070,16 @@ export function applyKnowledgeCandidatePromotion(input: {
   const reviewCandidates: KnowledgeCandidateReviewArtifact[] = [];
   const emittedDecisionIds = new Set<string>();
   const decisionByNode = new Map<Pass2MicroNode, KnowledgeCandidatePromotionDecision>();
+  const knownCandidateIds = new Set(
+    input.topics.flatMap((topic) => topic.microNodes
+      .filter((node) => !node.duplicateDecisionEmissionOf)
+      .map((node) => node.candidateId!)
+    ),
+  );
+  const semanticDecisionByCandidateId = new Map(
+    (input.semanticDecisions ?? []).map((decision) => [decision.candidateId, decision]),
+  );
+  const semanticDecisionValidations: M32SemanticDecisionValidation[] = [];
   let supportingMaterialBlockCount = 0;
   let exerciseReferenceCount = 0;
 
@@ -2801,6 +3095,37 @@ export function applyKnowledgeCandidatePromotion(input: {
         unresolvedAtomicityIds.has(candidateId)
         || unresolvedDuplicateIds.has(candidateId)
         || input.forcedReviewCandidateIds?.has(candidateId);
+      const parentSplitEntry = Object.entries(input.splitReplacementCandidateIds ?? {})
+        .find(([, childIds]) => childIds.includes(candidateId));
+      const parentSplitDecision = parentSplitEntry
+        ? semanticDecisionByCandidateId.get(parentSplitEntry[0])
+        : undefined;
+      const directSemanticDecision = semanticDecisionByCandidateId.get(candidateId);
+      const semanticDecision = directSemanticDecision
+        ?? (
+          parentSplitEntry && parentSplitDecision?.decision === "SPLIT_REQUIRED"
+            ? {
+                ...parentSplitDecision,
+                candidateId,
+                decision: "KEEP_ATOMIC" as const,
+                reason: `${parentSplitDecision.reason} (server-validated split child)`,
+                evidenceSourceIndices: [...node.sourceBlockIndices],
+                exerciseReferences: node.exercises.map((exercise) => exercise.blockIndex),
+                targetCandidateId: undefined,
+                independentSuccessCriteria: undefined,
+                proposedChildren: undefined,
+              }
+            : input.semanticDecisionsProvided
+              ? undefined
+              : {
+                  candidateId,
+                  decision: "KEEP_ATOMIC" as const,
+                  reason: "Legacy pure-contract caller; production Pass 2B supplies M3-2 semantic decisions.",
+                  evidenceSourceIndices: [...node.sourceBlockIndices],
+                  exerciseReferences: node.exercises.map((exercise) => exercise.blockIndex),
+                  confidence: "HIGH" as const,
+                }
+        );
       const candidate: KnowledgeCandidate = {
         candidateId,
         provisionalTopic: { sequence: topic.sequence, title: topic.title, topicType: topic.topicType },
@@ -2817,16 +3142,17 @@ export function applyKnowledgeCandidatePromotion(input: {
         })),
         semanticStatus: unresolvedDuplicateIds.has(candidateId) || input.forcedReviewCandidateIds?.has(candidateId)
           ? "DUPLICATE_CANDIDATE"
-          : hasSemanticUncertainty ? "UNCERTAIN" : "DISTINCT",
+          : hasSemanticUncertainty || !semanticDecision || semanticDecision.decision === "REVIEW_REQUIRED"
+            ? "UNCERTAIN"
+            : "DISTINCT",
         sourceSupport: "UNASSESSED",
         reviewReasonCodes: [],
+        ...(semanticDecision ? { semanticDecision } : {}),
         assessment: {
           meaningfulKnowledgeIdentity: sourceState,
           independentlyTeachable: sourceState,
           independentlyAssessable: sourceState,
-          atomicity: unresolvedAtomicityIds.has(candidateId) || input.forcedReviewCandidateIds?.has(candidateId)
-            ? "UNCERTAIN"
-            : detectCompoundLO(node.learningObjective) !== null ? "UNCERTAIN" : "ATOMIC",
+          atomicity: "UNCERTAIN",
           nonDuplication: unresolvedDuplicateIds.has(candidateId) || input.forcedReviewCandidateIds?.has(candidateId)
             ? "UNCERTAIN"
             : "UNIQUE",
@@ -2834,6 +3160,23 @@ export function applyKnowledgeCandidatePromotion(input: {
           supportingOnly: false,
         },
       };
+      const semanticValidation = validateM32SemanticDecision({
+        candidate,
+        decision: semanticDecision,
+        knownCandidateIds,
+        splitWasApplied: !!parentSplitEntry,
+      });
+      candidate.semanticDecisionValidation = semanticValidation;
+      semanticDecisionValidations.push(semanticValidation);
+      candidate.reviewReasonCodes.push(...semanticDecisionReasonCodes(semanticValidation));
+      if (!hasSemanticUncertainty && semanticValidation.valid && semanticDecision) {
+        candidate.assessment.atomicity = semanticDecision.decision === "REVIEW_REQUIRED"
+          ? "UNCERTAIN"
+          : "ATOMIC";
+        candidate.assessment.supportingOnly =
+          semanticDecision.decision === "MERGE_OR_SUPPORT_EXISTING"
+          || semanticDecision.decision === "COGNITIVE_PATH_VARIATION";
+      }
       const decision = decideKnowledgeCandidatePromotion(candidate, input.blocks);
       node.promotionState = decision.state;
       node.promotionReasonCodes = [...decision.reasonCodes];
@@ -2972,6 +3315,19 @@ export function applyKnowledgeCandidatePromotion(input: {
     rejectedNonKnowledgeCount: count("REJECT_NON_KNOWLEDGE") + count("SUPPORT_ONLY"),
     consolidatedCandidateCount: input.consolidatedCandidateCount ?? 0,
     candidateIdentity,
+    semanticDecisionDiagnostics: {
+      providedByReview: input.semanticDecisionsProvided === true,
+      decisionCount: semanticDecisionValidations.length,
+      missingCandidateIds: semanticDecisionValidations
+        .filter((validation) => validation.reasonCode === "MISSING_DECISION")
+        .map((validation) => validation.candidateId)
+        .sort(),
+      invalidCandidateIds: semanticDecisionValidations
+        .filter((validation) => validation.reasonCode !== "VALID" && validation.reasonCode !== "MISSING_DECISION")
+        .map((validation) => validation.candidateId)
+        .sort(),
+      decisions: semanticDecisionValidations,
+    },
     reviewCandidateSummary: {
       count: reviewCandidates.length,
       byPromotionState,
@@ -2998,6 +3354,9 @@ export function previewKnowledgeCandidatePromotion(input: {
   sourceAlignment: Pass2SourceAlignment;
   unresolvedAtomicityFindings: ReadonlyArray<GranularityFinding>;
   duplicateResolution: DuplicateResolutionAudit;
+  semanticDecisions?: ReadonlyArray<M32SemanticDecision>;
+  semanticDecisionsProvided?: boolean;
+  splitReplacementCandidateIds?: Readonly<Record<string, readonly string[]>>;
 }): KnowledgeCandidatePromotionDiagnostics {
   return applyKnowledgeCandidatePromotion({
     ...input,
@@ -3344,6 +3703,8 @@ export interface AtomicityRepairResult {
   primaryExerciseIndices: number[];
   primaryExerciseOwnerCandidateIds: Record<number, string[]>;
   integrativeExerciseIndices: number[];
+  /** Source-safe M3-2 criteria recorded only for accepted semantic splits. */
+  m32SemanticSplitCriteria?: Record<string, string[]>;
 }
 
 function isAtomicityEligibleSource(block: Pass1Block | undefined): block is Pass1Block {
@@ -3554,7 +3915,10 @@ export function getUnresolvedAtomicityFindings(
       if (!replacementIds?.length) return [finding];
       return replacementIds.flatMap((candidateId) => {
         const replacement = nodeByCandidateId.get(candidateId);
-        return !replacement || detectCompoundLO(replacement.learningObjective) !== null
+        const replacementAudit = sourceAlignment.nodes.find((entry) =>
+          entry.microNodeId === candidateId,
+        )?.audit;
+        return !replacement || replacementAudit?.status !== "SUFFICIENT"
           ? [{
               ...finding,
               microNodeId: candidateId,
@@ -3843,7 +4207,7 @@ export function applyBoundedSourceReallocation(
             .filter((block): block is Pass1Block => !!block),
         )
         : null;
-      if (!revisedObjective || detectCompoundLO(revisedObjective) || revisedAudit?.status !== "SUFFICIENT") {
+      if (!revisedObjective || revisedAudit?.status !== "SUFFICIENT") {
         result.rejectedDecisionCount++;
         continue;
       }
@@ -4840,6 +5204,30 @@ You must verify that both sides of the connector represent independently assessa
 When a connector simply continues one procedure or adds a sub-step, do NOT flag.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+M3-2 SEMANTIC DECISION — return exactly one decision for EVERY supplied candidateId.
+
+Mapping Core decides independently teachable and assessable curriculum knowledge.
+Cognitive Path later decides cognitive operations/depth for that knowledge. Therefore,
+recognize, explain, give examples, classify, or apply may be operations over ONE
+knowledge target; multiple verbs never prove a split by themselves.
+
+Allowed decisions:
+• KEEP_ATOMIC — one coherent independently teachable/assessable knowledge target.
+• SPLIT_REQUIRED — two or more independent knowledge targets. Include at least two
+  proposedChildren, each with a distinct observable independentSuccessCriterion and
+  only its own sourceBlockIndices. Also include independentSuccessCriteria.
+• MERGE_OR_SUPPORT_EXISTING — evidence supports a different existing candidate.
+  Include targetCandidateId.
+• COGNITIVE_PATH_VARIATION — same knowledge as another candidate, expressed through
+  another cognitive operation. Include targetCandidateId. Do NOT create a new
+  learner-state target for it.
+• REVIEW_REQUIRED — insufficient or contradictory semantic evidence.
+
+For every semantic decision, evidenceSourceIndices must be current source indices
+owned by that candidate; exerciseReferences must be current exercise indices owned
+by that candidate. Do not use text, IDs, or indices not supplied.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 2. OVER_SPLIT — two MicroNodes in the SAME TOPIC describe the same underlying objective.
 
 Flag ONLY when: two MicroNodes are covering the same learning skill — one as procedure
@@ -4912,10 +5300,22 @@ OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary.
       "confidence": "HIGH",
       "learnerStateRelation": "SEPARATE"
     }
+  ],
+  "semanticDecisions": [
+    {
+      "candidateId": "t1:n0",
+      "decision": "KEEP_ATOMIC",
+      "reason": "Հայերեն պատճառ",
+      "evidenceSourceIndices": [3],
+      "exerciseReferences": [12],
+      "confidence": "HIGH"
+    }
   ]
 }
 
 findings may be an empty array [] if no issues found.
+Return exactly one semanticDecisions entry for every supplied candidateId. Never
+infer a split from a connector, multiple verbs, or differing Bloom demands alone.
 For EVERY duplicateCandidates pair, return exactly one duplicateResolutions entry:
   • DISTINCT when a learner can master one objective without demonstrating the
     other; set learnerStateRelation to SEPARATE.
@@ -4948,6 +5348,8 @@ interface GranularityReviewMicroNode {
   learningObjective: string;
   sourceBlockTypes: string[];
   exerciseCount: number;
+  /** Stable, server-provided exercise references allowed in M3-2 decisions. */
+  exerciseBlockIndices: number[];
   /** From detectCompoundLO heuristic. */
   compoundLO: boolean;
   compoundConnector?: string;
@@ -5514,6 +5916,8 @@ export interface SemanticReviewResult {
   atomicityRepairs: AtomicityRepairDecision[];
   duplicateResolutions: DuplicateResolution[];
   malformedDuplicateResolutionEntries: MalformedDuplicateResolutionEntry[];
+  /** One parsed M3-2 proposal per reviewed stable candidate ID. */
+  semanticDecisions: M32SemanticDecision[];
   verificationDiagnostics?: AtomicityVerificationDiagnostics;
 }
 
@@ -5545,6 +5949,93 @@ export interface AtomicityVerificationDiagnostics {
   attempts: AtomicityVerificationAttemptDiagnostics[];
 }
 
+function parseM32SemanticDecisions(
+  value: unknown,
+  knownCandidateIds: ReadonlySet<string>,
+): { decisions: M32SemanticDecision[]; malformed: boolean } {
+  if (!Array.isArray(value)) return { decisions: [], malformed: true };
+  const byCandidateId = new Map<string, M32SemanticDecision>();
+  for (const item of value) {
+    const record = asRecord(item);
+    if (!record) return { decisions: [], malformed: true };
+    const candidateId = typeof record.candidateId === "string" ? record.candidateId : "";
+    const decision = typeof record.decision === "string" ? record.decision : "";
+    const reason = typeof record.reason === "string" ? record.reason.trim() : "";
+    const confidence = record.confidence;
+    const evidenceSourceIndices = record.evidenceSourceIndices;
+    const exerciseReferences = record.exerciseReferences;
+    if (
+      !candidateId
+      || !knownCandidateIds.has(candidateId)
+      || !M3_2_SEMANTIC_DECISIONS.includes(decision as M32SemanticDecisionKind)
+      || !reason
+      || (confidence !== "HIGH" && confidence !== "MEDIUM")
+      || !Array.isArray(evidenceSourceIndices)
+      || !evidenceSourceIndices.every((index) => typeof index === "number" && Number.isInteger(index))
+      || !Array.isArray(exerciseReferences)
+      || !exerciseReferences.every((index) => typeof index === "number" && Number.isInteger(index))
+      || byCandidateId.has(candidateId)
+    ) {
+      return { decisions: [], malformed: true };
+    }
+    const proposedChildren = record.proposedChildren;
+    let parsedChildren: M32ProposedChild[] | undefined;
+    if (proposedChildren !== undefined) {
+      if (!Array.isArray(proposedChildren)) return { decisions: [], malformed: true };
+      parsedChildren = [];
+      for (const child of proposedChildren) {
+        const childRecord = asRecord(child);
+        if (
+          !childRecord
+          || typeof childRecord.title !== "string"
+          || typeof childRecord.learningObjective !== "string"
+          || typeof childRecord.independentSuccessCriterion !== "string"
+          || !Array.isArray(childRecord.sourceBlockIndices)
+          || !childRecord.sourceBlockIndices.every((index) => typeof index === "number" && Number.isInteger(index))
+        ) {
+          return { decisions: [], malformed: true };
+        }
+        parsedChildren.push({
+          title: childRecord.title,
+          learningObjective: childRecord.learningObjective,
+          independentSuccessCriterion: childRecord.independentSuccessCriterion,
+          sourceBlockIndices: childRecord.sourceBlockIndices,
+        });
+      }
+    }
+    const independentSuccessCriteria = record.independentSuccessCriteria;
+    if (
+      independentSuccessCriteria !== undefined
+      && (!Array.isArray(independentSuccessCriteria)
+        || !independentSuccessCriteria.every((criterion) => typeof criterion === "string"))
+    ) {
+      return { decisions: [], malformed: true };
+    }
+    if (record.targetCandidateId !== undefined && typeof record.targetCandidateId !== "string") {
+      return { decisions: [], malformed: true };
+    }
+    byCandidateId.set(candidateId, {
+      candidateId,
+      decision: decision as M32SemanticDecisionKind,
+      reason,
+      evidenceSourceIndices,
+      exerciseReferences,
+      confidence,
+      ...(typeof record.targetCandidateId === "string"
+        ? { targetCandidateId: record.targetCandidateId }
+        : {}),
+      ...(independentSuccessCriteria !== undefined
+        ? { independentSuccessCriteria }
+        : {}),
+      ...(parsedChildren !== undefined ? { proposedChildren: parsedChildren } : {}),
+    });
+  }
+  if (byCandidateId.size !== knownCandidateIds.size) {
+    return { decisions: [], malformed: true };
+  }
+  return { decisions: [...byCandidateId.values()], malformed: false };
+}
+
 /**
  * Pass 2B — semantic granularity review.
  *
@@ -5573,6 +6064,7 @@ async function runGranularityReviewOnce(
         learningObjective:  mn.learningObjective,
         sourceBlockTypes,
         exerciseCount:      mn.exercises.length,
+        exerciseBlockIndices: mn.exercises.map((exercise) => exercise.blockIndex),
         sourceBlockIndices: [...mn.sourceBlockIndices],
         needsSourceRepair: sourceAlignment.nodes.some((entry) =>
           entry.topicSequence === topic.sequence &&
@@ -5609,6 +6101,7 @@ async function runGranularityReviewOnce(
       atomicityRepairs: [],
       duplicateResolutions: [],
       malformedDuplicateResolutionEntries: [],
+      semanticDecisions: [],
     };
   }
 
@@ -5720,6 +6213,14 @@ Return only this JSON shape:
     "decision": "DISTINCT",
     "confidence": "HIGH",
     "learnerStateRelation": "SEPARATE"
+  }],
+  "semanticDecisions": [{
+    "candidateId": "t1:n0",
+    "decision": "KEEP_ATOMIC",
+    "reason": "Հայերեն պատճառ",
+    "evidenceSourceIndices": [3],
+    "exerciseReferences": [12],
+    "confidence": "HIGH"
   }]
 }
 Allowed actions: KEEP_CURRENT, ADD_SUPPORTING_BLOCKS, MOVE_BLOCKS, MERGE_SOURCE_OWNERSHIP, NARROW_OBJECTIVE, NO_VALID_SUPPORT_FOUND.
@@ -5728,6 +6229,8 @@ Return one duplicateResolutions entry for every duplicateCandidates pair, includ
 cross-topic pairs. Set learnerStateRelation to SAME only if one observable
 success criterion proves both objectives; set SEPARATE when each direction or
 operation can be assessed independently. Do not infer actions from titles.
+Return exactly one semanticDecisions entry for every supplied candidateId. Never
+infer a split from a connector, multiple verbs, or differing Bloom demands alone.
 atomicityRepairs actions: SPLIT_MICRONODE, ASSIGN_PRIMARY_EXERCISE, MARK_INTEGRATIVE.
 A split child source set must be an exact disjoint partition of the target's current
 sourceBlockIndices. If source is also reallocated for that target in this response,
@@ -5759,6 +6262,7 @@ direct support for every child, do not propose the split.`;
         atomicityRepairs: [],
         duplicateResolutions: [],
         malformedDuplicateResolutionEntries: [],
+        semanticDecisions: [],
       };
     }
 
@@ -5767,6 +6271,7 @@ direct support for every child, do not propose the split.`;
       sourceReallocations?: unknown[];
       atomicityRepairs?: unknown[];
       duplicateResolutions?: unknown[];
+      semanticDecisions?: unknown;
     };
     if (!parsed || !Array.isArray(parsed.findings)) {
       logger.warn({ totalMicroNodes }, "pass2b granularity review: invalid JSON schema — returning no findings");
@@ -5778,6 +6283,7 @@ direct support for every child, do not propose the split.`;
         atomicityRepairs: [],
         duplicateResolutions: [],
         malformedDuplicateResolutionEntries: [],
+        semanticDecisions: [],
       };
     }
 
@@ -5790,6 +6296,27 @@ direct support for every child, do not propose the split.`;
       "UNSUPPORTED_MICRONODE",
     ]);
     const VALID_CONFIDENCE = new Set(["HIGH", "MEDIUM"]);
+    const reviewedCandidateIds = new Set(
+      reviewTopics.flatMap((topic) => topic.microNodes.map((node) => node.candidateId)),
+    );
+    const parsedSemanticDecisions = parseM32SemanticDecisions(
+      parsed.semanticDecisions,
+      reviewedCandidateIds,
+    );
+    if (parsedSemanticDecisions.malformed) {
+      logger.warn({ totalMicroNodes }, "pass2b semantic review: M3-2 decisions malformed or incomplete");
+      return {
+        status: "UNAVAILABLE",
+        unavailableReason: "INVALID_RESPONSE",
+        findings: [],
+        sourceReallocations: [],
+        atomicityRepairs: [],
+        duplicateResolutions: [],
+        malformedDuplicateResolutionEntries: [],
+        semanticDecisions: [],
+      };
+    }
+    const semanticDecisions = parsedSemanticDecisions.decisions;
 
     let malformedEntryCount = 0;
     const findings: GranularityFinding[] = [];
@@ -5972,6 +6499,7 @@ direct support for every child, do not propose the split.`;
         atomicityRepairs: [],
         duplicateResolutions: [],
         malformedDuplicateResolutionEntries: [],
+        semanticDecisions: [],
       };
     }
 
@@ -5995,6 +6523,7 @@ direct support for every child, do not propose the split.`;
       atomicityRepairs,
       duplicateResolutions,
       malformedDuplicateResolutionEntries: parsedDuplicateResolutions.malformedEntries,
+      semanticDecisions,
     };
 
   } catch (err) {
@@ -6007,6 +6536,7 @@ direct support for every child, do not propose the split.`;
       atomicityRepairs: [],
       duplicateResolutions: [],
       malformedDuplicateResolutionEntries: [],
+      semanticDecisions: [],
     };
   }
 }
@@ -7408,13 +7938,39 @@ export async function runPass2Pipeline(
     semanticReview.sourceReallocations,
     { requireStableIds: true },
   );
+  // A mechanical split is admissible only when its matching M3-2 decision is
+  // complete and names the same validated children. Keeping an unvalidated
+  // parent intact preserves its evidence as a review artifact rather than
+  // creating review-only children with no durable parent context.
+  const m32ValidatedSplitRepairs = getM32ValidatedSplitRepairs({
+    topics,
+    semanticDecisions: semanticReview.semanticDecisions,
+    atomicityRepairs: semanticReview.atomicityRepairs,
+  });
+  const m32RejectedSplitRepairCount = semanticReview.atomicityRepairs.filter((repair) =>
+    repair.action === "SPLIT_MICRONODE"
+    && !m32ValidatedSplitRepairs.has(repair),
+  ).length;
+  const m32EligibleAtomicityRepairs = semanticReview.atomicityRepairs.filter((repair) =>
+    repair.action !== "SPLIT_MICRONODE"
+    || m32ValidatedSplitRepairs.has(repair),
+  );
   // This is the only atomicity repair pass in a mapping run. Its split contract
   // requires an exact partition of existing same-lesson source ownership, while
   // exercise moves preserve one canonical activity destination.
   const atomicityRepair = applyBoundedAtomicityRepairs(
     topics,
     blocks,
-    semanticReview.atomicityRepairs,
+    m32EligibleAtomicityRepairs,
+  );
+  atomicityRepair.attempted = semanticReview.atomicityRepairs.length > 0;
+  atomicityRepair.rejectedDecisionCount += m32RejectedSplitRepairCount;
+  atomicityRepair.m32SemanticSplitCriteria = Object.fromEntries(
+    [...m32ValidatedSplitRepairs.entries()].flatMap(([repair, decision]) =>
+      repair.microNodeId
+        ? [[repair.microNodeId, [...(decision.independentSuccessCriteria ?? [])]]]
+        : [],
+    ),
   );
   candidateIdentity = mergeKnowledgeCandidateIdentityDiagnostics(
     candidateIdentity,
@@ -7437,6 +7993,9 @@ export async function runPass2Pipeline(
     sourceAlignment: prePromotionSourceAlignment,
     unresolvedAtomicityFindings: prePromotionUnresolvedAtomicity,
     duplicateResolution,
+    semanticDecisions: semanticReview.semanticDecisions,
+    semanticDecisionsProvided: true,
+    splitReplacementCandidateIds: atomicityRepair.splitReplacementCandidateIds,
   });
   const knowledgeCompletenessSnapshots = snapshotKnowledgeCompletenessCandidates(topics);
   const lessonWideConsolidation = consolidateLessonWideKnowledge({
@@ -7464,6 +8023,9 @@ export async function runPass2Pipeline(
     sourceAlignment: prePromotionSourceAlignment,
     unresolvedAtomicityFindings: prePromotionUnresolvedAtomicity,
     duplicateResolution,
+    semanticDecisions: semanticReview.semanticDecisions,
+    semanticDecisionsProvided: true,
+    splitReplacementCandidateIds: atomicityRepair.splitReplacementCandidateIds,
     consolidatedCandidateCount: lessonWideConsolidation.sameKnowledgeConsolidationCount,
     forcedReviewCandidateIds: new Set(lessonWideConsolidation.forcedReviewCandidateIds),
     candidateIdentity,
