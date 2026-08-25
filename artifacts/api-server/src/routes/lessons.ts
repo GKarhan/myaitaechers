@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, buildDurableSourceMaterialRecords, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, assertSemanticReviewAvailabilityBeforePersistence, buildAutomaticOutcomeAlignmentPlan, buildDurableSourceMaterialRecords, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, MappingSemanticReviewUnavailablePrePersistenceError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -4664,6 +4664,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
   // ── Process asynchronously after HTTP response is sent ────────────────────
   setImmediate(async () => {
   let physicalPageProvenance: Record<string, unknown> | null = null;
+  let pass2ForFailure: Awaited<ReturnType<typeof runPass2Pipeline>> | null = null;
   try {
     await db.update(mappingJobsTable)
       .set({ status: "running", progress: "Pass 1: Extracting content blocks from PDF...", updatedAt: new Date() })
@@ -4865,10 +4866,23 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       teacherGoal: baseInput.teacherGoal,
       teacherOutcomes: baseInput.teacherOutcomes,
     });
+    pass2ForFailure = pass2;
     // A Topic is an organisational label, not an atomic learning unit. This
     // invariant runs before any destructive replacement so a failed detailed
     // map cannot erase a previously valid lesson map.
     assertDetailedMappingHasMicroNodes(pass2);
+    // M3-2 promotion remains fail-closed. However, when the semantic reviewer
+    // is technically unavailable for the whole batch, viable candidates exist,
+    // and promotion leaves no canonical node at all, replacing the old map
+    // would convert a transient outage into destructive data loss.
+    assertSemanticReviewAvailabilityBeforePersistence({
+      candidatePromotion: pass2.candidatePromotion,
+      atomicityReviewUnavailableReason: pass2.atomicityReviewUnavailableReason,
+      canonicalMicroNodeCount: pass2.topics.reduce(
+        (total, topic) => total + topic.microNodes.length,
+        0,
+      ),
+    });
     const outcomeAlignmentPlan = buildAutomaticOutcomeAlignmentPlan(
       confirmedOutcomes.map((outcome) => outcome.outcomeText),
       pass2.topics,
@@ -5696,6 +5710,31 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
             sourceScopeFailure: true,
           },
         }
+      : err instanceof MappingSemanticReviewUnavailablePrePersistenceError
+        ? {
+            progress: "M3-2 semantic review was unavailable; existing mapping was preserved.",
+            reason: "M3_SEMANTIC_REVIEW_UNAVAILABLE_PRE_PERSISTENCE",
+            diagnostics: {
+              ...err.diagnostics,
+              candidatePromotion: pass2ForFailure?.candidatePromotion,
+              atomicityVerification: pass2ForFailure?.atomicityVerification,
+              atomicityReviewUnavailableReason: pass2ForFailure?.atomicityReviewUnavailableReason,
+              sourcePlacement: pass2ForFailure
+                ? {
+                    coverageValidation: pass2ForFailure.coverageValidation,
+                    instructionalCoverage: pass2ForFailure.instructionalCoverage,
+                    sourcePlacementReview: pass2ForFailure.sourcePlacementReview,
+                    additionalExerciseTypeSafety:
+                      pass2ForFailure.diagnostics.additionalExerciseTypeSafety,
+                    finalActivityOwnership: pass2ForFailure.finalActivityOwnership,
+                  }
+                : undefined,
+              sourceAlignment: pass2ForFailure?.sourceAlignment,
+              atomicityRepair: pass2ForFailure?.atomicityRepair,
+              duplicateResolution: pass2ForFailure?.duplicateResolution,
+              pass2Diagnostics: pass2ForFailure?.diagnostics,
+            },
+          }
       : err instanceof MappingZeroMicroNodesError
       ? {
           progress: "Detailed mapping produced zero valid MicroNodes; existing mapping was preserved.",

@@ -647,6 +647,107 @@ export class MappingAtomicityReviewUnavailableError extends Error {
   }
 }
 
+export const M3_SEMANTIC_REVIEW_UNAVAILABLE_PRE_PERSISTENCE =
+  "M3_SEMANTIC_REVIEW_UNAVAILABLE_PRE_PERSISTENCE" as const;
+
+export interface SemanticReviewPrePersistenceDiagnostics {
+  candidateCount: number;
+  viableCandidateCount: number;
+  validSemanticDecisionCount: number;
+  missingSemanticDecisionCount: number;
+  invalidSemanticDecisionCount: number;
+  semanticReviewAvailability: "AVAILABLE" | "UNAVAILABLE";
+  atomicityReviewAvailability: "AVAILABLE" | "UNAVAILABLE";
+  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  promotedMicroNodeCount: number;
+  canonicalMicroNodeCount: number;
+  technicalReason: typeof M3_SEMANTIC_REVIEW_UNAVAILABLE_PRE_PERSISTENCE;
+  existingMappingPreserved: true;
+}
+
+/**
+ * A semantic-review outage must not be allowed to turn a viable replacement
+ * into an empty canonical map. This is intentionally a pure, narrow gate:
+ * promotion remains fail-closed, while a legitimate all-review result,
+ * structural rejection, or partial successful review can still be persisted
+ * under the existing rules.
+ */
+export class MappingSemanticReviewUnavailablePrePersistenceError extends Error {
+  readonly teacherMessage =
+    "Քարտեզագրման իմաստային ստուգումը տեխնիկական պատճառով չի ավարտվել։ Նախորդ քարտեզը պահպանվել է։ Կարող եք կրկին փորձել՝ առանց դասի տվյալները նորից լրացնելու։";
+
+  constructor(readonly diagnostics: SemanticReviewPrePersistenceDiagnostics) {
+    super("M3-2 semantic review unavailable before canonical map replacement");
+    this.name = "MappingSemanticReviewUnavailablePrePersistenceError";
+  }
+}
+
+export function getSemanticReviewPrePersistenceDiagnostics(input: {
+  candidatePromotion: Pick<
+    KnowledgeCandidatePromotionDiagnostics,
+    "candidateCount" | "promotedMicroNodeCount" | "semanticDecisionDiagnostics" | "decisions"
+  >;
+  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  canonicalMicroNodeCount: number;
+}): SemanticReviewPrePersistenceDiagnostics {
+  const semanticDiagnostics = input.candidatePromotion.semanticDecisionDiagnostics;
+  const validSemanticDecisionCount = semanticDiagnostics.decisions
+    .filter((decision) => decision.valid).length;
+  const missingSemanticDecisionCount = semanticDiagnostics.missingCandidateIds.length;
+  const invalidSemanticDecisionCount = semanticDiagnostics.invalidCandidateIds.length;
+  const viableCandidateCount = input.candidatePromotion.decisions.filter((decision) =>
+    decision.state !== "REJECT_NON_KNOWLEDGE" && decision.state !== "SUPPORT_ONLY",
+  ).length;
+  const semanticReviewUnavailable =
+    !!input.atomicityReviewUnavailableReason
+    || (
+      semanticDiagnostics.providedByReview
+      && semanticDiagnostics.decisionCount === 0
+      && validSemanticDecisionCount === 0
+    );
+
+  return {
+    candidateCount: input.candidatePromotion.candidateCount,
+    viableCandidateCount,
+    validSemanticDecisionCount,
+    missingSemanticDecisionCount,
+    invalidSemanticDecisionCount,
+    semanticReviewAvailability: semanticReviewUnavailable ? "UNAVAILABLE" : "AVAILABLE",
+    atomicityReviewAvailability: input.atomicityReviewUnavailableReason
+      ? "UNAVAILABLE"
+      : "AVAILABLE",
+    ...(input.atomicityReviewUnavailableReason
+      ? { atomicityReviewUnavailableReason: input.atomicityReviewUnavailableReason }
+      : {}),
+    promotedMicroNodeCount: input.candidatePromotion.promotedMicroNodeCount,
+    canonicalMicroNodeCount: input.canonicalMicroNodeCount,
+    technicalReason: M3_SEMANTIC_REVIEW_UNAVAILABLE_PRE_PERSISTENCE,
+    existingMappingPreserved: true,
+  };
+}
+
+export function assertSemanticReviewAvailabilityBeforePersistence(input: {
+  candidatePromotion: Pick<
+    KnowledgeCandidatePromotionDiagnostics,
+    "candidateCount" | "promotedMicroNodeCount" | "semanticDecisionDiagnostics" | "decisions"
+  >;
+  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  canonicalMicroNodeCount: number;
+}): SemanticReviewPrePersistenceDiagnostics | null {
+  const diagnostics = getSemanticReviewPrePersistenceDiagnostics(input);
+  const mustPreserveExistingMapping =
+    diagnostics.viableCandidateCount > 0
+    && diagnostics.semanticReviewAvailability === "UNAVAILABLE"
+    && diagnostics.validSemanticDecisionCount === 0
+    && diagnostics.promotedMicroNodeCount === 0
+    && diagnostics.canonicalMicroNodeCount === 0;
+
+  if (mustPreserveExistingMapping) {
+    throw new MappingSemanticReviewUnavailablePrePersistenceError(diagnostics);
+  }
+  return null;
+}
+
 export class MappingSourceScopeError extends Error {
   readonly code = "LESSON_SCOPE_MISMATCH";
   readonly teacherMessage =
