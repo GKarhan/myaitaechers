@@ -1,0 +1,210 @@
+FINAL READ-ONLY TRACE BEFORE FIX — LESSON 717 / JOB 188
+INVALID additionalExercises ORIGIN
+
+DO NOT CHANGE CODE.
+DO NOT CHANGE DATA.
+DO NOT RERUN MAPPING.
+DO NOT RESTART SERVICES.
+DO NOT TOUCH C2 OR M3-2 SEMANTIC POLICY.
+
+We already established for mapping job 188:
+
+duplicate 58 = unmapped + additionalEx
+duplicate 68 = unmapped + additionalEx
+
+and the systemic invariant:
+
+additionalExercises may canonically own ONLY genuine
+EXERCISE / ACTIVITY / HOMEWORK source blocks.
+
+The remaining question is ONLY:
+
+WHERE did indices 58 and 68 enter additionalExercises?
+
+==================================================
+1. TRACE EVERY WRITER TO additionalExercises
+==================================================
+
+Inspect CURRENT lesson-mapping.ts and related mapping code.
+
+Enumerate EVERY production code path that can:
+
+- create additionalExercises,
+- append to additionalExercises,
+- copy an exercise into additionalExercises,
+- rescue an exercise into additionalExercises,
+- merge additionalExercises,
+- reconstruct additionalExercises after candidate removal,
+- mutate blockIndex inside additionalExercises.
+
+For each writer report:
+
+FUNCTION / STAGE
+INPUT
+TYPE VALIDATION PRESENT?
+CAN NON-ACTIVITY BLOCK ENTER?
+RUNS BEFORE/AFTER SEMANTIC REVIEW?
+RUNS BEFORE/AFTER FINAL RECONCILIATION?
+
+Do not modify anything.
+
+==================================================
+2. TRACE JOB 188 INDICES 58 AND 68
+==================================================
+
+Using existing logs/checkpoints/job data only, determine whether
+58 and 68 can be attributed to any writer above.
+
+Look specifically for:
+
+A. original Step 2 provider additionalExercises output
+B. stripped/rejected MicroNode exercise rescue
+C. structural-heading cleanup
+D. activity-only cleanup
+E. semantic split repair
+F. consolidation
+G. another mutation
+
+For each index return:
+
+58:
+first provable additionalEx stage:
+<stage or NOT OBSERVABLE>
+
+68:
+first provable additionalEx stage:
+<stage or NOT OBSERVABLE>
+
+Do not infer from current final state alone.
+
+==================================================
+3. DETERMINE THE EARLIEST SAFE SYSTEMIC GATE
+==================================================
+
+Regardless of producer, identify the EARLIEST shared boundary through
+which ALL additionalExercises entries must pass before they become
+canonical placements.
+
+We want ONE central invariant, not patches in every producer.
+
+Determine whether the best boundary is:
+
+A. parser boundary
+B. normalization boundary
+C. canonical placement construction boundary
+D. final ownership reconciliation boundary
+E. another shared boundary
+
+The desired contract is:
+
+For every additionalExercises entry:
+
+sourceBlock = blocks[blockIndex]
+
+IF sourceBlock.type is one of:
+- EXERCISE
+- ACTIVITY
+- HOMEWORK
+
+then it may remain in additionalExercises.
+
+ELSE:
+
+it MUST NOT become an additionalExercise canonical owner.
+
+But IMPORTANT:
+
+Do NOT silently delete the source block.
+
+The non-activity block must retain or receive its correct safe
+source disposition (canonical source/support/unmapped/review as
+appropriate), and the invalid exercise ownership must be diagnosed.
+
+==================================================
+4. CHECK WHETHER FILTERING WOULD LOSE INFORMATION
+==================================================
+
+Before approving implementation, prove what happens if an invalid
+additionalExercises reference is rejected.
+
+Answer:
+
+- Is the underlying source block still present elsewhere?
+- Can it remain unmapped/review-safe?
+- Is any source text lost?
+- Is any real exercise lost?
+- Could rejecting the reference accidentally remove a legitimate
+  candidate source assignment?
+
+We must preserve source coverage.
+
+==================================================
+5. DESIGN DIAGNOSTIC CONTRACT
+==================================================
+
+Propose a small machine-readable diagnostic such as:
+
+invalidAdditionalExerciseReferences: [
+  {
+    blockIndex,
+    actualBlockType,
+    producerStageIfKnown,
+    disposition
+  }
+]
+
+Do not persist raw source text/provider output.
+
+State where this should be persisted for FAILED mapping jobs so a
+future failure is diagnosable without another forensic investigation.
+
+==================================================
+6. VERIFY PROTECTED CONTRACTS
+==================================================
+
+Confirm the eventual fix can be implemented WITHOUT changing:
+
+- validateSourceCoverage strictness
+- M3-1 review artifacts
+- M3-2 semantic decisions
+- candidate promotion policy
+- source verification
+- C2
+- existing saved lesson data
+- provider call count
+
+==================================================
+7. FINAL DECISION
+==================================================
+
+End exactly with:
+
+FIRST PROVABLE PRODUCER FOR 58:
+<...>
+
+FIRST PROVABLE PRODUCER FOR 68:
+<...>
+
+ALL additionalExercises WRITERS:
+<count>
+
+EARLIEST SHARED SAFE GATE:
+<function/stage>
+
+INVALID REFERENCE CAN BE REJECTED WITHOUT SOURCE LOSS:
+YES / NO / NOT PROVEN
+
+PROTECTED CONTRACTS CAN REMAIN UNCHANGED:
+YES / NO
+
+SAFE TO IMPLEMENT SYSTEMIC FIX:
+YES / NO
+
+If YES:
+state the exact central invariant and exact implementation boundary.
+
+If NO:
+state exactly what evidence is still missing.
+
+STOP.
+DO NOT IMPLEMENT.
