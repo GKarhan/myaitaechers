@@ -1,0 +1,217 @@
+FORENSIC AUDIT ONLY — M3-2 PROVIDER REQUEST_FAILED ROOT CAUSE
+
+DO NOT CHANGE CODE.
+DO NOT CHANGE DATA.
+DO NOT RERUN LESSON 717.
+DO NOT RESTART SERVICES.
+DO NOT TOUCH MAPPING SEMANTICS, M3-1, M3-2 POLICY, C2, OR PROMOTION RULES.
+
+We now have conclusive evidence from Lesson 717 job 190:
+
+- 22 viable candidates were discovered.
+- M3-2 semantic/atomicity review availability = UNAVAILABLE.
+- valid semantic decisions = 0.
+- missing semantic decisions = 22.
+- provider requests attempted = 2.
+- responses received = 0.
+- final technical reason = REQUEST_FAILED.
+- the new pre-persistence safety gate correctly preserved the old map.
+
+Job 189 had the same provider failure.
+
+Therefore DO NOT investigate candidate discovery or promotion semantics.
+Investigate ONLY why the M3-2 provider request receives no response.
+
+==================================================
+A. TRACE THE EXACT REQUEST PATH
+==================================================
+
+Trace the production code from:
+
+M3-2 semantic/atomicity review invocation
+→ AI/provider wrapper
+→ Replit/OpenRouter/model call
+→ retry handling
+→ error normalization
+→ REQUEST_FAILED
+
+Report exact:
+- files
+- functions
+- call chain
+- model used
+- provider/client used
+- timeout configuration
+- retry configuration
+- response-format/schema configuration
+
+Do not modify anything.
+
+==================================================
+B. INSPECT JOB 190 + JOB 189 FAILURE EVIDENCE
+==================================================
+
+Using existing logs only, identify separately for BOTH attempts of job 190
+and, if available, job 189:
+
+- request start timestamp
+- request end/failure timestamp
+- elapsed duration
+- model
+- HTTP/provider status code if available
+- provider error code if available
+- exception class
+- exception message
+- timeout indication
+- abort indication
+- rate-limit indication
+- payload-too-large indication
+- context/token-limit indication
+- authentication indication
+- malformed-schema/request indication
+- network/proxy indication
+
+Do not expose secrets, API keys, tokens, or raw provider credentials.
+
+If a field was not logged, write NOT LOGGED.
+Do not guess.
+
+==================================================
+C. REQUEST SIZE / COMPLEXITY
+==================================================
+
+Inspect how the M3-2 request for Lesson 717 is constructed.
+
+Without sending the request again, report:
+
+- number of candidates sent
+- number of source blocks sent
+- approximate serialized request size in characters/bytes if reconstructable
+  safely from existing persisted/local data
+- whether all 22 candidates are sent in ONE provider request or multiple
+  requests
+- whether all source text is included
+- whether exercises are included
+- whether source blocks are duplicated across candidates
+- response schema size/complexity
+- expected number of semantic decisions
+
+Compare this structurally with any existing smaller/provider-free fixtures
+or previously successful real M3-2 request if one exists.
+
+DO NOT make a provider call just for comparison.
+
+==================================================
+D. DETERMINE FAILURE LAYER
+==================================================
+
+Classify the proven failure into exactly one of these if evidence permits:
+
+1. REQUEST_CONSTRUCTION
+2. LOCAL_CLIENT_OR_WRAPPER
+3. TIMEOUT
+4. REPLIT_PROXY
+5. OPENROUTER_PROVIDER
+6. MODEL_CONTEXT_OR_PAYLOAD_LIMIT
+7. RATE_LIMIT
+8. AUTHENTICATION
+9. RESPONSE_SCHEMA
+10. UNKNOWN_WITH_CURRENT_OBSERVABILITY
+
+Explain the evidence.
+
+Important:
+If the provider returned no response but the current logs hide the original
+exception, classify it as UNKNOWN_WITH_CURRENT_OBSERVABILITY rather than
+guessing.
+
+==================================================
+E. CHECK WHETHER REQUEST_FAILED HIDES ROOT CAUSE
+==================================================
+
+Inspect the error handling that converts the underlying provider exception
+into REQUEST_FAILED.
+
+Answer:
+
+- Is the original exception type retained?
+- Is HTTP status retained?
+- Is provider error body/code retained safely?
+- Is elapsed time retained?
+- Can timeout be distinguished from network failure?
+- Can rate limit be distinguished?
+- Can payload/context overflow be distinguished?
+- Is REQUEST_FAILED currently too generic?
+
+If observability is insufficient, identify the MINIMUM safe diagnostic
+fields that should be retained in future failed jobs/logs.
+
+Do not implement them yet.
+
+==================================================
+F. SYSTEMIC ARCHITECTURE QUESTION
+==================================================
+
+Determine whether the current M3-2 design sends the entire lesson's
+candidate review as one large provider request.
+
+If YES, evaluate from code only whether one request failure causes all
+22 candidates to lose semantic decisions.
+
+Report whether the architecture currently has:
+
+- batch-level failure isolation
+- per-candidate failure isolation
+- bounded batching
+- per-batch retry
+- partial-success preservation
+
+Again: audit only. Do not redesign yet.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+M3-2 PROVIDER CALL PATH:
+...
+
+JOB 190 ATTEMPT 1:
+...
+
+JOB 190 ATTEMPT 2:
+...
+
+JOB 189 COMPARISON:
+...
+
+REQUEST SIZE:
+...
+
+ALL 22 CANDIDATES IN ONE REQUEST:
+YES / NO
+
+ORIGINAL ERROR PRESERVED:
+YES / NO / PARTIALLY
+
+PROVEN FAILURE LAYER:
+...
+
+IS REQUEST_FAILED TOO GENERIC:
+YES / NO
+
+DOES ONE REQUEST FAILURE CURRENTLY INVALIDATE ALL 22:
+YES / NO
+
+ROOT CAUSE:
+<exact proven cause, or UNKNOWN_WITH_CURRENT_OBSERVABILITY>
+
+MINIMUM NEXT SYSTEMIC FIX:
+<diagnostic/provider-boundary fix only; no implementation>
+
+SAFE TO CHANGE CODE:
+YES / NO
+
+Do not implement anything.
+Do not rerun mapping.
