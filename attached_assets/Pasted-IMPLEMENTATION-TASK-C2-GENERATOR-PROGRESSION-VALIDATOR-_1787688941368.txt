@@ -1,0 +1,496 @@
+IMPLEMENTATION TASK — C2 GENERATOR → PROGRESSION VALIDATOR SAFE DECISION TRACE
+
+Context
+-------
+We completed a READ-ONLY forensic audit of Lesson 720
+«Բնական թվերի համեմատումը».
+
+The audit established:
+
+- MN1 (node 2436):
+  C1 Bloom = remember
+  resolved target demand = analyze
+  provider candidate route = apply → analyze
+  final result = BLOCKED_PROGRESSION_REVIEW
+  review codes:
+    REDUNDANT_LEVEL
+    LEVEL_OBJECTIVE_MISMATCH
+
+- MN2 (node 2437):
+  C1 Bloom = remember
+  resolved target demand = analyze
+  provider candidate route =
+    remember → understand → apply → analyze
+  final result = BLOCKED_PROGRESSION_REVIEW
+  review codes:
+    LEVEL_OBJECTIVE_MISMATCH
+    REDUNDANT_LEVEL
+
+- MN3 (node 2438):
+  C1 Bloom = remember
+  resolved target demand = remember
+  candidate route = remember
+  progressionDecision = MINIMAL
+  persisted successfully as needs_review.
+
+The current safety behavior is correct:
+MN1/MN2 were NOT partially persisted.
+
+DO NOT change that behavior.
+
+The forensic audit identified the remaining evidence gap:
+we know the validator rejected MN1/MN2, but we cannot determine
+whether the provider constructed semantically poor level objectives
+or whether the deterministic progression validator classified a
+reasonable candidate too strictly.
+
+GOAL
+----
+Add a SAFE, STRUCTURED, PER-ATTEMPT C2 decision trace at the shared
+
+C2 generator
+→ candidate validation
+→ progression validator
+→ persistence gate
+
+boundary.
+
+This task is DIAGNOSTICS ONLY.
+
+DO NOT attempt to fix MN1/MN2.
+DO NOT change C2 generation semantics.
+DO NOT weaken validation.
+DO NOT change target-demand resolution.
+
+After this task, one future controlled generation run must provide
+enough evidence to identify exactly WHY a candidate route was accepted,
+retried, held for review, or rejected.
+
+==================================================
+PART 0 — AUDIT FIRST, NO CODE CHANGES
+==================================================
+
+Before editing anything, inspect the current implementation and report:
+
+1. Exact files/functions responsible for:
+   - buildCogPathInput()
+   - resolveTargetCognitiveDemand()
+   - generateCognitivePath()
+   - provider candidate parsing
+   - candidate structural validation
+   - assessCognitivePathProgression()
+   - progressionAllowsPersistence()
+   - outer retry logic
+   - cognitive-path job result persistence
+
+2. Identify exactly where:
+   - provider candidate route first exists as structured data
+   - per-level objective / success criterion exists
+   - LEVEL_OBJECTIVE_MISMATCH is produced
+   - REDUNDANT_LEVEL is produced
+   - retry is triggered
+   - rejected candidate data disappears
+   - final job diagnostics are persisted
+
+3. Confirm whether an existing diagnostic/decision-ledger structure
+can safely be extended.
+
+Prefer extending an existing contract over creating a parallel
+diagnostic subsystem.
+
+4. Confirm the exact persistence location/schema that can hold this
+trace without changing learner-facing cognitive-path rows.
+
+STOP and report if this requires a destructive schema migration or
+architectural rewrite.
+
+Otherwise continue with the smallest systemic implementation.
+
+==================================================
+PART 1 — SAFE PER-ATTEMPT DECISION TRACE
+==================================================
+
+For every C2 generation attempt, retain a structured diagnostic record.
+
+The record must be SAFE BY CONSTRUCTION.
+
+It should contain fields equivalent to:
+
+attemptNumber
+
+nodeId
+
+c1BloomLevel
+
+resolvedTargetLevel
+
+targetDemandConfidence
+
+targetDemandReasonCodes
+
+candidateLevelSequence
+
+candidateLevelCount
+
+candidateTargetLevel
+
+candidateTargetCeilingCount
+
+retryTriggered
+
+retryReasonCode
+
+firstBlockingGate
+
+finalAttemptDecision
+
+progressionDecision
+
+progressionConfidence
+
+progressionReasonCodes
+
+progressionReviewReasonCodes
+
+persistenceAllowed
+
+finalState
+
+Exact field names may follow existing project conventions.
+
+Do not duplicate fields already safely available in an existing
+decision ledger.
+
+==================================================
+PART 2 — LEVEL-BY-LEVEL VALIDATOR TRACE
+==================================================
+
+This is the critical part.
+
+For every candidate cognitive level, persist SAFE semantic
+classification results sufficient to explain:
+
+LEVEL_OBJECTIVE_MISMATCH
+
+and
+
+REDUNDANT_LEVEL.
+
+Do NOT persist the generated objective text itself.
+
+Instead retain structured classifications/codes such as:
+
+level
+ordinal
+
+objectiveDemandClassification
+objectiveDemandConfidence
+objectiveDemandReasonCodes
+
+criterionDemandClassification
+criterionDemandConfidence
+criterionDemandReasonCodes
+
+expectedLevel
+
+objectiveMatchesDeclaredLevel
+
+criterionMatchesDeclaredLevel
+
+semanticOverlapWithPrevious
+semanticOverlapClassification
+
+redundancyDecision
+redundancyReasonCodes
+
+levelDecision
+levelReviewReasonCodes
+
+These are examples, not mandatory names.
+
+Use the real validator's existing concepts and codes wherever possible.
+
+CRITICAL:
+Do not create a second semantic classifier merely for diagnostics.
+
+The trace must expose the actual evidence/results used by the existing
+validator.
+
+If the existing validator currently returns only aggregate codes and
+throws away its intermediate classification evidence, minimally extend
+its return contract so the same deterministic calculation returns its
+safe structured evidence.
+
+==================================================
+PART 3 — RETRY TRACE
+==================================================
+
+The audit found:
+
+MN1 retryCount = 1
+
+but the first retry trigger is not persisted.
+
+Fix this diagnostic gap.
+
+For every attempt preserve:
+
+attempt number
+candidate level sequence
+validation result
+retryable yes/no
+retry trigger code
+first blocking gate
+
+If attempt 1 causes a retry and attempt 2 becomes the final result,
+BOTH attempt summaries must remain visible in the job diagnostic trace.
+
+Do not increase retry count.
+
+Existing retry policy must remain unchanged.
+
+==================================================
+PART 4 — FIRST BLOCKING GATE
+==================================================
+
+Persist exactly one normalized firstBlockingGate for each failed/held
+attempt.
+
+Use a bounded enum/code set based on the actual pipeline, for example:
+
+C1_PREFLIGHT
+TARGET_DEMAND
+PROVIDER_REQUEST
+PROVIDER_RESPONSE
+CANDIDATE_SCHEMA
+STRUCTURAL_VALIDATION
+TARGET_CEILING_VALIDATION
+PROGRESSION_VALIDATION
+GROUNDING_VALIDATION
+PERSISTENCE_GATE
+
+Do not use these names blindly if the codebase already has canonical
+names.
+
+Use the existing architecture.
+
+The purpose is to answer deterministically:
+
+"Where was this candidate first prevented from progressing?"
+
+==================================================
+PART 5 — STRICT DATA-SAFETY CONTRACT
+==================================================
+
+NEVER persist:
+
+- raw provider response
+- raw JSON response
+- prompt text
+- system prompt
+- user prompt
+- learning objective text
+- success criterion text
+- theory/source text
+- exercise text
+- source block text
+- textbook content
+- headers
+- Authorization values
+- Bearer tokens
+- API keys
+- arbitrary provider error messages
+- arbitrary exception messages
+
+Do not rely on regex sanitisation of arbitrary strings.
+
+Persist only:
+
+- bounded enums
+- booleans
+- integers
+- safe IDs
+- bounded level names
+- allowlisted reason codes
+- fixed diagnostic classifications
+
+If a provider/error field cannot be safely represented using a fixed
+allowlist, omit it.
+
+==================================================
+PART 6 — DO NOT CHANGE C2 SEMANTICS
+==================================================
+
+This task MUST NOT modify:
+
+- resolveTargetCognitiveDemand precedence
+- C1 Bloom authority/fallback rules
+- semantic verb mappings
+- cognitive level definitions
+- provider prompt semantics
+- required route depth
+- progression acceptance thresholds
+- redundancy thresholds
+- objective-level matching thresholds
+- grounding requirements
+- evidence requirements
+- retry count
+- progressionAllowsPersistence()
+- confirmed/needs_review behavior
+- learner delivery behavior
+- C1
+- Mapping Core
+- quiz logic
+- AI Teacher logic
+
+Especially:
+
+DO NOT make MN1 or MN2 pass.
+
+The purpose is to learn why they currently fail.
+
+==================================================
+PART 7 — PROVIDER-FREE REGRESSION TESTS
+==================================================
+
+Add deterministic provider-free tests.
+
+At minimum cover:
+
+CASE A
+candidate:
+remember
+target:
+remember
+
+Expected:
+MINIMAL / accepted diagnostic trace
+no mismatch
+no redundancy
+
+CASE B
+candidate:
+remember → understand → apply → analyze
+target:
+analyze
+
+Verify:
+every level receives diagnostic evidence
+aggregate progression decision remains EXACTLY what current production
+logic returns.
+
+Do not force this case to pass.
+
+CASE C
+candidate with deliberate objective-level mismatch.
+
+Verify:
+LEVEL_OBJECTIVE_MISMATCH appears
+the exact affected level ordinal is visible
+safe classification evidence explains why.
+
+CASE D
+candidate with deliberately redundant adjacent levels.
+
+Verify:
+REDUNDANT_LEVEL appears
+the affected level(s) are identifiable
+safe overlap/redundancy evidence is retained.
+
+CASE E
+attempt 1 rejected with retryable validation reason
+attempt 2 final.
+
+Verify:
+both attempt summaries persist
+attempt 1 retry trigger survives
+attempt 2 final decision survives.
+
+CASE F
+blocked candidate.
+
+Verify:
+firstBlockingGate is deterministic.
+
+CASE G — SAFETY
+Inject adversarial strings into:
+provider output,
+objective,
+criterion,
+source,
+exercise,
+provider error,
+exception.
+
+Verify NONE of those raw strings appear anywhere in persisted
+diagnostics.
+
+==================================================
+PART 8 — NON-REGRESSION
+==================================================
+
+Run existing relevant suites for:
+
+- cognitive path generation
+- target-demand resolution
+- progression validation
+- grounding
+- C1 readiness
+- persistence gate
+- retry behavior
+- C2 learner-delivery readiness
+- API typecheck/build
+
+Existing behavior must remain unchanged.
+
+==================================================
+PART 9 — LESSON 720 / DATA SAFETY
+==================================================
+
+DO NOT:
+
+- regenerate Lesson 720
+- click "fill missing 2"
+- remap Lesson 720
+- edit Lesson 720
+- modify node 2436
+- modify node 2437
+- modify node 2438
+- repair its subject
+- manually insert cognitive paths
+- delete existing cognitive rows
+- call the provider merely for testing
+
+This implementation must be validated provider-free.
+
+Do not restart unrelated services.
+
+If a restart is required after tests, restart only the API service.
+
+==================================================
+PART 10 — FINAL REPORT
+==================================================
+
+Report:
+
+1. files changed
+2. exact diagnostic contract added
+3. where the trace is created
+4. where it is persisted
+5. how retry attempts are represented
+6. how LEVEL_OBJECTIVE_MISMATCH is now explainable
+7. how REDUNDANT_LEVEL is now explainable
+8. proof that raw semantic/provider/source text cannot persist
+9. provider-free test results
+10. non-regression results
+11. API build/typecheck result
+12. confirmation that Lesson 720 was NOT regenerated or modified
+13. confirmation that C2 acceptance/rejection semantics were NOT changed
+
+Then state exactly:
+
+SAFE FOR ONE CONTROLLED LESSON 720 C2 RETRY: YES / NO
+
+Do not perform that retry yourself.
+
+If YES, stop and wait for manual instruction.
