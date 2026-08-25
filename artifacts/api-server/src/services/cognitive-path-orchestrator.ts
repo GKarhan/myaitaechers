@@ -15,6 +15,7 @@ import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js
 import type { TargetCognitiveDemand } from "../lib/c2-target-demand.js";
 import {
   progressionAllowsPersistence,
+  type CognitiveLevelDiagnostic,
   type CognitiveProgressionDecision,
 } from "../lib/c2-progression.js";
 
@@ -65,7 +66,43 @@ export type CognitivePathAttempt = {
   targetLevel: string | null;
   targetDemand?: TargetCognitiveDemand;
   progression?: CognitiveProgressionDecision;
-  errorMessage?: string;
+  decisionTrace: CognitivePathAttemptTrace[];
+};
+
+export type CognitivePathFirstBlockingGate =
+  | "C1_PREFLIGHT"
+  | "TARGET_DEMAND"
+  | "PROVIDER_REQUEST"
+  | "PROVIDER_RESPONSE"
+  | "CANDIDATE_SCHEMA"
+  | "STRUCTURAL_VALIDATION"
+  | "OBJECTIVE_FLOOR_VALIDATION"
+  | "TARGET_CEILING_VALIDATION"
+  | "PROGRESSION_VALIDATION"
+  | "GROUNDING_VALIDATION"
+  | "PERSISTENCE_GATE";
+
+export type CognitivePathAttemptTrace = {
+  attemptNumber: number;
+  resolvedTargetLevel: string | null;
+  targetDemandConfidence: "HIGH" | "MEDIUM" | "LOW" | null;
+  targetDemandEvidence: string[];
+  targetDemandReviewReasons: string[];
+  candidateLevelCount: number;
+  candidateLevelSequence: number[];
+  candidateTargetLevel: string | null;
+  candidateTargetCeilingCount: number;
+  retryTriggered: boolean;
+  retryTriggerCode: string | null;
+  firstBlockingGate: CognitivePathFirstBlockingGate | null;
+  progressionDecision: CognitiveProgressionDecision["progressionDecision"] | null;
+  progressionConfidence: CognitiveProgressionDecision["progressionConfidence"] | null;
+  progressionReasonCodes: string[];
+  progressionReviewReasonCodes: string[];
+  persistenceAllowed: boolean;
+  levelDiagnostics: CognitiveLevelDiagnostic[];
+  finalState: CognitivePathState;
+  finalReasonCode: string;
 };
 
 export type CognitivePathSummary = {
@@ -109,8 +146,6 @@ type JobClaim = {
   conflictingNodeIds: number[];
 };
 
-const FAILURE_MESSAGE_LIMIT = 500;
-
 export function fingerprintCognitivePath(
   levels: ReadonlyArray<{
     id?: number;
@@ -148,11 +183,6 @@ class CognitivePathProtectionChangedError extends Error {
   ) {
     super(code);
   }
-}
-
-function safeErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/\s+/g, " ").trim().slice(0, FAILURE_MESSAGE_LIMIT);
 }
 
 function targetLevel(levels: Array<{ cognitiveLevel: string; isTargetCeiling: boolean }>): string | null {
@@ -283,16 +313,113 @@ export function classifyCognitivePathResult(
   if (result.skipCode === "C2_TARGET_DEMAND_REVIEW_REQUIRED") {
     return { state: "BLOCKED_TARGET_REVIEW", reasonCode: result.skipCode };
   }
+  if (result.skipCode === "C2_PROVIDER_REQUEST_FAILED") {
+    return { state: "PROVIDER_FAILURE", reasonCode: result.skipCode };
+  }
+  if (result.skipCode === "C2_RESPONSE_PARSE_FAILED") {
+    return { state: "PARSE_FAILURE", reasonCode: result.skipCode };
+  }
   if (result.skipCode === "C2_PROGRESSION_REVIEW_REQUIRED") {
     return { state: "BLOCKED_PROGRESSION_REVIEW", reasonCode: result.skipCode };
   }
   if (result.skipCode) {
     return { state: "VALIDATION_FAILURE", reasonCode: result.skipCode };
   }
-  if ((result.skipReason ?? "").toLowerCase().includes("unparseable")) {
-    return { state: "PARSE_FAILURE", reasonCode: "C2_RESPONSE_PARSE_FAILED" };
-  }
   return { state: "VALIDATION_FAILURE", reasonCode: "C2_RESPONSE_VALIDATION_FAILED" };
+}
+
+export function isRetryableCognitivePathResult(result: CogPathGenerationResult): boolean {
+  return result.skipped
+    && [
+      "C2_PATH_STRUCTURE_REJECTED",
+      "C2_TARGET_DEMAND_MISMATCH",
+      "C2_CEILING_VIOLATION",
+      "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION",
+      "C2_GROUNDING_REJECTED",
+    ].includes(result.skipCode ?? "");
+}
+
+function firstBlockingGateFor(
+  generated: CogPathGenerationResult | undefined,
+  finalState: CognitivePathState,
+): CognitivePathFirstBlockingGate | null {
+  if (finalState === "PROVIDER_FAILURE") return "PROVIDER_REQUEST";
+  if (finalState === "PERSISTENCE_FAILURE"
+    || finalState === "SKIPPED_CONFIRMED"
+    || finalState === "SKIPPED_TEACHER_AUTHORED"
+    || finalState === "SKIPPED_EXISTING") {
+    return "PERSISTENCE_GATE";
+  }
+  if (!generated?.skipped) return null;
+  if (generated.skipCode?.startsWith("C1_")) return "C1_PREFLIGHT";
+  switch (generated.skipCode) {
+    case "C2_PROVIDER_REQUEST_FAILED":
+      return "PROVIDER_REQUEST";
+    case "C2_TARGET_DEMAND_REVIEW_REQUIRED":
+      return "TARGET_DEMAND";
+    case "C2_RESPONSE_PARSE_FAILED":
+      return "PROVIDER_RESPONSE";
+    case "C2_RESPONSE_SCHEMA_REJECTED":
+      return "CANDIDATE_SCHEMA";
+    case "C2_PATH_STRUCTURE_REJECTED":
+      return "STRUCTURAL_VALIDATION";
+    case "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION":
+      return "OBJECTIVE_FLOOR_VALIDATION";
+    case "C2_TARGET_DEMAND_MISMATCH":
+    case "C2_CEILING_VIOLATION":
+      return "TARGET_CEILING_VALIDATION";
+    case "C2_PROGRESSION_REVIEW_REQUIRED":
+      return "PROGRESSION_VALIDATION";
+    case "C2_GROUNDING_REJECTED":
+      return "GROUNDING_VALIDATION";
+    default:
+      return "CANDIDATE_SCHEMA";
+  }
+}
+
+/**
+ * Safe job-ledger diagnostics: classifications, IDs, booleans, bounded levels,
+ * and reason codes only. It deliberately excludes raw provider output, prompts,
+ * learning-objective/source text, and exception messages.
+ */
+export function buildCognitivePathAttemptTrace(input: {
+  generated?: CogPathGenerationResult;
+  attemptNumber: number;
+  retryTriggered: boolean;
+  retryTriggerCode: string | null;
+  finalState: CognitivePathState;
+  finalReasonCode: string;
+}): CognitivePathAttemptTrace {
+  const { generated } = input;
+  const diagnostics = generated?.progression?.levelDiagnostics.length
+    ? generated.progression.levelDiagnostics
+    : generated?.candidateDiagnostics
+    ?? [];
+  const targetDemand = generated?.targetDemand;
+  const progression = generated?.progression;
+  const ceilings = diagnostics.filter((level) => level.isTargetCeiling);
+  return {
+    attemptNumber: input.attemptNumber,
+    resolvedTargetLevel: targetDemand?.targetLevel ?? null,
+    targetDemandConfidence: targetDemand?.confidence ?? null,
+    targetDemandEvidence: targetDemand?.evidence ?? [],
+    targetDemandReviewReasons: targetDemand?.reviewReasons ?? [],
+    candidateLevelCount: diagnostics.length,
+    candidateLevelSequence: diagnostics.map((level) => level.sequence),
+    candidateTargetLevel: ceilings.length === 1 ? ceilings[0]?.declaredLevel ?? null : null,
+    candidateTargetCeilingCount: ceilings.length,
+    retryTriggered: input.retryTriggered,
+    retryTriggerCode: input.retryTriggerCode,
+    firstBlockingGate: firstBlockingGateFor(generated, input.finalState),
+    progressionDecision: progression?.progressionDecision ?? null,
+    progressionConfidence: progression?.progressionConfidence ?? null,
+    progressionReasonCodes: progression?.progressionReasonCodes ?? [],
+    progressionReviewReasonCodes: progression?.reviewReasonCodes ?? [],
+    persistenceAllowed: progression ? progressionAllowsPersistence(progression) : false,
+    levelDiagnostics: diagnostics,
+    finalState: input.finalState,
+    finalReasonCode: input.finalReasonCode,
+  };
 }
 
 async function claimCognitivePathJob(
@@ -546,18 +673,31 @@ export async function runCognitivePathOrchestrator(input: {
 
       let generated: CogPathGenerationResult;
       let retryCount = 0;
+      const decisionTrace: CognitivePathAttemptTrace[] = [];
       try {
         generated = await generateCognitivePath(node.cogInput);
-        if (
-          generated.skipped
-          && ["C2_PATH_STRUCTURE_REJECTED", "C2_TARGET_DEMAND_MISMATCH", "C2_CEILING_VIOLATION", "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION", "C2_GROUNDING_REJECTED"]
-            .includes(generated.skipCode ?? "")
-        ) {
+        if (isRetryableCognitivePathResult(generated)) {
+          const firstClassification = classifyCognitivePathResult(generated);
           retryCount = 1;
+          decisionTrace.push(buildCognitivePathAttemptTrace({
+            generated,
+            attemptNumber: 1,
+            retryTriggered: true,
+            retryTriggerCode: generated.skipCode ?? firstClassification.reasonCode,
+            finalState: firstClassification.state,
+            finalReasonCode: firstClassification.reasonCode,
+          }));
           generated = await generateCognitivePath(node.cogInput);
         }
       } catch (error) {
         const completedAt = new Date().toISOString();
+        decisionTrace.push(buildCognitivePathAttemptTrace({
+          attemptNumber: retryCount + 1,
+          retryTriggered: false,
+          retryTriggerCode: null,
+          finalState: "PROVIDER_FAILURE",
+          finalReasonCode: "C2_PROVIDER_FAILURE",
+        }));
         const attempt: CognitivePathAttempt = {
           nodeId: pending.nodeId,
           attempt: attemptNumber,
@@ -568,7 +708,7 @@ export async function runCognitivePathOrchestrator(input: {
           retryCount,
           levelCount: 0,
           targetLevel: null,
-          errorMessage: safeErrorMessage(error),
+          decisionTrace,
         };
         result = {
           ...result,
@@ -588,6 +728,14 @@ export async function runCognitivePathOrchestrator(input: {
       if (!canCommitCognitivePathReplacement(generated)) {
         const completedAt = new Date().toISOString();
         const classified = classifyCognitivePathResult(generated);
+        decisionTrace.push(buildCognitivePathAttemptTrace({
+          generated,
+          attemptNumber: retryCount + 1,
+          retryTriggered: false,
+          retryTriggerCode: null,
+          finalState: classified.state,
+          finalReasonCode: classified.reasonCode,
+        }));
         const attempt: CognitivePathAttempt = {
           nodeId: pending.nodeId,
           attempt: attemptNumber,
@@ -600,6 +748,7 @@ export async function runCognitivePathOrchestrator(input: {
           targetLevel: generated.targetDemand?.targetLevel ?? null,
           targetDemand: generated.targetDemand,
           progression: generated.progression,
+          decisionTrace,
         };
         result = {
           ...result,
@@ -627,6 +776,14 @@ export async function runCognitivePathOrchestrator(input: {
           input.force,
         );
         const completedAt = new Date().toISOString();
+        decisionTrace.push(buildCognitivePathAttemptTrace({
+          generated,
+          attemptNumber: retryCount + 1,
+          retryTriggered: false,
+          retryTriggerCode: null,
+          finalState: "GENERATED_NEEDS_REVIEW",
+          finalReasonCode: "GENERATED_AND_PERSISTED",
+        }));
         const attempt: CognitivePathAttempt = {
           nodeId: pending.nodeId,
           attempt: attemptNumber,
@@ -639,6 +796,7 @@ export async function runCognitivePathOrchestrator(input: {
           targetLevel: generated.targetDemand?.targetLevel ?? persisted.targetLevel,
           targetDemand: generated.targetDemand,
           progression: generated.progression,
+          decisionTrace,
         };
         result = {
           ...result,
@@ -657,6 +815,14 @@ export async function runCognitivePathOrchestrator(input: {
       } catch (error) {
         const completedAt = new Date().toISOString();
         if (error instanceof CognitivePathProtectionChangedError) {
+          decisionTrace.push(buildCognitivePathAttemptTrace({
+            generated,
+            attemptNumber: retryCount + 1,
+            retryTriggered: false,
+            retryTriggerCode: null,
+            finalState: error.state,
+            finalReasonCode: error.code,
+          }));
           const attempt: CognitivePathAttempt = {
             nodeId: pending.nodeId,
             attempt: attemptNumber,
@@ -667,6 +833,7 @@ export async function runCognitivePathOrchestrator(input: {
             retryCount,
             levelCount: pending.levelCount,
             targetLevel: pending.targetLevel,
+            decisionTrace,
           };
           result = {
             ...result,
@@ -682,6 +849,14 @@ export async function runCognitivePathOrchestrator(input: {
           await updateCognitivePathJob(claim.job.id, result, "A newer teacher path was preserved; continuing...");
           continue;
         }
+        decisionTrace.push(buildCognitivePathAttemptTrace({
+          generated,
+          attemptNumber: retryCount + 1,
+          retryTriggered: false,
+          retryTriggerCode: null,
+          finalState: "PERSISTENCE_FAILURE",
+          finalReasonCode: "C2_PERSISTENCE_FAILURE",
+        }));
         const attempt: CognitivePathAttempt = {
           nodeId: pending.nodeId,
           attempt: attemptNumber,
@@ -692,7 +867,7 @@ export async function runCognitivePathOrchestrator(input: {
           retryCount,
           levelCount: 0,
           targetLevel: null,
-          errorMessage: safeErrorMessage(error),
+          decisionTrace,
         };
         result = {
           ...result,
@@ -719,7 +894,7 @@ export async function runCognitivePathOrchestrator(input: {
       `Cognitive Path generation completed for ${result.totalNodes} MicroNodes.`,
       "completed",
     );
-  } catch (error) {
+  } catch {
     result = {
       ...result,
       summary: summarizeCognitivePathLedger(result.stateLedger),
@@ -729,7 +904,7 @@ export async function runCognitivePathOrchestrator(input: {
       result,
       "Cognitive Path generation stopped unexpectedly.",
       "failed",
-      safeErrorMessage(error),
+      "C2_ORCHESTRATOR_FAILURE",
     ).catch(() => {});
   }
 

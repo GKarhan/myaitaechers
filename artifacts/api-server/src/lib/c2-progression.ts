@@ -4,7 +4,7 @@ import {
   type TargetCognitiveDemand,
 } from "./c2-target-demand.js";
 
-export const C2_PROGRESSION_CONTRACT_VERSION = "c2-3.0";
+export const C2_PROGRESSION_CONTRACT_VERSION = "c2-3.1";
 
 export type ProgressionConfidence = "HIGH" | "MEDIUM" | "LOW";
 export type ProgressionDecision = "MINIMAL" | "REVIEW_REQUIRED";
@@ -39,6 +39,7 @@ export type CognitiveProgressionDecision = {
   progressionConfidence: ProgressionConfidence;
   progressionReasonCodes: ProgressionReasonCode[];
   reviewReasonCodes: ProgressionReviewReason[];
+  levelDiagnostics: CognitiveLevelDiagnostic[];
   contractVersion: string;
 };
 
@@ -58,6 +59,29 @@ export type CognitiveProgressionLevel = {
   successCriterion: string | null;
   preferredInteractionTypes?: unknown;
   minimumIndependentEvidence?: number | null;
+};
+
+export type CognitiveLevelDiagnostic = {
+  ordinal: number;
+  sequence: number;
+  declaredLevel: TargetDemandLevel | null;
+  isTargetCeiling: boolean;
+  objectiveDemandLevel: TargetDemandLevel | null;
+  criterionDemandLevel: TargetDemandLevel | null;
+  combinedDemandLevel: TargetDemandLevel | null;
+  demandRelation:
+    | "NOT_CLASSIFIED"
+    | "AT_OR_BELOW_DECLARED_LEVEL"
+    | "ABOVE_DECLARED_LEVEL";
+  comparedWithPreviousOrdinal: number | null;
+  semanticOverlapWithPrevious: boolean;
+  semanticOverlapClassification: "NOT_APPLICABLE" | "BELOW_THRESHOLD" | "REDUNDANT";
+  redundancyDecision: "NOT_EVALUATED" | "NOT_REDUNDANT" | "REDUNDANT";
+  redundancyReasonCodes: Extract<ProgressionReviewReason, "REDUNDANT_LEVEL">[];
+  objectiveMatchesDeclaredLevel: boolean;
+  criterionMatchesDeclaredLevel: boolean;
+  levelDecision: "ACCEPTED" | "REVIEW_REQUIRED";
+  levelReviewReasonCodes: ProgressionReviewReason[];
 };
 
 const RANK: Record<TargetDemandLevel, number> = {
@@ -102,12 +126,12 @@ function levelOrNull(value: string): TargetDemandLevel | null {
     : null;
 }
 
-function hasSemanticOverlap(left: CognitiveProgressionLevel, right: CognitiveProgressionLevel): boolean {
+function semanticOverlapRatio(left: CognitiveProgressionLevel, right: CognitiveProgressionLevel): number | null {
   const leftWords = new Set([...words(`${left.performanceObjective ?? ""} ${left.successCriterion ?? ""}`)]);
   const rightWords = new Set([...words(`${right.performanceObjective ?? ""} ${right.successCriterion ?? ""}`)]);
-  if (leftWords.size === 0 || rightWords.size === 0) return false;
+  if (leftWords.size === 0 || rightWords.size === 0) return null;
   const intersection = [...leftWords].filter((word) => rightWords.has(word)).length;
-  return intersection / Math.min(leftWords.size, rightWords.size) >= 0.7;
+  return intersection / Math.min(leftWords.size, rightWords.size);
 }
 
 function actionDemandRank(text: string): number {
@@ -118,6 +142,82 @@ function actionDemandRank(text: string): number {
   if (contains(text, CONCEPTUAL)) return RANK.understand;
   if (contains(text, FACTUAL)) return RANK.remember;
   return 0;
+}
+
+function levelForRank(rank: number): TargetDemandLevel | null {
+  return rank > 0 ? TARGET_DEMAND_LEVELS[rank - 1] ?? null : null;
+}
+
+function demandRelation(
+  declaredLevel: TargetDemandLevel | null,
+  combinedDemandLevel: TargetDemandLevel | null,
+): CognitiveLevelDiagnostic["demandRelation"] {
+  if (!combinedDemandLevel) return "NOT_CLASSIFIED";
+  if (!declaredLevel || RANK[combinedDemandLevel] > RANK[declaredLevel]) {
+    return "ABOVE_DECLARED_LEVEL";
+  }
+  return "AT_OR_BELOW_DECLARED_LEVEL";
+}
+
+/**
+ * This is deliberately a projection of the validator's existing classifiers.
+ * It contains no generated text, source text, prompts, or provider messages.
+ */
+export function buildCognitiveLevelDiagnostics(
+  levels: ReadonlyArray<CognitiveProgressionLevel>,
+): CognitiveLevelDiagnostic[] {
+  return levels.map((level, ordinal) => {
+    const declaredLevel = levelOrNull(level.cognitiveLevel);
+    const objectiveDemandLevel = levelForRank(actionDemandRank(normalize(level.performanceObjective)));
+    const criterionDemandLevel = levelForRank(actionDemandRank(normalize(level.successCriterion)));
+    const combinedDemandLevel = levelForRank(actionDemandRank(
+      normalize(`${level.performanceObjective ?? ""} ${level.successCriterion ?? ""}`),
+    ));
+    const previous = ordinal > 0 ? levels[ordinal - 1] : null;
+    const overlapRatio = previous ? semanticOverlapRatio(level, previous) : null;
+    const semanticOverlapWithPrevious = overlapRatio !== null && overlapRatio >= 0.7;
+    const semanticOverlapClassification = !previous || overlapRatio === null
+      ? "NOT_APPLICABLE" as const
+      : semanticOverlapWithPrevious
+        ? "REDUNDANT" as const
+        : "BELOW_THRESHOLD" as const;
+    const redundancyDecision = !previous
+      ? "NOT_EVALUATED" as const
+      : semanticOverlapWithPrevious
+        ? "REDUNDANT" as const
+        : "NOT_REDUNDANT" as const;
+    const levelReviewReasonCodes: ProgressionReviewReason[] = [];
+    if (!declaredLevel || !level.performanceObjective?.trim() || !level.successCriterion?.trim()) {
+      levelReviewReasonCodes.push("LEVEL_OBJECTIVE_MISMATCH");
+    } else if (
+      combinedDemandLevel
+      && RANK[combinedDemandLevel] > RANK[declaredLevel]
+    ) {
+      levelReviewReasonCodes.push("LEVEL_OBJECTIVE_MISMATCH");
+    }
+    if (semanticOverlapWithPrevious) levelReviewReasonCodes.push("REDUNDANT_LEVEL");
+    return {
+      ordinal,
+      sequence: level.sequence,
+      declaredLevel,
+      isTargetCeiling: level.isTargetCeiling,
+      objectiveDemandLevel,
+      criterionDemandLevel,
+      combinedDemandLevel,
+      demandRelation: demandRelation(declaredLevel, combinedDemandLevel),
+      comparedWithPreviousOrdinal: previous ? ordinal - 1 : null,
+      semanticOverlapWithPrevious,
+      semanticOverlapClassification,
+      redundancyDecision,
+      redundancyReasonCodes: semanticOverlapWithPrevious ? ["REDUNDANT_LEVEL"] : [],
+      objectiveMatchesDeclaredLevel: !!declaredLevel
+        && (!objectiveDemandLevel || RANK[objectiveDemandLevel] <= RANK[declaredLevel]),
+      criterionMatchesDeclaredLevel: !!declaredLevel
+        && (!criterionDemandLevel || RANK[criterionDemandLevel] <= RANK[declaredLevel]),
+      levelDecision: levelReviewReasonCodes.length > 0 ? "REVIEW_REQUIRED" : "ACCEPTED",
+      levelReviewReasonCodes,
+    };
+  });
 }
 
 function sharesSpecificSourceEvidence(source: string, learnerEvidence: string): boolean {
@@ -220,6 +320,7 @@ export function assessCognitivePathProgression(
   const { levels: required, reasons, reasonByLevel } = inferRequiredPrerequisites(input);
   const sourceEvidence = [input.theoryContent, ...input.exercises.map((exercise) => exercise.exerciseText)].join(" ");
   const reviewReasonCodes: ProgressionReviewReason[] = [];
+  const levelDiagnostics = buildCognitiveLevelDiagnostics(levels);
   const selectedTargetCount = levels.filter((level) => level.isTargetCeiling).length;
   const finalLevel = levels.slice().sort((left, right) => left.sequence - right.sequence).at(-1);
 
@@ -238,19 +339,25 @@ export function assessCognitivePathProgression(
   for (let index = 1; index < levels.length; index += 1) {
     const current = levels[index];
     const previous = levels[index - 1];
-    if (hasSemanticOverlap(current, previous)) reviewReasonCodes.push("REDUNDANT_LEVEL");
+    if (levelDiagnostics[index]?.semanticOverlapWithPrevious) reviewReasonCodes.push("REDUNDANT_LEVEL");
   }
   for (const level of levels) {
+    const levelIndex = levels.indexOf(level);
+    const levelDiagnostic = levelDiagnostics[levelIndex];
     const bloom = levelOrNull(level.cognitiveLevel);
     if (!bloom || !level.performanceObjective?.trim() || !level.successCriterion?.trim()) {
       reviewReasonCodes.push("LEVEL_OBJECTIVE_MISMATCH");
+      levelDiagnostic?.levelReviewReasonCodes.push("LEVEL_OBJECTIVE_MISMATCH");
       continue;
     }
-    if (actionDemandRank(normalize(`${level.performanceObjective} ${level.successCriterion}`)) > RANK[bloom]) {
+    if (levelDiagnostic?.combinedDemandLevel
+      && RANK[levelDiagnostic.combinedDemandLevel] > RANK[bloom]) {
       reviewReasonCodes.push("LEVEL_OBJECTIVE_MISMATCH");
+      levelDiagnostic.levelReviewReasonCodes.push("LEVEL_OBJECTIVE_MISMATCH");
     }
     if (!Array.isArray(level.preferredInteractionTypes) || level.preferredInteractionTypes.length === 0) {
       reviewReasonCodes.push("INTERACTION_TYPE_MISMATCH");
+      levelDiagnostic?.levelReviewReasonCodes.push("INTERACTION_TYPE_MISMATCH");
     }
     if (level.minimumIndependentEvidence !== undefined
       && level.minimumIndependentEvidence !== null
@@ -258,10 +365,27 @@ export function assessCognitivePathProgression(
         || level.minimumIndependentEvidence < 1
         || level.minimumIndependentEvidence > 5)) {
       reviewReasonCodes.push("SUCCESS_CRITERION_WEAK");
+      levelDiagnostic?.levelReviewReasonCodes.push("SUCCESS_CRITERION_WEAK");
     }
     if (bloom && bloom !== target && !required.includes(bloom)) {
       reviewReasonCodes.push("REDUNDANT_LEVEL");
+      levelDiagnostic?.levelReviewReasonCodes.push("REDUNDANT_LEVEL");
+      if (levelDiagnostic) {
+        levelDiagnostic.redundancyDecision = "REDUNDANT";
+        levelDiagnostic.redundancyReasonCodes = ["REDUNDANT_LEVEL"];
+      }
     }
+    if (levelDiagnostic) {
+      levelDiagnostic.levelDecision = levelDiagnostic.levelReviewReasonCodes.length > 0
+        ? "REVIEW_REQUIRED"
+        : "ACCEPTED";
+    }
+  }
+  for (const levelDiagnostic of levelDiagnostics) {
+    levelDiagnostic.levelReviewReasonCodes = [...new Set(levelDiagnostic.levelReviewReasonCodes)];
+    levelDiagnostic.levelDecision = levelDiagnostic.levelReviewReasonCodes.length > 0
+      ? "REVIEW_REQUIRED"
+      : "ACCEPTED";
   }
 
   const uniqueReviews = [...new Set(reviewReasonCodes)];
@@ -291,6 +415,7 @@ export function assessCognitivePathProgression(
     progressionConfidence,
     progressionReasonCodes: uniqueReasons,
     reviewReasonCodes: uniqueReviews,
+    levelDiagnostics,
     contractVersion: C2_PROGRESSION_CONTRACT_VERSION,
   };
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildInitialCognitivePathLedger,
+  buildCognitivePathAttemptTrace,
   canCommitCognitivePathReplacement,
   classifyCognitivePathResult,
   findCognitivePathJobConflicts,
@@ -8,6 +9,11 @@ import {
   type CognitivePathNodeSnapshot,
 } from "../cognitive-path-orchestrator.js";
 import { assessAcceptedCognitivePath } from "../../lib/cognitive-path-grounding.js";
+import {
+  assessCognitivePathProgression,
+  buildCognitiveLevelDiagnostics,
+} from "../../lib/c2-progression.js";
+import type { TargetCognitiveDemand } from "../../lib/c2-target-demand.js";
 import { hasCompleteTeachingContent } from "../../lib/teaching-content-readiness.js";
 
 type Test = [string, () => void];
@@ -43,9 +49,41 @@ const validGenerated: Parameters<typeof canCommitCognitivePathReplacement>[0] = 
     progressionConfidence: "HIGH",
     progressionReasonCodes: ["TARGET_ONLY_SUFFICIENT", "TARGET_LEVEL_IS_FINAL"],
     reviewReasonCodes: [],
-    contractVersion: "c2-3.0",
+    levelDiagnostics: [],
+    contractVersion: "c2-3.1",
   },
 };
+
+const traceDemand: TargetCognitiveDemand = {
+  targetLevel: "remember",
+  confidence: "HIGH",
+  evidence: ["OBJECTIVE_PERFORMANCE"],
+  c1Relation: "MATCHES_C1",
+  reviewReasons: [],
+  resolverVersion: "test",
+};
+
+function traceForProgression(
+  progression: NonNullable<typeof validGenerated.progression>,
+  levels: typeof validGenerated.levels,
+) {
+  return buildCognitivePathAttemptTrace({
+    generated: {
+      ...validGenerated,
+      skipped: true,
+      skipCode: "C2_PROGRESSION_REVIEW_REQUIRED",
+      levels: [],
+      candidateDiagnostics: buildCognitiveLevelDiagnostics(levels),
+      targetDemand: traceDemand,
+      progression,
+    },
+    attemptNumber: 1,
+    retryTriggered: false,
+    retryTriggerCode: null,
+    finalState: "BLOCKED_PROGRESSION_REVIEW",
+    finalReasonCode: "C2_PROGRESSION_REVIEW_REQUIRED",
+  });
+}
 
 it("1. lesson ledger enumerates every MicroNode exactly once", () => {
   const ledger = buildInitialCognitivePathLedger(nodes);
@@ -85,7 +123,7 @@ it("7. partial candidates cannot be committed as a replacement", () => {
 
 it("8. parse failures receive a durable parse reason code", () => {
   assert.deepEqual(classifyCognitivePathResult({
-    nodeId: 1, skipped: true, skipReason: "AI returned unparseable JSON after retry", levels: [],
+    nodeId: 1, skipped: true, skipCode: "C2_RESPONSE_PARSE_FAILED", levels: [],
   }), { state: "PARSE_FAILURE", reasonCode: "C2_RESPONSE_PARSE_FAILED" });
 });
 
@@ -145,6 +183,160 @@ it("14. Teaching Content completeness remains independent of C2 status", () => {
     basicExamples: ["Օրինակ"],
     nonExamples: ["Հակաօրինակ"],
   }), true);
+});
+
+it("15. retry history retains both bounded candidate summaries", () => {
+  const candidateDiagnostics = buildCognitiveLevelDiagnostics(validGenerated.levels);
+  const first = buildCognitivePathAttemptTrace({
+    generated: {
+      ...validGenerated,
+      skipped: true,
+      skipCode: "C2_PATH_STRUCTURE_REJECTED",
+      levels: [],
+      candidateDiagnostics,
+    },
+    attemptNumber: 1,
+    retryTriggered: true,
+    retryTriggerCode: "C2_PATH_STRUCTURE_REJECTED",
+    finalState: "VALIDATION_FAILURE",
+    finalReasonCode: "C2_PATH_STRUCTURE_REJECTED",
+  });
+  const second = buildCognitivePathAttemptTrace({
+    generated: { ...validGenerated, candidateDiagnostics },
+    attemptNumber: 2,
+    retryTriggered: false,
+    retryTriggerCode: null,
+    finalState: "GENERATED_NEEDS_REVIEW",
+    finalReasonCode: "GENERATED_AND_PERSISTED",
+  });
+
+  assert.deepEqual([first.attemptNumber, second.attemptNumber], [1, 2]);
+  assert.equal(first.retryTriggered, true);
+  assert.equal(first.firstBlockingGate, "STRUCTURAL_VALIDATION");
+  assert.equal(second.retryTriggered, false);
+  assert.equal(second.persistenceAllowed, true);
+  assert.equal(second.candidateTargetCeilingCount, 1);
+});
+
+it("16. progression-held candidates retain the validator decision and gate", () => {
+  const candidateDiagnostics = buildCognitiveLevelDiagnostics(validGenerated.levels);
+  const progression = {
+    ...validGenerated.progression!,
+    progressionDecision: "REVIEW_REQUIRED" as const,
+    progressionConfidence: "LOW" as const,
+    reviewReasonCodes: ["REDUNDANT_LEVEL" as const],
+    levelDiagnostics: candidateDiagnostics,
+  };
+  const trace = buildCognitivePathAttemptTrace({
+    generated: {
+      ...validGenerated,
+      skipped: true,
+      skipCode: "C2_PROGRESSION_REVIEW_REQUIRED",
+      levels: [],
+      candidateDiagnostics,
+      progression,
+    },
+    attemptNumber: 1,
+    retryTriggered: false,
+    retryTriggerCode: null,
+    finalState: "BLOCKED_PROGRESSION_REVIEW",
+    finalReasonCode: "C2_PROGRESSION_REVIEW_REQUIRED",
+  });
+
+  assert.equal(trace.firstBlockingGate, "PROGRESSION_VALIDATION");
+  assert.equal(trace.progressionDecision, "REVIEW_REQUIRED");
+  assert.equal(trace.persistenceAllowed, false);
+  assert.ok(trace.levelDiagnostics[0]?.isTargetCeiling);
+});
+
+it("17. diagnostic trace excludes adversarial provider-like content", () => {
+  const sensitive = "Authorization: Bearer super-secret-token prompt source exercise answer key";
+  const candidateDiagnostics = buildCognitiveLevelDiagnostics([{
+    cognitiveLevel: "remember",
+    sequence: 1,
+    isTargetCeiling: true,
+    performanceObjective: sensitive,
+    successCriterion: sensitive,
+  }]);
+  const trace = buildCognitivePathAttemptTrace({
+    generated: {
+      ...validGenerated,
+      candidateDiagnostics,
+    },
+    attemptNumber: 1,
+    retryTriggered: false,
+    retryTriggerCode: null,
+    finalState: "GENERATED_NEEDS_REVIEW",
+    finalReasonCode: "GENERATED_AND_PERSISTED",
+  });
+  const serialized = JSON.stringify(trace).toLowerCase();
+
+  assert.equal(serialized.includes("super-secret-token"), false);
+  assert.equal(serialized.includes("authorization"), false);
+  assert.equal(serialized.includes("answer key"), false);
+});
+
+it("18. interaction-format holds identify the responsible level in the persisted trace", () => {
+  const levels = [{ ...validGenerated.levels[0], preferredInteractionTypes: [] }];
+  const progression = assessCognitivePathProgression({
+    targetDemand: traceDemand,
+    title: "Trace fixture",
+    learningObjective: "Recall source facts",
+    theoryContent: "Source facts are available.",
+    exercises: [],
+  }, levels);
+  const trace = traceForProgression(progression, levels);
+
+  assert.ok(trace.levelDiagnostics[0]?.levelReviewReasonCodes.includes("INTERACTION_TYPE_MISMATCH"));
+  assert.equal(trace.levelDiagnostics[0]?.levelDecision, "REVIEW_REQUIRED");
+});
+
+it("19. independent-evidence holds identify the responsible level in the persisted trace", () => {
+  const levels = [{ ...validGenerated.levels[0], minimumIndependentEvidence: 6 }];
+  const progression = assessCognitivePathProgression({
+    targetDemand: traceDemand,
+    title: "Trace fixture",
+    learningObjective: "Recall source facts",
+    theoryContent: "Source facts are available.",
+    exercises: [],
+  }, levels);
+  const trace = traceForProgression(progression, levels);
+
+  assert.ok(trace.levelDiagnostics[0]?.levelReviewReasonCodes.includes("SUCCESS_CRITERION_WEAK"));
+  assert.equal(trace.levelDiagnostics[0]?.levelDecision, "REVIEW_REQUIRED");
+});
+
+it("20. unnecessary lower levels identify the redundant level in the persisted trace", () => {
+  const demand: TargetCognitiveDemand = { ...traceDemand, targetLevel: "apply" };
+  const levels = [
+    {
+      ...validGenerated.levels[0],
+      cognitiveLevel: "remember" as const,
+      isTargetCeiling: false,
+      performanceObjective: "Recall source facts",
+      successCriterion: "State source facts accurately",
+    },
+    {
+      ...validGenerated.levels[0],
+      cognitiveLevel: "apply" as const,
+      sequence: 2,
+      isTargetCeiling: true,
+      performanceObjective: "Apply the rule",
+      successCriterion: "Use the rule accurately",
+    },
+  ];
+  const progression = assessCognitivePathProgression({
+    targetDemand: demand,
+    title: "Trace fixture",
+    learningObjective: "Apply the rule",
+    theoryContent: "Apply the rule in a routine calculation.",
+    exercises: [],
+  }, levels);
+  const trace = traceForProgression(progression, levels);
+
+  assert.ok(trace.levelDiagnostics[0]?.levelReviewReasonCodes.includes("REDUNDANT_LEVEL"));
+  assert.deepEqual(trace.levelDiagnostics[0]?.redundancyReasonCodes, ["REDUNDANT_LEVEL"]);
+  assert.equal(trace.levelDiagnostics[0]?.redundancyDecision, "REDUNDANT");
 });
 
 let passed = 0;

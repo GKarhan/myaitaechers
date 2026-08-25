@@ -58,7 +58,9 @@ import {
 } from "../lib/c2-target-demand.js";
 import {
   assessCognitivePathProgression,
+  buildCognitiveLevelDiagnostics,
   progressionAllowsPersistence,
+  type CognitiveLevelDiagnostic,
   type CognitiveProgressionDecision,
 } from "../lib/c2-progression.js";
 
@@ -8867,12 +8869,13 @@ export interface CogPathLevel {
 export interface CogPathGenerationResult {
   nodeId:      number;
   skipped:     boolean;
-  skipCode?:   C2GenerationBlockCode | "C2_TARGET_DEMAND_REVIEW_REQUIRED" | "C2_TARGET_DEMAND_MISMATCH" | "C2_PROGRESSION_REVIEW_REQUIRED" | "C2_CEILING_VIOLATION" | "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
+  skipCode?:   C2GenerationBlockCode | "C2_PROVIDER_REQUEST_FAILED" | "C2_RESPONSE_PARSE_FAILED" | "C2_RESPONSE_SCHEMA_REJECTED" | "C2_TARGET_DEMAND_REVIEW_REQUIRED" | "C2_TARGET_DEMAND_MISMATCH" | "C2_PROGRESSION_REVIEW_REQUIRED" | "C2_CEILING_VIOLATION" | "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
   skipReason?: string;
   levels:      CogPathLevel[];
   groundingAudit?: CognitivePathGroundingAudit;
   targetDemand?: TargetCognitiveDemand;
   progression?: CognitiveProgressionDecision;
+  candidateDiagnostics?: CognitiveLevelDiagnostic[];
 }
 
 import { z } from "zod";
@@ -9049,23 +9052,51 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
     return r.choices[0]?.message?.content ?? "";
   }
 
-  let parsed = tryParseCogPath(await callModel());
-  if (!parsed) {
-    logger.warn({ nodeId: input.nodeId }, "cog-path: parse failed, retrying once");
+  let parsed: Record<string, unknown> | null;
+  try {
     parsed = tryParseCogPath(await callModel());
+    if (!parsed) {
+      logger.warn({ nodeId: input.nodeId }, "cog-path: parse failed, retrying once");
+      parsed = tryParseCogPath(await callModel());
+    }
+  } catch {
+    logger.warn({ nodeId: input.nodeId }, "cog-path: provider request failed");
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: "C2_PROVIDER_REQUEST_FAILED",
+      skipReason: "AI provider request failed",
+      levels: [],
+      targetDemand,
+    };
   }
   if (!parsed) {
     logger.warn({ nodeId: input.nodeId }, "cog-path: parse failed after retry");
-    return { nodeId: input.nodeId, skipped: true, skipReason: "AI returned unparseable JSON after retry", levels: [], targetDemand };
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: "C2_RESPONSE_PARSE_FAILED",
+      skipReason: "AI returned unparseable JSON after retry",
+      levels: [],
+      targetDemand,
+    };
   }
 
   const validated = _cogPathResponseSchema.safeParse(parsed);
   if (!validated.success) {
-    logger.warn({ nodeId: input.nodeId, error: validated.error }, "cog-path: Zod validation failed");
-    return { nodeId: input.nodeId, skipped: true, skipReason: `AI output failed validation: ${validated.error.message}`, levels: [], targetDemand };
+    logger.warn({ nodeId: input.nodeId }, "cog-path: response schema rejected");
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: "C2_RESPONSE_SCHEMA_REJECTED",
+      skipReason: "AI output failed validation",
+      levels: [],
+      targetDemand,
+    };
   }
 
   const levels = validated.data.levels;
+  const candidateDiagnostics = buildCognitiveLevelDiagnostics(levels);
 
   // Enforce exactly-one ceiling (in case model produced 0 or >1)
   const ceilingCount = levels.filter((l) => l.isTargetCeiling).length;
@@ -9088,6 +9119,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: `generated Cognitive Path violates required structure: ${structuralReason}`,
       levels: [],
       targetDemand,
+      candidateDiagnostics,
     };
   }
   if (!satisfiesLearningObjectiveCognitiveFloor(input.learningObjective, levels)) {
@@ -9098,6 +9130,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: "generated Cognitive Path falls below the canonical Learning Objective cognitive floor",
       levels: [],
       targetDemand,
+      candidateDiagnostics,
     };
   }
   if (!matchesTargetCognitiveDemand(targetDemand, levels)) {
@@ -9110,6 +9143,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       levels: [],
       targetDemand,
       progression,
+      candidateDiagnostics,
     };
   }
   const progression = assessCognitivePathProgression({ ...input, targetDemand }, levels);
@@ -9122,6 +9156,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       levels: [],
       targetDemand,
       progression,
+      candidateDiagnostics,
     };
   }
   const groundingAudit = validateCognitivePathGrounding(
@@ -9139,6 +9174,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       groundingAudit,
       targetDemand,
       progression,
+      candidateDiagnostics,
     };
   }
 
@@ -9149,6 +9185,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
     groundingAudit,
     targetDemand,
     progression,
+    candidateDiagnostics,
   };
 }
 

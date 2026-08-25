@@ -53,6 +53,25 @@ test("C2P-1: REMEMBER target can remain target-only", () => {
   assert.equal(decision.progressionDecision, "MINIMAL");
   assert.deepEqual(decision.selectedLevels, ["remember"]);
   assert.equal(decision.contractVersion, C2_PROGRESSION_CONTRACT_VERSION);
+  assert.deepEqual(decision.levelDiagnostics, [{
+    ordinal: 0,
+    sequence: 1,
+    declaredLevel: "remember",
+    isTargetCeiling: true,
+    objectiveDemandLevel: "remember",
+    criterionDemandLevel: "remember",
+    combinedDemandLevel: "remember",
+    demandRelation: "AT_OR_BELOW_DECLARED_LEVEL",
+    comparedWithPreviousOrdinal: null,
+    semanticOverlapWithPrevious: false,
+    semanticOverlapClassification: "NOT_APPLICABLE",
+    redundancyDecision: "NOT_EVALUATED",
+    redundancyReasonCodes: [],
+    objectiveMatchesDeclaredLevel: true,
+    criterionMatchesDeclaredLevel: true,
+    levelDecision: "ACCEPTED",
+    levelReviewReasonCodes: [],
+  }]);
 });
 
 test("C2P-2: UNDERSTAND target includes factual recall only when explicitly required", () => {
@@ -103,6 +122,8 @@ test("C2P-5: ANALYZE permits a non-contiguous UNDERSTAND → ANALYZE path", () =
   );
   assert.equal(result.progressionDecision, "MINIMAL");
   assert.deepEqual(result.selectedLevels, ["understand", "analyze"]);
+  assert.equal(result.levelDiagnostics[1]?.combinedDemandLevel, "analyze");
+  assert.equal(result.levelDiagnostics[1]?.levelDecision, "ACCEPTED");
 });
 
 test("C2P-6: EVALUATE requires only the evidenced analytic checkpoint", () => {
@@ -135,6 +156,8 @@ test("C2P-8: redundant lower objectives are held for review", () => {
   );
   assert.equal(result.progressionDecision, "REVIEW_REQUIRED");
   assert.ok(result.reviewReasonCodes.includes("REDUNDANT_LEVEL"));
+  assert.equal(result.levelDiagnostics[1]?.semanticOverlapClassification, "REDUNDANT");
+  assert.ok(result.levelDiagnostics[1]?.levelReviewReasonCodes.includes("REDUNDANT_LEVEL"));
 });
 
 test("C2P-9: missing evidence-backed prerequisite prevents a target-only APPLY path", () => {
@@ -163,6 +186,8 @@ test("C2P-11: lower-level overreach is rejected independent of interaction forma
     ],
   );
   assert.ok(result.reviewReasonCodes.includes("LEVEL_OBJECTIVE_MISMATCH"));
+  assert.equal(result.levelDiagnostics[0]?.demandRelation, "ABOVE_DECLARED_LEVEL");
+  assert.ok(result.levelDiagnostics[0]?.levelReviewReasonCodes.includes("LEVEL_OBJECTIVE_MISMATCH"));
 });
 
 test("C2P-12: interaction formats do not alter a valid minimal progression", () => {
