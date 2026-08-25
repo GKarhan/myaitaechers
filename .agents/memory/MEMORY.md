@@ -70,3 +70,4 @@
 - [C2 generation orchestration](c2-generation-orchestration.md) — use mapping-job JSON ledgers for C2 attempts; claim only non-overlapping MicroNodes and preserve changed paths at the commit lock.
 - [C2 target-demand resolver](c2-target-demand-resolver.md) — resolve a deterministic performance-backed C2 target; C1 is diagnostic, and evidence disagreement fails closed to teacher review.
 - [C2 minimal progression](c2-minimal-progression.md) — C2 paths persist only with a deterministic minimality decision; lower checkpoints require source-backed prerequisite competency, never contiguous Bloom padding.
+- [Provider diagnostic safety](provider-diagnostic-safety.md) — persisted provider diagnostics must use fixed messages and allowlisted enums; never retain provider-controlled free-form text.

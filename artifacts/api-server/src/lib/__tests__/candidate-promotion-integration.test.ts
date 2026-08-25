@@ -57,7 +57,7 @@ function promote(
   blocks: Pass1Block[],
   topics: Pass2TopicResult[],
   duplicates: DuplicateResolutionAudit = duplicateAudit(),
-  options: { atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED" } = {},
+  options: { atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_JSON" | "SCHEMA_INVALID" | "REQUEST_FAILED" } = {},
 ) {
   return applyKnowledgeCandidatePromotion({
     topics,

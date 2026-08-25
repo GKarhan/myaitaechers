@@ -88,7 +88,7 @@ function promote(
   decisions: M32SemanticDecision[],
   options: {
     unresolvedAtomicityFindings?: Parameters<typeof applyKnowledgeCandidatePromotion>[0]["unresolvedAtomicityFindings"];
-    unavailable?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+    unavailable?: "EMPTY_RESPONSE" | "INVALID_JSON" | "SCHEMA_INVALID" | "REQUEST_FAILED";
   } = {},
 ) {
   const value = topics(candidates);

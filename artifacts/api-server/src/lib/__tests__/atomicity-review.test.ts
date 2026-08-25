@@ -467,10 +467,10 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
     sourceAlignment: validatePass2SourceAlignment(topics, source),
     duplicateResolution: { candidatePairCount: 0, resolvedDistinctCount: 0, mergedCount: 0, unresolvedPairIds: [], rejectedDecisionCount: 0, actions: [] },
     diagnostics,
-    atomicityReviewUnavailableReason: "INVALID_RESPONSE",
+    atomicityReviewUnavailableReason: "SCHEMA_INVALID",
   });
   assert.equal(result.disposition, "REVIEW_REQUIRED");
-  assert.deepEqual(result.reviewReasons, ["ATOMICITY_REVIEW_UNAVAILABLE:INVALID_RESPONSE"]);
+  assert.deepEqual(result.reviewReasons, ["ATOMICITY_REVIEW_UNAVAILABLE:SCHEMA_INVALID"]);
   console.log("  ✓ unavailable or malformed atomicity review becomes a persisted review requirement");
 }
 
@@ -505,7 +505,7 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
     calls++;
     return {
       status: "UNAVAILABLE" as const,
-      unavailableReason: "INVALID_RESPONSE" as const,
+      unavailableReason: "SCHEMA_INVALID" as const,
       findings: [],
       sourceReallocations: [],
       atomicityRepairs: [],
@@ -516,7 +516,7 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
   }, 2);
   assert.equal(calls, 2, "retry exhaustion never loops");
   assert.equal(retried.verificationDiagnostics.retrySucceeded, false);
-  assert.equal(retried.verificationDiagnostics.parseState, "INVALID_RESPONSE");
+  assert.equal(retried.verificationDiagnostics.parseState, "SCHEMA_INVALID");
   console.log("  ✓ exhausted technical verification remains distinct from non-atomic content");
 }
 
@@ -526,7 +526,7 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
       generatedMicroNodeCount: 4,
       requestAttempted: true,
       responseReceived: true,
-      parseState: "INVALID_RESPONSE",
+      parseState: "SCHEMA_INVALID",
       validationState: "NOT_RUN",
       repairAttempted: false,
       retryAttempted: true,
@@ -536,7 +536,7 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
     lessonId: 41,
     repairAttempted: false,
     unresolvedFindingCount: 0,
-    technicalUnavailableReason: "INVALID_RESPONSE",
+    technicalUnavailableReason: "SCHEMA_INVALID",
   });
   assert.equal(technical.validationState, "NOT_RUN");
   assert.equal(technical.finalFailureCode, "TECHNICAL_RETRY_EXHAUSTED");

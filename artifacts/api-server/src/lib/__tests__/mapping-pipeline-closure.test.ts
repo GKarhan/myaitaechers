@@ -91,7 +91,7 @@ test("23 source-alignment review is a hard block for every enrichment entry poin
 test("24 every unresolved semantic-review reason requires individual teacher review", () => {
   for (const reason of [
     "ATOMICITY_REVIEW_REQUIRED:UNDER_SPLIT:HIGH",
-    "ATOMICITY_REVIEW_UNAVAILABLE:INVALID_RESPONSE",
+    "ATOMICITY_REVIEW_UNAVAILABLE:SCHEMA_INVALID",
     "DUPLICATE_REVIEW_REQUIRED",
     "DUPLICATE_REVIEW_REJECTED",
     "SOURCE_ALIGNMENT:PARTIAL:OBJECTIVE_TOO_BROAD",

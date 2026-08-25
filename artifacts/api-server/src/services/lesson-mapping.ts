@@ -639,7 +639,7 @@ export class MappingAtomicityReviewUnavailableError extends Error {
     "Քարտեզագրման ստուգումը տեխնիկական պատճառով չի ավարտվել։ Կարող եք կրկին փորձել՝ առանց դասի տվյալները նորից լրացնելու։";
 
   constructor(
-    readonly reason: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED",
+    readonly reason: M32ReviewUnavailableReason,
     readonly diagnostics?: AtomicityVerificationDiagnostics,
   ) {
     super(`Detailed mapping atomicity review unavailable: ${reason}`);
@@ -658,7 +658,7 @@ export interface SemanticReviewPrePersistenceDiagnostics {
   invalidSemanticDecisionCount: number;
   semanticReviewAvailability: "AVAILABLE" | "UNAVAILABLE";
   atomicityReviewAvailability: "AVAILABLE" | "UNAVAILABLE";
-  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  atomicityReviewUnavailableReason?: M32ReviewUnavailableReason;
   promotedMicroNodeCount: number;
   canonicalMicroNodeCount: number;
   technicalReason: typeof M3_SEMANTIC_REVIEW_UNAVAILABLE_PRE_PERSISTENCE;
@@ -687,7 +687,7 @@ export function getSemanticReviewPrePersistenceDiagnostics(input: {
     KnowledgeCandidatePromotionDiagnostics,
     "candidateCount" | "promotedMicroNodeCount" | "semanticDecisionDiagnostics" | "decisions"
   >;
-  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  atomicityReviewUnavailableReason?: M32ReviewUnavailableReason;
   canonicalMicroNodeCount: number;
 }): SemanticReviewPrePersistenceDiagnostics {
   const semanticDiagnostics = input.candidatePromotion.semanticDecisionDiagnostics;
@@ -731,7 +731,7 @@ export function assertSemanticReviewAvailabilityBeforePersistence(input: {
     KnowledgeCandidatePromotionDiagnostics,
     "candidateCount" | "promotedMicroNodeCount" | "semanticDecisionDiagnostics" | "decisions"
   >;
-  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  atomicityReviewUnavailableReason?: M32ReviewUnavailableReason;
   canonicalMicroNodeCount: number;
 }): SemanticReviewPrePersistenceDiagnostics | null {
   const diagnostics = getSemanticReviewPrePersistenceDiagnostics(input);
@@ -2699,7 +2699,7 @@ export interface KnowledgeCandidateReviewArtifact {
     sourceOwnership: KnowledgeCandidateCheckState;
     atomicity: KnowledgeCandidateCheckState;
     providerAtomicityReview: "AVAILABLE" | "UNAVAILABLE";
-    providerAtomicityReviewReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+    providerAtomicityReviewReason?: M32ReviewUnavailableReason;
   };
 }
 
@@ -2707,7 +2707,7 @@ export interface KnowledgeCandidateReviewSummary {
   count: number;
   byPromotionState: Partial<Record<Exclude<KnowledgeCandidatePromotionState, "PROMOTE">, number>>;
   providerAtomicityReview: "AVAILABLE" | "UNAVAILABLE";
-  providerAtomicityReviewReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  providerAtomicityReviewReason?: M32ReviewUnavailableReason;
 }
 
 /** A pre-promotion cleanup removed this candidate from the canonical map only. */
@@ -2721,7 +2721,7 @@ function buildKnowledgeCandidateReviewArtifact(
   candidate: KnowledgeCandidate,
   microNodeType: Pass2MicroNode["microNodeType"],
   decision: KnowledgeCandidatePromotionDecision,
-  atomicityReviewUnavailableReason: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED" | undefined,
+  atomicityReviewUnavailableReason: M32ReviewUnavailableReason | undefined,
 ): KnowledgeCandidateReviewArtifact {
   if (decision.state === "PROMOTE") {
     throw new Error("Canonical candidates cannot be serialized as review-only artifacts");
@@ -3185,7 +3185,7 @@ export function applyKnowledgeCandidatePromotion(input: {
   consolidatedCandidateCount?: number;
   forcedReviewCandidateIds?: ReadonlySet<string>;
   candidateIdentity?: KnowledgeCandidateIdentityDiagnostics;
-  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  atomicityReviewUnavailableReason?: M32ReviewUnavailableReason;
   prePromotionRemovedCandidates?: ReadonlyArray<PrePromotionRemovedCandidate>;
   /**
    * Explicitly pass `semanticDecisionsProvided: true` for production Pass 2B
@@ -4454,7 +4454,7 @@ export interface Pass2Result {
    * A bounded semantic-review call was exhausted or malformed. Structural
    * validation still decides whether this candidate can persist as a draft.
    */
-  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  atomicityReviewUnavailableReason?: M32ReviewUnavailableReason;
   sourceAlignment: Pass2SourceAlignment;
   sourceReallocation: SourceReallocationResult;
   /** One deterministic post-review ownership reconciliation pass. */
@@ -6070,7 +6070,7 @@ export interface SourceReallocationDecision {
 
 export interface SemanticReviewResult {
   status: "COMPLETE" | "UNAVAILABLE";
-  unavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  unavailableReason?: M32ReviewUnavailableReason;
   findings: GranularityFinding[];
   sourceReallocations: SourceReallocationDecision[];
   atomicityRepairs: AtomicityRepairDecision[];
@@ -6078,20 +6078,63 @@ export interface SemanticReviewResult {
   malformedDuplicateResolutionEntries: MalformedDuplicateResolutionEntry[];
   /** One parsed M3-2 proposal per reviewed stable candidate ID. */
   semanticDecisions: M32SemanticDecision[];
+  providerAttemptMetadata?: M32ProviderAttemptMetadata;
   verificationDiagnostics?: AtomicityVerificationDiagnostics;
 }
 
-export type AtomicityVerificationParseState = "SUCCEEDED" | "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+export type M32ProviderFailureClassification =
+  | "REQUEST_FAILED"
+  | "EMPTY_RESPONSE"
+  | "INVALID_JSON"
+  | "SCHEMA_INVALID"
+  | "SUCCESS";
+export type M32ReviewUnavailableReason = Exclude<M32ProviderFailureClassification, "SUCCESS">;
+
+export type AtomicityVerificationParseState =
+  | "SUCCEEDED"
+  | "EMPTY_RESPONSE"
+  | "INVALID_JSON"
+  | "SCHEMA_INVALID"
+  | "NOT_RUN";
 export type AtomicityVerificationValidationState =
   | "NOT_RUN"
   | "PASSED"
   | "FAILED_NON_ATOMIC";
 
+export interface M32ProviderAttemptMetadata {
+  model: string;
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+  responseReceived: boolean;
+  responseContentLength: number | null;
+  finishReason?: string | null;
+  httpStatus?: number | null;
+  providerErrorCode?: string | null;
+  exceptionClass?: string;
+  sanitizedExceptionMessage?: string;
+  parseState: AtomicityVerificationParseState;
+  validationState: "NOT_RUN" | "PASSED" | "FAILED";
+  failureClassification: M32ProviderFailureClassification;
+}
+
 export interface AtomicityVerificationAttemptDiagnostics {
   attempt: number;
   requestAttempted: boolean;
-  responseReceived: boolean;
-  parseState: AtomicityVerificationParseState;
+  responseReceived: M32ProviderAttemptMetadata["responseReceived"];
+  parseState: M32ProviderAttemptMetadata["parseState"];
+  model?: M32ProviderAttemptMetadata["model"];
+  startedAt?: M32ProviderAttemptMetadata["startedAt"];
+  endedAt?: M32ProviderAttemptMetadata["endedAt"];
+  durationMs?: M32ProviderAttemptMetadata["durationMs"];
+  responseContentLength?: M32ProviderAttemptMetadata["responseContentLength"];
+  finishReason?: M32ProviderAttemptMetadata["finishReason"];
+  httpStatus?: M32ProviderAttemptMetadata["httpStatus"];
+  providerErrorCode?: M32ProviderAttemptMetadata["providerErrorCode"];
+  exceptionClass?: M32ProviderAttemptMetadata["exceptionClass"];
+  sanitizedExceptionMessage?: M32ProviderAttemptMetadata["sanitizedExceptionMessage"];
+  validationState?: M32ProviderAttemptMetadata["validationState"];
+  failureClassification?: M32ProviderAttemptMetadata["failureClassification"];
 }
 
 export interface AtomicityVerificationDiagnostics {
@@ -6100,6 +6143,7 @@ export interface AtomicityVerificationDiagnostics {
   requestAttempted: boolean;
   responseReceived: boolean;
   parseState: AtomicityVerificationParseState;
+  failureClassification?: M32ProviderFailureClassification;
   validationState: AtomicityVerificationValidationState;
   repairAttempted: boolean;
   retryAttempted: boolean;
@@ -6107,6 +6151,76 @@ export interface AtomicityVerificationDiagnostics {
   persistenceEligible?: boolean;
   finalFailureCode?: "UNRESOLVED_NON_ATOMIC" | "TECHNICAL_RETRY_EXHAUSTED";
   attempts: AtomicityVerificationAttemptDiagnostics[];
+}
+
+const SAFE_M32_PROVIDER_ERROR_CODES = new Set([
+  "rate_limit_exceeded",
+  "context_length_exceeded",
+  "invalid_api_key",
+  "authentication_error",
+  "insufficient_quota",
+  "model_not_found",
+  "invalid_request_error",
+]);
+
+const SAFE_M32_FINISH_REASONS = new Set([
+  "stop",
+  "length",
+  "content_filter",
+  "tool_calls",
+  "function_call",
+]);
+
+function getM32ErrorMetadata(
+  error: unknown,
+  failureClassification: M32ProviderFailureClassification,
+): Pick<
+  M32ProviderAttemptMetadata,
+  "httpStatus" | "providerErrorCode" | "exceptionClass" | "sanitizedExceptionMessage"
+> {
+  const record = error && typeof error === "object"
+    ? error as Record<string, unknown>
+    : undefined;
+  const httpStatus = typeof record?.status === "number"
+    && Number.isInteger(record.status)
+    && record.status >= 100
+    && record.status <= 599
+    ? record.status
+    : undefined;
+  const providerErrorCode = typeof record?.code === "string"
+    && SAFE_M32_PROVIDER_ERROR_CODES.has(record.code)
+    ? record.code
+    : undefined;
+  const exceptionClass = error instanceof SyntaxError
+    ? "SyntaxError"
+    : error instanceof Error
+      ? "Error"
+      : "UnknownError";
+  const sanitizedExceptionMessage = failureClassification === "INVALID_JSON"
+    ? "M3-2 response JSON parsing failed"
+    : failureClassification === "SCHEMA_INVALID"
+      ? "M3-2 response schema validation failed"
+      : failureClassification === "SUCCESS"
+        ? "Provider response succeeded"
+      : "Provider request failed";
+  return {
+    ...(httpStatus === undefined ? {} : { httpStatus }),
+    ...(providerErrorCode === undefined ? {} : { providerErrorCode }),
+    ...(exceptionClass === undefined ? {} : { exceptionClass }),
+    ...(sanitizedExceptionMessage === undefined ? {} : { sanitizedExceptionMessage }),
+  };
+}
+
+function getM32FinishReason(response: unknown): string | null | undefined {
+  if (!response || typeof response !== "object") return undefined;
+  const choices = (response as { choices?: unknown }).choices;
+  if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object") return undefined;
+  const finishReason = (choices[0] as { finish_reason?: unknown }).finish_reason;
+  return finishReason === null || (
+    typeof finishReason === "string" && SAFE_M32_FINISH_REASONS.has(finishReason)
+  )
+    ? finishReason
+    : undefined;
 }
 
 function parseM32SemanticDecisions(
@@ -6204,11 +6318,21 @@ function parseM32SemanticDecisions(
  * The plan is only a set of existing block indices; the server applies and
  * deterministically validates it. Returns empty arrays on any review error.
  */
-async function runGranularityReviewOnce(
+export interface M32CompletionResponse {
+  choices?: Array<{
+    message?: { content?: string | null };
+    finish_reason?: string | null;
+  }>;
+}
+
+export type M32CompletionRequester = () => Promise<M32CompletionResponse>;
+
+export async function runGranularityReviewOnce(
   topics: Pass2TopicResult[],
   blocks: Pass1Block[],
   sourceAlignment: Pass2SourceAlignment,
   duplicateSuspicions: ReadonlyArray<DuplicateSuspicion>,
+  completionRequester?: M32CompletionRequester,
 ): Promise<SemanticReviewResult> {
   const duplicateReviewCandidates = buildDuplicateReviewCandidates(duplicateSuspicions);
   // Build compact topic representation with heuristic signals
@@ -6400,32 +6524,71 @@ by its own partitioned sourceBlockIndices: a heading, shared topic word, or broa
 Outcome wording is not enough. If you cannot write a one-action objective with
 direct support for every child, do not propose the split.`;
 
-  try {
-    const r = await openrouter.chat.completions.create({
-      model:      PASS2B_REVIEW_MODEL,
-      max_tokens: 2000,
-      temperature: 0,
-      messages: [
-        { role: "system", content: PASS2B_REVIEW_SYSTEM },
-        { role: "user",   content: userPrompt },
-      ],
-    });
+  const startedAt = new Date().toISOString();
+  const startedAtMs = Date.now();
+  let responseReceived = false;
+  let responseContentLength: number | null = null;
+  let finishReason: string | null | undefined;
+  let stage: "REQUEST" | "PARSE" | "VALIDATION" = "REQUEST";
+  let parseState: AtomicityVerificationParseState = "NOT_RUN";
+  let validationState: M32ProviderAttemptMetadata["validationState"] = "NOT_RUN";
+  const buildAttemptMetadata = (
+    failureClassification: M32ProviderFailureClassification,
+    error?: unknown,
+  ): M32ProviderAttemptMetadata => ({
+    model: PASS2B_REVIEW_MODEL,
+    startedAt,
+    endedAt: new Date().toISOString(),
+    durationMs: Math.max(0, Date.now() - startedAtMs),
+    responseReceived,
+    responseContentLength,
+    ...(finishReason === undefined ? {} : { finishReason }),
+    ...(error === undefined ? {} : getM32ErrorMetadata(error, failureClassification)),
+    parseState,
+    validationState,
+    failureClassification,
+  });
+  const unavailable = (
+    classification: Exclude<M32ProviderFailureClassification, "SUCCESS">,
+    error?: unknown,
+  ): SemanticReviewResult => ({
+    status: "UNAVAILABLE",
+    unavailableReason: classification,
+    findings: [],
+    sourceReallocations: [],
+    atomicityRepairs: [],
+    duplicateResolutions: [],
+    malformedDuplicateResolutionEntries: [],
+    semanticDecisions: [],
+    providerAttemptMetadata: buildAttemptMetadata(classification, error),
+  });
 
-    const raw = r.choices[0]?.message?.content ?? "";
+  try {
+    stage = "REQUEST";
+    const r = completionRequester
+      ? await completionRequester()
+      : await openrouter.chat.completions.create({
+        model:      PASS2B_REVIEW_MODEL,
+        max_tokens: 2000,
+        temperature: 0,
+        messages: [
+          { role: "system", content: PASS2B_REVIEW_SYSTEM },
+          { role: "user",   content: userPrompt },
+        ],
+      });
+
+    const firstChoice = r.choices?.[0];
+    const raw = firstChoice?.message?.content ?? "";
+    responseContentLength = raw.length;
+    responseReceived = !!raw.trim();
+    finishReason = getM32FinishReason(r);
     if (!raw.trim()) {
+      parseState = "EMPTY_RESPONSE";
       logger.warn({ totalMicroNodes }, "pass2b granularity review: empty response — returning no findings");
-      return {
-        status: "UNAVAILABLE",
-        unavailableReason: "EMPTY_RESPONSE",
-        findings: [],
-        sourceReallocations: [],
-        atomicityRepairs: [],
-        duplicateResolutions: [],
-        malformedDuplicateResolutionEntries: [],
-        semanticDecisions: [],
-      };
+      return unavailable("EMPTY_RESPONSE");
     }
 
+    stage = "PARSE";
     const parsed = parsePass2JSON(raw) as {
       findings?: unknown[];
       sourceReallocations?: unknown[];
@@ -6433,18 +6596,13 @@ direct support for every child, do not propose the split.`;
       duplicateResolutions?: unknown[];
       semanticDecisions?: unknown;
     };
+    parseState = "SUCCEEDED";
+    stage = "VALIDATION";
     if (!parsed || !Array.isArray(parsed.findings)) {
+      parseState = "SCHEMA_INVALID";
+      validationState = "FAILED";
       logger.warn({ totalMicroNodes }, "pass2b granularity review: invalid JSON schema — returning no findings");
-      return {
-        status: "UNAVAILABLE",
-        unavailableReason: "INVALID_RESPONSE",
-        findings: [],
-        sourceReallocations: [],
-        atomicityRepairs: [],
-        duplicateResolutions: [],
-        malformedDuplicateResolutionEntries: [],
-        semanticDecisions: [],
-      };
+      return unavailable("SCHEMA_INVALID");
     }
 
     const VALID_ISSUES = new Set([
@@ -6464,17 +6622,10 @@ direct support for every child, do not propose the split.`;
       reviewedCandidateIds,
     );
     if (parsedSemanticDecisions.malformed) {
+      parseState = "SCHEMA_INVALID";
+      validationState = "FAILED";
       logger.warn({ totalMicroNodes }, "pass2b semantic review: M3-2 decisions malformed or incomplete");
-      return {
-        status: "UNAVAILABLE",
-        unavailableReason: "INVALID_RESPONSE",
-        findings: [],
-        sourceReallocations: [],
-        atomicityRepairs: [],
-        duplicateResolutions: [],
-        malformedDuplicateResolutionEntries: [],
-        semanticDecisions: [],
-      };
+      return unavailable("SCHEMA_INVALID");
     }
     const semanticDecisions = parsedSemanticDecisions.decisions;
 
@@ -6647,20 +6798,13 @@ direct support for every child, do not propose the split.`;
     }
 
     if (malformedEntryCount > 0) {
+      parseState = "SCHEMA_INVALID";
+      validationState = "FAILED";
       logger.warn(
         { malformedEntryCount, totalMicroNodes },
         "pass2b granularity review: malformed semantic entry — failing closed",
       );
-      return {
-        status: "UNAVAILABLE",
-        unavailableReason: "INVALID_RESPONSE",
-        findings: [],
-        sourceReallocations: [],
-        atomicityRepairs: [],
-        duplicateResolutions: [],
-        malformedDuplicateResolutionEntries: [],
-        semanticDecisions: [],
-      };
+      return unavailable("SCHEMA_INVALID");
     }
 
     const parsedDuplicateResolutions = parseDuplicateResolutions(parsed.duplicateResolutions);
@@ -6676,6 +6820,7 @@ direct support for every child, do not propose the split.`;
       },
       "pass2b granularity review: complete",
     );
+    validationState = "PASSED";
     return {
       status: "COMPLETE",
       findings,
@@ -6684,19 +6829,41 @@ direct support for every child, do not propose the split.`;
       duplicateResolutions,
       malformedDuplicateResolutionEntries: parsedDuplicateResolutions.malformedEntries,
       semanticDecisions,
+      providerAttemptMetadata: buildAttemptMetadata("SUCCESS"),
     };
 
   } catch (err) {
-    logger.warn({ err }, "pass2b granularity review: AI call failed — duplicate candidates will fail closed");
+    const failureClassification: Exclude<M32ProviderFailureClassification, "SUCCESS"> =
+      stage === "PARSE"
+        ? "INVALID_JSON"
+        : stage === "VALIDATION"
+          ? "SCHEMA_INVALID"
+          : "REQUEST_FAILED";
+    if (failureClassification === "INVALID_JSON") {
+      parseState = "INVALID_JSON";
+    } else if (failureClassification === "SCHEMA_INVALID") {
+      parseState = "SCHEMA_INVALID";
+      validationState = "FAILED";
+    }
+    const metadata = buildAttemptMetadata(failureClassification, err);
+    logger.warn(
+      { ...metadata },
+      failureClassification === "REQUEST_FAILED"
+        ? "pass2b granularity review: provider request failed — duplicate candidates will fail closed"
+        : failureClassification === "INVALID_JSON"
+          ? "pass2b granularity review: response JSON parse failed — retrying/failing closed"
+          : "pass2b granularity review: response schema validation failed — retrying/failing closed",
+    );
     return {
       status: "UNAVAILABLE",
-      unavailableReason: "REQUEST_FAILED",
+      unavailableReason: failureClassification,
       findings: [],
       sourceReallocations: [],
       atomicityRepairs: [],
       duplicateResolutions: [],
       malformedDuplicateResolutionEntries: [],
       semanticDecisions: [],
+      providerAttemptMetadata: metadata,
     };
   }
 }
@@ -6705,16 +6872,29 @@ function buildAtomicityVerificationAttempt(
   review: SemanticReviewResult,
   attempt: number,
 ): AtomicityVerificationAttemptDiagnostics {
-  const parseState = review.status === "COMPLETE"
-    ? "SUCCEEDED"
-    : review.unavailableReason ?? "REQUEST_FAILED";
+  const failureClassification = review.providerAttemptMetadata?.failureClassification
+    ?? (review.status === "COMPLETE" ? "SUCCESS" : review.unavailableReason ?? "REQUEST_FAILED");
+  const parseState = review.providerAttemptMetadata?.parseState
+    ?? (failureClassification === "SUCCESS"
+      ? "SUCCEEDED"
+      : failureClassification === "EMPTY_RESPONSE"
+        ? "EMPTY_RESPONSE"
+        : failureClassification === "INVALID_JSON"
+          ? "INVALID_JSON"
+          : failureClassification === "SCHEMA_INVALID"
+            ? "SCHEMA_INVALID"
+            : "NOT_RUN");
+  const responseReceived = review.providerAttemptMetadata?.responseReceived
+    ?? (failureClassification === "SUCCESS"
+      || failureClassification === "INVALID_JSON"
+      || failureClassification === "SCHEMA_INVALID");
   return {
     attempt,
     requestAttempted: true,
-    responseReceived: review.status === "COMPLETE"
-      || review.unavailableReason === "EMPTY_RESPONSE"
-      || review.unavailableReason === "INVALID_RESPONSE",
+    responseReceived,
     parseState,
+    ...(review.providerAttemptMetadata ?? {}),
+    failureClassification,
   };
 }
 
@@ -6747,7 +6927,16 @@ export async function runBoundedAtomicityVerification<T extends SemanticReviewRe
       responseReceived: attempts.some((attempt) => attempt.responseReceived),
       parseState: final.status === "COMPLETE"
         ? "SUCCEEDED"
-        : final.unavailableReason ?? "REQUEST_FAILED",
+        : final.providerAttemptMetadata?.parseState
+          ?? (final.unavailableReason === "EMPTY_RESPONSE"
+            ? "EMPTY_RESPONSE"
+            : final.unavailableReason === "INVALID_JSON"
+              ? "INVALID_JSON"
+              : final.unavailableReason === "SCHEMA_INVALID"
+                ? "SCHEMA_INVALID"
+                : "NOT_RUN"),
+      failureClassification: final.providerAttemptMetadata?.failureClassification
+        ?? (final.status === "COMPLETE" ? "SUCCESS" : final.unavailableReason ?? "REQUEST_FAILED"),
       validationState: "NOT_RUN",
       repairAttempted: false,
       retryAttempted: attempts.length > 1,
@@ -7428,7 +7617,7 @@ export function assertPass2PersistenceGates(input: {
   knowledgeCompleteness?: KnowledgeCompletenessDiagnostics;
   diagnostics: Pass2Diagnostics;
   unresolvedAtomicityFindings?: GranularityFinding[];
-  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  atomicityReviewUnavailableReason?: M32ReviewUnavailableReason;
   atomicityVerificationDiagnostics?: AtomicityVerificationDiagnostics;
   /** A parsed semantic-review action that fails server validation is untrusted. */
   rejectedSemanticReviewDecisionCount?: number;
@@ -7680,7 +7869,7 @@ export function finalizeAtomicityVerificationDiagnostics(input: {
   lessonId?: number;
   repairAttempted: boolean;
   unresolvedFindingCount: number;
-  technicalUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  technicalUnavailableReason?: M32ReviewUnavailableReason;
 }): AtomicityVerificationDiagnostics {
   const base: AtomicityVerificationDiagnostics = {
     ...input.verification,
@@ -8286,7 +8475,8 @@ export async function runPass2Pipeline(
       generatedMicroNodeCount: topics.reduce((sum, topic) => sum + topic.microNodes.length, 0),
       requestAttempted: false,
       responseReceived: false,
-      parseState: "REQUEST_FAILED" as const,
+      parseState: "NOT_RUN" as const,
+      failureClassification: "REQUEST_FAILED" as const,
       validationState: "NOT_RUN" as const,
       repairAttempted: false,
       retryAttempted: false,

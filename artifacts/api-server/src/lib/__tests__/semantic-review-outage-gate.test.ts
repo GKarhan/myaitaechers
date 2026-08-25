@@ -104,7 +104,7 @@ function promotion(input: {
       states: ["REJECT_NON_KNOWLEDGE"],
       missingCandidateIds: ["t1:n0"],
     }),
-    atomicityReviewUnavailableReason: "INVALID_RESPONSE",
+    atomicityReviewUnavailableReason: "SCHEMA_INVALID",
     canonicalMicroNodeCount: 0,
   };
   assert.doesNotThrow(() => assertSemanticReviewAvailabilityBeforePersistence(input));
@@ -146,7 +146,7 @@ function promotion(input: {
       states: ["REVIEW_REQUIRED"],
       missingCandidateIds: ["t1:n0"],
     }),
-    atomicityReviewUnavailableReason: "INVALID_RESPONSE",
+    atomicityReviewUnavailableReason: "SCHEMA_INVALID",
     canonicalMicroNodeCount: 0,
   });
   const serialized = JSON.stringify(diagnostics);
