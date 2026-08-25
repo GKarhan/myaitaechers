@@ -1,0 +1,359 @@
+READ-ONLY AUDIT — C2 CONTROLLED RETRY AFTER TASK #196
+
+STRICTLY READ ONLY.
+
+DO NOT:
+- edit code
+- edit DB
+- regenerate cognitive paths
+- click “Լրացնել բացակայող 2-ը”
+- restart services
+- call provider
+- modify Lesson 720 / nodes 2436, 2437, 2438
+- change C2 logic
+
+We just performed ONE controlled retry after Task #196
+(C2 generator → progression-validator safe decision trace).
+
+Lesson:
+720 — «Բնական թվերի համեմատումը»
+
+Existing nodes:
+2436 — «Բնական թվերի համեմատում և դասավորում»
+2437 — «Բնական թվերի համեմատում ըստ կարգերի»
+2438 — «Թվերի համեմատում՝ հավասարության դեպքում»
+
+Before retry:
+- MN1: no path, BLOCKED_PROGRESSION_REVIEW
+- MN2: no path, BLOCKED_PROGRESSION_REVIEW
+- MN3: remember path persisted, needs_review
+
+After clicking:
+«Լրացնել բացակայող 2-ը»
+
+UI now shows:
+
+Ճանաչողական ուղիների ամփոփում
+Սխալ: 1
+
+Ուշադրություն պահանջող հանգույցներ՝
+«Ճանաչողական ուղիներ · Սխալ»
+
+MN1 and MN2 still have no persisted cognitive-path rows.
+MN3 remains unchanged.
+
+GOAL
+
+Use the newly implemented Task #196 structured traces to determine
+EXACTLY what happened in this retry.
+
+Do not make any inference from old Job 194 if a newer job exists.
+
+==================================================
+1. IDENTIFY THE NEW EXACT C2 JOB
+==================================================
+
+Report:
+
+- job ID
+- lesson ID
+- start/end time
+- endpoint
+- status
+- submitted nodes
+- processed nodes
+- generated nodes
+- review-held nodes
+- failed/error nodes
+- skipped nodes
+
+Identify whether only MN1/MN2 were submitted, as expected from fill-missing behavior.
+
+==================================================
+2. REPORT EACH NODE FINAL STATE
+==================================================
+
+For MN1 and MN2 separately:
+
+- nodeId
+- final orchestrator state
+- final reason code
+- retryCount
+- persisted cognitive rows
+- firstBlockingGate
+- finalAttemptDecision
+- persistenceAllowed
+
+If one node produced the UI-level “Սխալ”, identify exactly which node.
+
+==================================================
+3. DUMP THE SAFE PER-ATTEMPT TRACE
+==================================================
+
+For EVERY attempt of MN1 and MN2, report all persisted safe fields from
+Task #196, including:
+
+- attemptNumber
+- C1 Bloom
+- resolvedTargetLevel
+- targetDemandConfidence
+- targetDemandReasonCodes
+- candidateLevelSequence
+- candidateLevelCount
+- candidateTargetLevel
+- retryTriggered
+- retryReasonCode
+- firstBlockingGate
+- progressionDecision
+- progressionConfidence
+- progressionReasonCodes
+- progressionReviewReasonCodes
+- persistenceAllowed
+- finalAttemptDecision
+
+Do not expose raw provider text.
+
+==================================================
+4. LEVEL-BY-LEVEL TRACE — MOST IMPORTANT
+==================================================
+
+For each generated candidate level in each attempt, report:
+
+- ordinal
+- declared level
+- expected level
+- objectiveDemandClassification
+- objectiveDemandConfidence
+- objectiveDemandReasonCodes
+- criterionDemandClassification
+- criterionDemandConfidence
+- criterionDemandReasonCodes
+- objectiveMatchesDeclaredLevel
+- criterionMatchesDeclaredLevel
+- semanticOverlapWithPrevious
+- semanticOverlapClassification
+- redundancyDecision
+- redundancyReasonCodes
+- levelDecision
+- levelReviewReasonCodes
+
+We specifically need to know:
+
+A. Which exact level caused LEVEL_OBJECTIVE_MISMATCH?
+B. Was the mismatch in the performance objective, success criterion, or both?
+C. Which exact level was REDUNDANT_LEVEL?
+D. Redundant with which prior level?
+E. What semantic classification caused the validator to decide that?
+
+==================================================
+5. MN1 — EXACT ROOT CAUSE
+==================================================
+
+MN1 target was previously:
+
+analyze
+
+Previous provider route:
+apply → analyze
+
+For this NEW retry, report:
+
+- target demand
+- candidate route for each attempt
+- exact problematic level(s)
+- exact validator evidence
+- whether retry improved/worsened/changed the route
+- final reason it did not persist
+
+Then answer:
+
+MN1 GENERATOR PROBLEM:
+YES / NO / NOT PROVEN
+
+MN1 VALIDATOR PROBLEM:
+YES / NO / NOT PROVEN
+
+==================================================
+6. MN2 — EXACT ROOT CAUSE
+==================================================
+
+MN2 target was previously:
+
+analyze
+
+Previous route:
+remember → understand → apply → analyze
+
+For this NEW retry, report the same evidence.
+
+Determine whether the provider again mechanically generated all lower Bloom levels,
+or whether the route changed after the controlled retry.
+
+Then answer:
+
+MN2 GENERATOR PROBLEM:
+YES / NO / NOT PROVEN
+
+MN2 VALIDATOR PROBLEM:
+YES / NO / NOT PROVEN
+
+==================================================
+7. EXPLAIN THE UI “ՍԽԱԼ: 1”
+==================================================
+
+Trace the exact backend state that the frontend converted into:
+
+«Սխալ: 1»
+
+Report:
+
+- backend state
+- backend reason code
+- affected node/job
+- whether this is provider failure, validation failure, persistence failure,
+  orchestration failure, or frontend aggregation behavior.
+
+We need to know if “Սխալ” is accurate or whether review-blocked is being
+presented too generically.
+
+Do not change UI.
+
+==================================================
+8. CHECK SUBJECT CONTEXT AGAIN
+==================================================
+
+Previous audit found Lesson 720 persisted as subject:
+
+«Ֆիզիկա»
+
+even though this is Mathematics 5.
+
+Check whether this controlled retry again sent:
+
+subjectName = «Ֆիզիկա»
+
+to the cognitive-path provider context.
+
+Report:
+
+YES / NO
+
+Do NOT fix it in this task.
+
+Also state whether the new diagnostic evidence proves or does not prove
+that this subject mismatch caused the route failure.
+
+==================================================
+9. FUNDAMENTAL ARCHITECTURE VERDICT
+==================================================
+
+Based ONLY on the new structured trace, classify the primary problem:
+
+A. PROVIDER ROUTE-CONSTRUCTION PROBLEM
+Provider is inventing unnecessary/mismatched levels.
+
+B. PROGRESSION VALIDATOR DEFECT
+Provider route is semantically reasonable but validator rejects it incorrectly.
+
+C. GENERATOR ↔ VALIDATOR CONTRACT MISMATCH
+Provider is asked to create a route whose structure is not constrained enough
+to satisfy deterministic validator rules.
+
+D. TARGET-DEMAND DEFECT
+
+E. TECHNICAL PROVIDER FAILURE
+
+F. PERSISTENCE/ORCHESTRATION DEFECT
+
+G. UI AGGREGATION DEFECT
+
+H. MIXED — state primary + secondary.
+
+This classification must be evidence-based.
+
+==================================================
+10. FUNDAMENTAL NEXT ARCHITECTURAL STEP
+==================================================
+
+Do NOT propose a lesson-specific or verb-specific patch.
+
+Evaluate whether the evidence now supports moving to the fundamental model:
+
+Canonical MicroNode
+→ deterministic target demand
+→ deterministic prerequisite competency analysis
+→ deterministic minimal route specification
+→ provider generates content FOR those required levels
+→ validator checks conformance
+→ persistence
+
+In other words:
+
+Does the backend need to become authoritative over the ROUTE STRUCTURE,
+with the provider generating objectives/criteria/interactions only inside
+that predetermined structure?
+
+Answer:
+
+DETERMINISTIC PROGRESSION PLANNER NOW JUSTIFIED:
+YES / NO / NOT ENOUGH EVIDENCE
+
+If YES:
+state exactly which current generator responsibility should move to the backend.
+
+Do NOT implement it yet.
+
+==================================================
+FINAL OUTPUT
+==================================================
+
+NEW C2 JOB:
+...
+
+MN1 FINAL STATE:
+...
+
+MN2 FINAL STATE:
+...
+
+UI ERROR SOURCE:
+...
+
+MN1 FIRST BLOCKING GATE:
+...
+
+MN2 FIRST BLOCKING GATE:
+...
+
+MN1 EXACT MISMATCH LEVEL:
+...
+
+MN2 EXACT MISMATCH LEVEL:
+...
+
+MN1 REDUNDANT LEVEL:
+...
+
+MN2 REDUNDANT LEVEL:
+...
+
+SUBJECT CONTEXT SENT AS PHYSICS:
+YES / NO
+
+PRIMARY ROOT CAUSE:
+...
+
+DETERMINISTIC PROGRESSION PLANNER NOW JUSTIFIED:
+YES / NO / NOT ENOUGH EVIDENCE
+
+SAFE TO CHANGE C2 ARCHITECTURE NOW:
+YES / NO
+
+If YES:
+state the exact shared contract that should change.
+
+If NO:
+state exactly what evidence is still missing.
+
+STOP.
+DO NOT IMPLEMENT.
