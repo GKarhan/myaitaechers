@@ -1,0 +1,428 @@
+IMPLEMENTATION TASK — MAPPING CORE
+M3-2 TECHNICAL AVAILABILITY / ZERO-MICRONODE PERSISTENCE SAFETY GATE
+
+Goal:
+Fix the systemic failure proven by the latest Lesson 717 forensic audit.
+
+This is NOT a Lesson 717-specific patch.
+
+The mapper successfully discovered viable pedagogical candidates, including
+the important curriculum targets, but a batch-level M3-2 technical/provider
+failure produced:
+
+- 22 candidate identities
+- 0 valid semantic decisions
+- atomicity review REQUEST_FAILED
+- 0 PROMOTE decisions
+- 22 review-only candidates
+- 0 canonical MicroNodes
+
+The run was nevertheless persisted as a completed mapping with zero
+canonical MicroNodes.
+
+That behavior must be fixed systemically.
+
+════════════════════════════════════════════════════
+0. FIRST TRACE THE CURRENT IMPLEMENTATION
+════════════════════════════════════════════════════
+
+Before editing anything, inspect the exact current code path for:
+
+Pass 2 candidate discovery
+→ M3-2 semantic decision generation/validation
+→ atomicity review
+→ candidate promotion
+→ M3-1 review candidate preservation
+→ source placement validation
+→ mapping persistence
+→ mapping job completion/result
+
+Identify:
+
+1. Where batch-level M3-2 provider availability/failure is represented.
+2. Where semanticDecisionDiagnostics are available.
+3. Where atomicity review technical failure is represented.
+4. Where promotion counts are known.
+5. Where canonical MicroNode count is known.
+6. The last safe point before the new mapping replaces/publishes the
+   canonical lesson mapping.
+7. How the existing mapping is preserved on pre-persistence failures.
+
+Do not modify code until this trace is complete.
+
+════════════════════════════════════════════════════
+1. REQUIRED SYSTEMIC INVARIANT
+════════════════════════════════════════════════════
+
+Add a deterministic server-side persistence safety gate.
+
+The mapper MUST NOT publish/replace a lesson's canonical mapping as a
+successful zero-MicroNode mapping when the zero-node result is caused by
+a batch-level M3-2 technical availability failure.
+
+Specifically, detect the condition where ALL of the following are true:
+
+A. The pipeline discovered one or more viable candidate MicroNodes.
+
+B. M3-2 semantic assessment suffered a batch-level technical/unavailable
+   condition, such as provider request failure / retry exhaustion /
+   equivalent technical unavailability.
+
+C. There are zero valid semantic decisions for the affected candidate
+   population, or the semantic decision layer is otherwise unavailable
+   at batch level.
+
+D. Promotion produces zero canonical MicroNodes / zero PROMOTE decisions.
+
+E. The result would otherwise replace or publish the canonical mapping
+   with zero MicroNodes.
+
+When this condition is true:
+
+DO NOT persist/publish the new zero-MicroNode canonical mapping.
+
+Fail closed before canonical replacement.
+
+════════════════════════════════════════════════════
+2. REQUIRED RESULT
+════════════════════════════════════════════════════
+
+The run must become a clearly distinguishable technical review/retry state.
+
+Use the existing mapping-job failure/review architecture if possible.
+
+Prefer a specific machine-readable reason such as:
+
+M3_SEMANTIC_REVIEW_UNAVAILABLE_PRE_PERSISTENCE
+
+or another precise existing naming convention.
+
+The exact name may follow the repository's conventions, but it MUST be
+distinguishable from:
+
+- source placement failure
+- semantic candidate rejection
+- ordinary REVIEW_REQUIRED
+- content/source insufficiency
+- user validation failure
+
+This is a TECHNICAL AVAILABILITY failure.
+
+The user-facing meaning should be equivalent to:
+
+"Քարտեզագրման իմաստային ստուգումը տեխնիկական պատճառով չի ավարտվել։
+Նախորդ քարտեզը պահպանվել է։ Խնդրում ենք կրկին փորձել։"
+
+Do not describe viable candidates as pedagogically invalid merely because
+the provider was unavailable.
+
+════════════════════════════════════════════════════
+3. PRESERVE M3-1 REVIEW ARTIFACTS
+════════════════════════════════════════════════════
+
+Even though canonical replacement must be blocked, preserve the safe
+diagnostic/review information already produced by M3-1.
+
+The failed/review-blocked job result must retain, where already available:
+
+- candidate identities
+- candidate titles
+- learning objectives
+- topic references
+- safe source block references
+- safe exercise references
+- semantic decision diagnostics
+- atomicity availability diagnostics
+- promotion decisions/reason codes
+- reviewCandidates
+- candidateIdentity diagnostics
+- reviewCandidateSummary
+- source verification diagnostics
+- source placement diagnostics where available
+
+Do NOT persist raw provider output or unsafe raw source text merely for
+debugging.
+
+Do NOT turn reviewCandidates into canonical MicroNodes.
+
+════════════════════════════════════════════════════
+4. PRESERVE THE PREVIOUS CANONICAL MAP
+════════════════════════════════════════════════════
+
+This is critical.
+
+If the new run hits the new technical safety gate:
+
+- existing canonical topics/MicroNodes/exercises must NOT be replaced by
+  the failed zero-node result;
+- existing saved lesson mapping must remain intact;
+- the failed run's diagnostics must remain inspectable separately.
+
+Follow the same atomic/fail-before-persistence principle already used by
+source-placement validation.
+
+Do not partially persist the new canonical mapping and then attempt to
+restore the old one afterward.
+
+The gate must occur BEFORE destructive canonical replacement.
+
+════════════════════════════════════════════════════
+5. DO NOT WEAKEN M3-2
+════════════════════════════════════════════════════
+
+ABSOLUTELY DO NOT solve this by promoting candidates without semantic
+validation.
+
+Do NOT:
+
+- auto-PROMOTE because source support is DIRECT;
+- auto-PROMOTE because exercises exist;
+- auto-PROMOTE because a candidate title looks valid;
+- treat MISSING_DECISION as a positive semantic decision;
+- bypass atomicity uncertainty;
+- bypass duplicate uncertainty;
+- downgrade M3-2 fail-closed rules;
+- add heuristic promotion fallback.
+
+The correct behavior is:
+
+provider technically unavailable
+→ canonical promotion remains fail-closed
+→ canonical replacement also becomes fail-closed.
+
+Two safety gates, not one weakened gate.
+
+════════════════════════════════════════════════════
+6. DISTINGUISH TECHNICAL FAILURE FROM LEGITIMATE ZERO-NODE RESULTS
+════════════════════════════════════════════════════
+
+Do NOT create a simplistic rule:
+
+canonicalMicroNodes.length === 0 → fail
+
+That would be wrong.
+
+A legitimate mapping may theoretically produce zero promotable candidates
+because the material genuinely contains no valid instructional knowledge
+units.
+
+The new gate must depend on PROVEN TECHNICAL M3-2 UNAVAILABILITY combined
+with discovered viable candidate population and zero valid decisions /
+zero promotions.
+
+Examples:
+
+CASE A
+Candidates = 10
+M3-2 decisions = 10 valid
+All semantically REJECT/SUPPORT_ONLY
+Promotions = 0
+
+→ Do NOT classify as technical outage merely because nodes = 0.
+
+CASE B
+Candidates = 10
+M3-2 provider unavailable
+Valid decisions = 0
+Promotions = 0
+
+→ BLOCK canonical persistence.
+
+CASE C
+Candidates = 10
+Some valid decisions exist
+Some candidates fail technical review
+3 candidates safely PROMOTE
+
+→ Do not trigger the batch-wide zero-node gate.
+Normal existing behavior applies.
+
+CASE D
+Candidates = 0
+No instructional candidate population discovered
+
+→ Do not classify as M3-2 provider outage solely from zero nodes.
+Existing mapping completeness/review rules apply.
+
+════════════════════════════════════════════════════
+7. ATOMICITY FAILURE SIGNAL
+════════════════════════════════════════════════════
+
+The Lesson 717 forensic run also showed:
+
+- atomicity attempts = 2
+- provider responses = 0
+- REQUEST_FAILED
+- TECHNICAL_RETRY_EXHAUSTED
+
+Use this as supporting technical evidence where appropriate.
+
+However, do not hard-code Lesson 717's exact numbers.
+
+The systemic gate should work for equivalent provider/review availability
+failures across subjects, grades, languages, and lesson sizes.
+
+════════════════════════════════════════════════════
+8. FAILED-JOB / REVIEW-BLOCKED OBSERVABILITY
+════════════════════════════════════════════════════
+
+The job polling/report path must expose enough machine-readable diagnostics
+to answer:
+
+- candidateCount
+- validSemanticDecisionCount
+- missingSemanticDecisionCount
+- semanticReviewAvailability
+- atomicityReviewAvailability
+- promotionCount
+- canonicalMicroNodeCount
+- technicalBlockReason
+- existingMappingPreserved
+
+Reuse existing result/mappingReport JSON structures where possible.
+
+Do NOT add a database migration unless the current JSON persistence
+architecture genuinely cannot represent this.
+
+If no migration is needed, explicitly state that in completion evidence.
+
+════════════════════════════════════════════════════
+9. PROVIDER-FREE REGRESSION TESTS
+════════════════════════════════════════════════════
+
+Add deterministic tests covering at minimum:
+
+T1 — batch semantic outage + viable candidates + zero decisions + zero
+     promotions
+     → persistence BLOCKED.
+
+T2 — same as T1 with an existing canonical lesson map
+     → previous map remains unchanged.
+
+T3 — valid semantic decisions all legitimately reject candidates
+     → NOT classified as technical outage.
+
+T4 — partial semantic availability + at least one safe promotion
+     → normal persistence behavior remains unchanged.
+
+T5 — zero discovered candidates
+     → not automatically classified as M3-2 outage.
+
+T6 — semantic decisions missing because of explicit technical
+     REQUEST_FAILED / retry exhaustion
+     → technical safety gate triggers.
+
+T7 — reviewCandidates remain available in failed/review-blocked job
+     diagnostics.
+
+T8 — source/exercise references in review artifacts remain safe and
+     unchanged.
+
+T9 — source placement validation behavior remains unchanged.
+
+T10 — additionalExercises activity-only safety behavior remains unchanged.
+
+T11 — M3-2 promotion still refuses candidates with missing semantic
+      decisions.
+
+T12 — no heuristic/direct-source/exercise-based fallback can promote a
+      candidate during provider outage.
+
+T13 — successful normal mapping with valid decisions still persists.
+
+T14 — technical gate occurs before destructive canonical replacement.
+
+Tests MUST NOT call a live provider.
+
+════════════════════════════════════════════════════
+10. NON-REGRESSION BOUNDARIES
+════════════════════════════════════════════════════
+
+Do NOT change:
+
+- candidate discovery semantics
+- M3-1 candidate identity rules
+- M3-1 review artifact semantics
+- M3-2 semantic decision definitions
+- M3-2 split/merge rules
+- promotion policy
+- source verification
+- source ownership
+- source placement validator
+- additionalExercises safety rules
+- activity ownership reconciliation
+- exercise extraction
+- C1
+- C2 / Cognitive Paths
+- AI Teacher
+- quizzes
+- Knowledge Tree
+- learner delivery
+
+No additional provider calls.
+
+No Lesson 717-specific logic.
+
+No textbook-specific keyword rules.
+
+════════════════════════════════════════════════════
+11. VERIFICATION
+════════════════════════════════════════════════════
+
+After implementation run:
+
+1. API TypeScript typecheck.
+2. New M3 technical availability regression suite.
+3. Existing M3-1 candidate preservation tests.
+4. Existing M3-2 semantic contract tests.
+5. Candidate promotion integration tests.
+6. Mapping completeness tests.
+7. Source placement tests.
+8. additionalExercises/activity ownership tests.
+9. Atomicity tests.
+10. Coverage validator tests.
+11. At least one existing C2 regression suite to prove no coupling.
+
+Fix any regression before completion.
+
+Then perform an independent architecture review focused on:
+
+- gate location before destructive persistence;
+- correct distinction between technical outage and semantic rejection;
+- preservation of previous canonical mapping;
+- preservation of M3-1 review diagnostics;
+- no M3-2 gate weakening;
+- no source ownership regression;
+- no C2 coupling.
+
+Only after review passes:
+
+- restart ONLY the API service;
+- verify clean startup logs;
+- DO NOT remap Lesson 717;
+- DO NOT regenerate Cognitive Paths.
+
+════════════════════════════════════════════════════
+12. COMPLETION REPORT
+════════════════════════════════════════════════════
+
+Report:
+
+A. exact files changed
+B. exact new gate/invariant
+C. exact technical condition that blocks persistence
+D. where the gate executes relative to canonical replacement
+E. job status/failure/review reason used
+F. diagnostics persisted
+G. confirmation previous mapping is preserved
+H. regression tests and counts
+I. TypeScript result
+J. independent review result
+K. API restart/startup result
+L. confirmation no Lesson 717 remap occurred
+M. confirmation no C2 changes occurred
+N. whether DB migration was required
+
+Finally answer exactly:
+
+SAFE TO RUN ONE CONTROLLED LESSON 717 REMAP: YES / NO
