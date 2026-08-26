@@ -11,6 +11,8 @@ import {
   db,
   lessonsTable,
   lessonNodesTable,
+  lessonTopicsTable,
+  lessonSourceMaterialsTable,
   lessonNodeCognitiveLevelsTable,
   lessonNodeTeachingPackageItemsTable,
   lessonExercisesTable,
@@ -130,8 +132,17 @@ const [dynLesson] = await db.insert(lessonsTable).values({
 
 const LESSON_ID = dynLesson.id;
 const BASE_MAPPING_METADATA = dynLesson.mappingMetadata;
+const [dynTopic] = await db.insert(lessonTopicsTable).values({
+  lessonId: LESSON_ID,
+  title: runTag(RUN_ID, "approval_topic"),
+  sequence: 1,
+}).returning({ id: lessonTopicsTable.id });
+const TOPIC_ID = dynTopic.id;
+const UNRESOLVED_INSTRUCTIONAL_INDICES = [5, 9, 10, 11];
 
 async function resetFinalReadinessFixture(): Promise<void> {
+  await db.delete(lessonSourceMaterialsTable)
+    .where(eq(lessonSourceMaterialsTable.lessonId, LESSON_ID));
   await db.delete(lessonOutcomeNodeAlignmentsTable)
     .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, LESSON_ID));
   await db.delete(lessonOutcomesTable)
@@ -144,10 +155,55 @@ async function resetFinalReadinessFixture(): Promise<void> {
   } as never).where(eq(lessonsTable.id, LESSON_ID));
 }
 
+async function setUnresolvedInstructionalOwnershipFixture({
+  verificationStatus = "VERIFIED_READABLE",
+  sourceScopeValid = true,
+}: {
+  verificationStatus?: "VERIFIED_READABLE" | "VERIFIED_UNREADABLE";
+  sourceScopeValid?: boolean;
+} = {}): Promise<void> {
+  await db.delete(lessonSourceMaterialsTable)
+    .where(eq(lessonSourceMaterialsTable.lessonId, LESSON_ID));
+  await db.insert(lessonSourceMaterialsTable).values(
+    UNRESOLVED_INSTRUCTIONAL_INDICES.map((sourceBlockIndex, index) => ({
+      lessonId: LESSON_ID,
+      sourceResourceId: null,
+      stableSourceKey: `final-approval-${RUN_ID}-${sourceBlockIndex}`,
+      sourceBlockIndex,
+      blockType: index === 0 ? "NOTE" : "EXAMPLE",
+      sourceText: `Verified instructional source ${sourceBlockIndex}`,
+      physicalPage: 67,
+      verificationStatus,
+      primaryDisposition: "UNRESOLVED_INSTRUCTIONAL_REVIEW",
+      dispositionReasonCodes: ["INSTRUCTIONAL_BLOCK_NOT_MICRONODE_OWNED"],
+      provenanceMetadata: { testFixture: true },
+    })),
+  );
+  await db.update(lessonsTable).set({
+    status: "needs_review",
+    everApproved: false,
+    mappingMetadata: {
+      ...((BASE_MAPPING_METADATA ?? {}) as Record<string, unknown>),
+      quality: {
+        sourceAudit: {
+          sourceSet: { titleMatch: { valid: true } },
+          sourceScope: { valid: sourceScopeValid },
+        },
+        coverageValidation: { valid: true },
+        instructionalCoverage: {
+          valid: false,
+          unresolvedInstructionalIndices: UNRESOLVED_INSTRUCTIONAL_INDICES,
+        },
+      },
+    },
+  } as never).where(eq(lessonsTable.id, LESSON_ID));
+}
+
 // Create 2 approved nodes with all required Phase 2 fields
 const insertedNodes = await db.insert(lessonNodesTable).values([
   {
     lessonId: LESSON_ID,
+    topicId: TOPIC_ID,
     sequence: 1,
     title: runTag(RUN_ID, "node_1"),
     status: "approved",
@@ -161,6 +217,7 @@ const insertedNodes = await db.insert(lessonNodesTable).values([
   },
   {
     lessonId: LESSON_ID,
+    topicId: TOPIC_ID,
     sequence: 2,
     title: runTag(RUN_ID, "node_2"),
     status: "approved",
@@ -540,6 +597,128 @@ it("G7: Teaching Package creation invalidates an active override-approved lesson
   }
 });
 
+it("Q1: verified-readable unresolved instructional ownership requires explicit confirmation", async () => {
+  try {
+    await setUnresolvedInstructionalOwnershipFixture();
+    const result = await validateLessonForFinalApproval(LESSON_ID);
+    const ownershipIssue = result.overrideable.find(
+      (issue) => issue.code === "UNRESOLVED_INSTRUCTIONAL_SOURCE",
+    );
+    assert.equal(result.readiness, "CONFIRMATION_REQUIRED");
+    assert.equal(
+      result.errors.some((issue) => issue.code === "UNRESOLVED_INSTRUCTIONAL_SOURCE"),
+      false,
+    );
+    assert.equal(ownershipIssue?.count, 4);
+    assert.equal(
+      ownershipIssue?.messageArm,
+      "Ընթեռնելի ուսումնական աղբյուրից 4 հատված MicroNode-ի պատասխանատու չունի։",
+    );
+
+    const readinessResponse = await fetch(`${BASE}/lessons/${LESSON_ID}/final-approval-readiness`, {
+      headers: { Authorization: `Bearer ${BEARER}` },
+    });
+    assert.equal(readinessResponse.status, 200);
+    const readinessBody = await readinessResponse.json() as Record<string, unknown>;
+    assert.equal(readinessBody.readiness, "CONFIRMATION_REQUIRED");
+    assert.equal(readinessBody.confirmationRequired, true);
+  } finally {
+    await resetFinalReadinessFixture();
+  }
+});
+
+it("Q2: unresolved instructional ownership cannot approve or activate until confirmed", async () => {
+  try {
+    await setUnresolvedInstructionalOwnershipFixture();
+    const first = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
+    assert.equal(first.status, 409);
+    assert.equal(first.body.approved, false);
+    assert.equal(first.body.readiness, "CONFIRMATION_REQUIRED");
+    assert.equal(first.body.confirmationRequired, true);
+    const [unchanged] = await db.select({ status: lessonsTable.status })
+      .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    assert.equal(unchanged?.status, "needs_review");
+
+    const activationBeforeConfirmation = await fetch(`${BASE}/teacher/lessons/${LESSON_ID}/status`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
+    });
+    assert.equal(activationBeforeConfirmation.status, 400);
+
+    const accepted = await apiPostJson(
+      `/lessons/${LESSON_ID}/final-approve`,
+      { confirmReviewIssues: true },
+    );
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.approved, true);
+    const [approved] = await db.select({
+      status: lessonsTable.status,
+      mappingMetadata: lessonsTable.mappingMetadata,
+    }).from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    assert.equal(approved?.status, "approved");
+    const approvalAudit = (approved?.mappingMetadata as any)?.finalApproval;
+    assert.equal(approvalAudit?.confirmedBy, TEST_TEACHER_ID);
+    assert.ok(approvalAudit?.confirmedAt);
+    assert.deepEqual(
+      approvalAudit?.acceptedIssueCodes,
+      ["UNRESOLVED_INSTRUCTIONAL_SOURCE"],
+    );
+
+    const activationAfterConfirmation = await fetch(`${BASE}/teacher/lessons/${LESSON_ID}/status`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
+    });
+    assert.equal(activationAfterConfirmation.status, 200);
+    const [active] = await db.select({ status: lessonsTable.status })
+      .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    assert.equal(active?.status, "active");
+  } finally {
+    await resetFinalReadinessFixture();
+  }
+});
+
+it("Q3: unreadable or unverified instructional ownership remains non-overridable", async () => {
+  try {
+    await setUnresolvedInstructionalOwnershipFixture();
+    await db.insert(lessonSourceMaterialsTable).values({
+      lessonId: LESSON_ID,
+      sourceResourceId: null,
+      stableSourceKey: `final-approval-${RUN_ID}-5-duplicate-unreadable`,
+      sourceBlockIndex: 5,
+      blockType: "NOTE",
+      sourceText: "Unreadable duplicate source record",
+      physicalPage: 67,
+      verificationStatus: "VERIFIED_UNREADABLE",
+      primaryDisposition: "UNRESOLVED_VISUAL_OR_FORMULA",
+      dispositionReasonCodes: ["UNREADABLE_SOURCE"],
+      provenanceMetadata: { testFixture: true },
+    });
+    let result = await validateLessonForFinalApproval(LESSON_ID);
+    assert.equal(result.readiness, "BLOCKED");
+    assert.ok(result.errors.some((issue) => issue.code === "UNRESOLVED_INSTRUCTIONAL_SOURCE"));
+    let response = await apiPostJson(
+      `/lessons/${LESSON_ID}/final-approve`,
+      { confirmReviewIssues: true },
+    );
+    assert.equal(response.status, 422);
+
+    await setUnresolvedInstructionalOwnershipFixture({ sourceScopeValid: false });
+    result = await validateLessonForFinalApproval(LESSON_ID);
+    assert.equal(result.readiness, "BLOCKED");
+    assert.ok(result.errors.some((issue) => issue.code === "UNVERIFIED_LESSON_SOURCE_SCOPE"));
+    assert.ok(result.overrideable.some((issue) => issue.code === "UNRESOLVED_INSTRUCTIONAL_SOURCE") === false);
+    response = await apiPostJson(
+      `/lessons/${LESSON_ID}/final-approve`,
+      { confirmReviewIssues: true },
+    );
+    assert.equal(response.status, 422);
+  } finally {
+    await resetFinalReadinessFixture();
+  }
+});
+
 it("R1: stale automatic Outcome-review metadata is review-only, not a final-approval blocker", async () => {
   try {
     const [outcome] = await db.insert(lessonOutcomesTable).values({
@@ -576,13 +755,13 @@ it("R1: stale automatic Outcome-review metadata is review-only, not a final-appr
     const result = await validateLessonForFinalApproval(LESSON_ID);
     assert.equal(result.errors.some((issue) => issue.code === "AUTOMATIC_OUTCOME_ALIGNMENT_REVIEW_REQUIRED"), false);
     assert.equal(result.warnings.some((issue) => issue.code === "AUTOMATIC_OUTCOME_ALIGNMENT_REVIEW_REQUIRED"), true);
-    assert.equal(result.readiness, "REVIEW_REQUIRED");
+    assert.equal(result.readiness, "CONFIRMATION_REQUIRED");
   } finally {
     await resetFinalReadinessFixture();
   }
 });
 
-it("R2/R10: one bounded repair promotes one valid persisted SUPPORTING relation", async () => {
+it("R2/R10: preflight is read-only and confirmed approval may perform one bounded repair", async () => {
   try {
     const [outcome] = await db.insert(lessonOutcomesTable).values({
       lessonId: LESSON_ID,
@@ -601,10 +780,52 @@ it("R2/R10: one bounded repair promotes one valid persisted SUPPORTING relation"
     await db.update(lessonsTable).set({ goalOutcomeReviewStatus: "confirmed" } as never)
       .where(eq(lessonsTable.id, LESSON_ID));
 
+    await db.update(lessonsTable).set({
+      mappingMetadata: {
+        ...((BASE_MAPPING_METADATA ?? {}) as Record<string, unknown>),
+        quality: {
+          sourceAudit: {
+            sourceSet: { titleMatch: { valid: true } },
+            sourceScope: { valid: false },
+          },
+        },
+      },
+    } as never).where(eq(lessonsTable.id, LESSON_ID));
+    const blockedConfirmation = await apiPostJson(
+      `/lessons/${LESSON_ID}/final-approve`,
+      { confirmReviewIssues: true },
+    );
+    assert.equal(blockedConfirmation.status, 422);
+    assert.deepEqual(blockedConfirmation.body.repairedAlignmentIds, []);
+    const [stillSupportingAfterBlockedConfirmation] = await db.select({
+      role: lessonOutcomeNodeAlignmentsTable.role,
+    }).from(lessonOutcomeNodeAlignmentsTable)
+      .where(eq(lessonOutcomeNodeAlignmentsTable.id, supporting.id));
+    assert.equal(
+      stillSupportingAfterBlockedConfirmation?.role,
+      "SUPPORTING",
+      "a hard-blocked confirmation must not mutate canonical alignments",
+    );
+    await db.update(lessonsTable).set({
+      mappingMetadata: BASE_MAPPING_METADATA,
+    }).where(eq(lessonsTable.id, LESSON_ID));
+
     const first = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
-    assert.equal(first.status, 200);
-    assert.equal(first.body.approved, true);
-    assert.deepEqual(first.body.repairedAlignmentIds, [supporting.id]);
+    assert.equal(first.status, 409);
+    assert.equal(first.body.confirmationRequired, true);
+    assert.deepEqual(first.body.repairedAlignmentIds, []);
+    const [unchanged] = await db.select({ role: lessonOutcomeNodeAlignmentsTable.role })
+      .from(lessonOutcomeNodeAlignmentsTable)
+      .where(eq(lessonOutcomeNodeAlignmentsTable.id, supporting.id));
+    assert.equal(unchanged?.role, "SUPPORTING", "unconfirmed preflight must not mutate canonical alignments");
+
+    const confirmed = await apiPostJson(
+      `/lessons/${LESSON_ID}/final-approve`,
+      { confirmReviewIssues: true },
+    );
+    assert.equal(confirmed.status, 200);
+    assert.equal(confirmed.body.approved, true);
+    assert.deepEqual(confirmed.body.repairedAlignmentIds, [supporting.id]);
     const [promoted] = await db.select({ role: lessonOutcomeNodeAlignmentsTable.role })
       .from(lessonOutcomeNodeAlignmentsTable)
       .where(eq(lessonOutcomeNodeAlignmentsTable.id, supporting.id));
@@ -675,7 +896,7 @@ it("R4: review-only readiness requires one explicit assignment acceptance", asyn
     const response = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
     assert.equal(response.status, 409);
     assert.equal(response.body.confirmationRequired, true);
-    assert.equal(response.body.readiness, "REVIEW_REQUIRED");
+    assert.equal(response.body.readiness, "CONFIRMATION_REQUIRED");
     const accepted = await apiPostJson(`/lessons/${LESSON_ID}/final-approve`, { confirmReviewIssues: true });
     assert.equal(accepted.status, 200);
     assert.equal(accepted.body.approved, true);

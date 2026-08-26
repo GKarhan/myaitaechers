@@ -15,6 +15,7 @@ import {
   lessonOutcomesTable,
   lessonOutcomeNodeAlignmentsTable,
   lessonNodeCognitiveLevelsTable,
+  lessonSourceMaterialsTable,
 } from "@workspace/db";
 import { eq, asc, inArray } from "drizzle-orm";
 import { detectCompoundLO, detectMegaNode } from "./granularity-heuristics.js";
@@ -31,7 +32,7 @@ export interface ValidationIssue {
 
 export interface LessonValidationResult {
   /** Canonical readiness classification for the current persisted lesson state. */
-  readiness: "READY" | "REVIEW_REQUIRED" | "BLOCKED";
+  readiness: "READY" | "CONFIRMATION_REQUIRED" | "BLOCKED";
   errors: ValidationIssue[];
   /** Issues that are safe only when the teacher explicitly accepts the tradeoff. */
   overrideable: ValidationIssue[];
@@ -138,7 +139,7 @@ export async function validateLessonForFinalApproval(
     .from(lessonExercisesTable)
     .where(eq(lessonExercisesTable.lessonId, lessonId));
 
-  const [canonicalOutcomes, outcomeAlignments] = await Promise.all([
+  const [canonicalOutcomes, outcomeAlignments, sourceMaterials] = await Promise.all([
     db.select({ id: lessonOutcomesTable.id })
       .from(lessonOutcomesTable)
       .where(eq(lessonOutcomesTable.lessonId, lessonId)),
@@ -148,6 +149,11 @@ export async function validateLessonForFinalApproval(
       role: lessonOutcomeNodeAlignmentsTable.role,
     }).from(lessonOutcomeNodeAlignmentsTable)
       .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, lessonId)),
+    db.select({
+      sourceBlockIndex: lessonSourceMaterialsTable.sourceBlockIndex,
+      verificationStatus: lessonSourceMaterialsTable.verificationStatus,
+    }).from(lessonSourceMaterialsTable)
+      .where(eq(lessonSourceMaterialsTable.lessonId, lessonId)),
   ]);
 
   // Final approval is the teacher's one explicit acceptance action. Current
@@ -178,14 +184,45 @@ export async function validateLessonForFinalApproval(
     });
   }
   if (instructionalCoverage && instructionalCoverage.valid !== true) {
-    const unresolved = Array.isArray(instructionalCoverage.unresolvedInstructionalIndices)
-      ? instructionalCoverage.unresolvedInstructionalIndices.length
-      : 0;
-    errors.push({
+    const unresolvedIndices: number[] = Array.isArray(instructionalCoverage.unresolvedInstructionalIndices)
+      ? [...new Set<number>((instructionalCoverage.unresolvedInstructionalIndices as unknown[]).filter(
+        (index: unknown): index is number => typeof index === "number" && Number.isInteger(index) && index >= 0,
+      ))]
+      : [];
+    const sourceMaterialsByIndex = new Map<number, string[]>();
+    for (const material of sourceMaterials) {
+      const statuses = sourceMaterialsByIndex.get(material.sourceBlockIndex) ?? [];
+      statuses.push(material.verificationStatus);
+      sourceMaterialsByIndex.set(material.sourceBlockIndex, statuses);
+    }
+    const canonicalStructureExists = topics.length > 0
+      && findSequenceErrors(topics.map((topic) => topic.sequence)) === null
+      && findSequenceErrors(nodes.map((node) => node.sequence)) === null;
+    const hasUsableMicroNode = nodes.some((node) =>
+      isLOValid(node.learningObjective) && isNodeContentPresent(node),
+    );
+    const unresolvedOwnershipIsVerifiedReadable = unresolvedIndices.length > 0
+      && unresolvedIndices.every((blockIndex) => {
+        const statuses = sourceMaterialsByIndex.get(blockIndex) ?? [];
+        return statuses.length > 0
+          && statuses.every((status) => status === "VERIFIED_READABLE");
+      });
+    const issue: ValidationIssue = {
       code: "UNRESOLVED_INSTRUCTIONAL_SOURCE",
-      messageArm: `Ընթեռնելի ուսումնական աղբյուրից ${unresolved} հատված MicroNode-ի պատասխանատու չունի։`,
-      count: unresolved,
-    });
+      messageArm: `Ընթեռնելի ուսումնական աղբյուրից ${unresolvedIndices.length} հատված MicroNode-ի պատասխանատու չունի։`,
+      count: unresolvedIndices.length,
+    };
+    if (
+      sourceScope?.valid === true
+      && sourceSet?.titleMatch?.valid === true
+      && canonicalStructureExists
+      && hasUsableMicroNode
+      && unresolvedOwnershipIsVerifiedReadable
+    ) {
+      overrideable.push(issue);
+    } else {
+      errors.push(issue);
+    }
   }
   if (Array.isArray(sourceAlignment?.nodes)) {
     const currentNodeIds = new Set(nodes.map((node) => node.id));
@@ -452,7 +489,7 @@ export async function validateLessonForFinalApproval(
     readiness: errors.length > 0
       ? "BLOCKED"
       : overrideable.length > 0 || warnings.length > 0
-        ? "REVIEW_REQUIRED"
+        ? "CONFIRMATION_REQUIRED"
         : "READY",
     errors,
     overrideable,

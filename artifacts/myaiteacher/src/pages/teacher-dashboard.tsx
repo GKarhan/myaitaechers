@@ -149,6 +149,7 @@ interface LessonJobStatus {
   error:    string | null;
   result?:  {
     coverageValid?: boolean;
+    assignmentReadiness?: "READY" | "CONFIRMATION_REQUIRED" | "BLOCKED";
     readyMicroNodes?: number;
     reviewRequiredMicroNodes?: number;
     unmappedReviewBlocks?: number;
@@ -311,12 +312,14 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
       qc.invalidateQueries({ queryKey: ['lesson-topics', lessonId] });
       qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
       const reviewCount = mapStatus.result?.reviewRequiredMicroNodes ?? 0;
-      const readyCount = mapStatus.result?.readyMicroNodes ?? 0;
       const sourceBlockReviewCount = mapStatus.result?.unmappedReviewBlocks ?? 0;
+      const assignmentReadiness = mapStatus.result?.assignmentReadiness;
       setMapSummary(
-        reviewCount > 0 || sourceBlockReviewCount > 0
-          ? `Քարտեզագրումը ստեղծվել է։ ${readyCount} հանգույց պատրաստ է, ${reviewCount} հանգույց և ${sourceBlockReviewCount} աղբյուրային բլոկ խորհուրդ է տրվում վերանայել։`
-          : null,
+        assignmentReadiness === "BLOCKED"
+          ? "Քարտեզագրումն ավարտվել է, բայց հանձնարարումը հնարավոր չէ մինչև կառուցվածքային կամ աղբյուրային խնդիրների լուծումը։"
+          : assignmentReadiness === "CONFIRMATION_REQUIRED"
+            ? `Քարտեզագրումն ավարտվել է։ Կան խնդիրներ, բայց կարող եք հաստատել և հանձնարարել։ Վերանայման ենթակա է ${reviewCount} MicroNode և ${sourceBlockReviewCount} աղբյուրային հատված։`
+            : "Քարտեզագրումն ավարտվել է։ Դասը պատրաստ է հանձնարարելու։",
       );
     } else if (mapStatus.status === 'coverage_failed') {
       // P3.1: mapping ran to completion but source coverage validation failed.
@@ -3197,8 +3200,19 @@ function LessonNodesPanel({
   );
 }
 type AssignmentReviewIssue = {
+  code?: string;
   messageArm?: string;
   message?: string;
+  count?: number;
+};
+
+type AssignmentReadiness = "READY" | "CONFIRMATION_REQUIRED" | "BLOCKED";
+
+type AssignmentReadinessResponse = {
+  readiness: AssignmentReadiness;
+  confirmationRequired: boolean;
+  reviewIssues: AssignmentReviewIssue[];
+  errors: AssignmentReviewIssue[];
 };
 
 function LessonAssignmentAction({
@@ -3215,9 +3229,25 @@ function LessonAssignmentAction({
   const [pending, setPending] = useState(false);
   const [reviewIssues, setReviewIssues] = useState<AssignmentReviewIssue[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const readinessQuery = useQuery<AssignmentReadinessResponse>({
+    queryKey: ["lesson-final-approval-readiness", lessonId],
+    queryFn: async () => {
+      const response = await fetch(`/api/lessons/${lessonId}/final-approval-readiness`, {
+        headers: { Authorization: `Bearer ${token ?? ""}` },
+      });
+      if (!response.ok) throw new Error("Չհաջողվեց ստուգել հանձնարարելու պատրաստ լինելը։");
+      return response.json();
+    },
+    enabled: !!token && authoringStatus !== "approved",
+    staleTime: 0,
+  });
+  const readiness = readinessQuery.data?.readiness;
 
   const refreshLessons = async () => {
-    await queryClient.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) }),
+      queryClient.invalidateQueries({ queryKey: ["lesson-final-approval-readiness", lessonId] }),
+    ]);
   };
 
   const activateLesson = async () => {
@@ -3277,6 +3307,21 @@ function LessonAssignmentAction({
   return (
     <>
       <div className="flex flex-col items-end gap-1">
+        {readiness && (
+          <p className={`max-w-72 text-right text-[10px] leading-snug ${
+            readiness === "READY"
+              ? "text-teal-300"
+              : readiness === "CONFIRMATION_REQUIRED"
+                ? "text-amber-300"
+                : "text-destructive"
+          }`}>
+            {readiness === "READY"
+              ? "Պատրաստ է հանձնարարելու"
+              : readiness === "CONFIRMATION_REQUIRED"
+                ? "Կան խնդիրներ, բայց կարող եք հաստատել և հանձնարարել"
+                : "Հանձնարարումը հնարավոր չէ մինչև այս խնդիրների լուծումը"}
+          </p>
+        )}
         <button
           onClick={() => { void runAssignmentPreflight(); }}
           disabled={pending}

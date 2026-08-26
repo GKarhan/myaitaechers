@@ -16,6 +16,7 @@ import { getDueReviewTopics } from "../services/review-schedule";
 import { refreshSequentialDependencies } from "../lib/sequential-deps.js";
 import { validateKnowledgeBaseLesson } from "../lib/kb-validator.js";
 import { validateLessonForFinalApproval } from "../lib/lesson-final-approval.js";
+import { classifyMappingAssignmentReadiness } from "../lib/lesson-mapping-readiness.js";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 import { normalizeSourceExerciseAnswerContract } from "../lib/source-exercise-answer.js";
 import { validateRequiredLessonPageRange } from "../lib/lesson-page-range.js";
@@ -4284,6 +4285,19 @@ router.get("/lessons/:lessonId/topics", requireAuth, requireLessonAuthor, async 
 // POST /lessons/:lessonId/final-approve — authoritative assignment preflight.
 // Teachers may explicitly accept safe review findings in one delivery decision;
 // data-integrity and learner-safety errors remain hard blockers.
+router.get("/lessons/:lessonId/final-approval-readiness", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const result = await validateLessonForFinalApproval(lessonId);
+  res.json({
+    lessonId,
+    ...result,
+    reviewIssues: [...result.overrideable, ...result.warnings],
+    confirmationRequired: result.readiness === "CONFIRMATION_REQUIRED",
+  });
+});
+
 router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
@@ -4295,12 +4309,21 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
   const confirmReviewIssues = req.body?.confirmReviewIssues === true;
   // Compatibility for callers of the prior narrow Teaching Content override.
   const confirmMissingTeachingContent = req.body?.confirmMissingTeachingContent === true;
-  const repairedAlignmentIds = await db.transaction(async (tx) => {
+  // Preflight must remain read-only. The bounded normalization is permitted only
+  // after the teacher explicitly confirms the review findings and a locked
+  // validation proves there are no hard blockers.
+  let repairedAlignmentIds: number[] = [];
+  if (confirmReviewIssues || confirmMissingTeachingContent) {
+    const preRepair = await db.transaction(async (tx) => {
     // Serialize final approval per lesson. Authoring writes persist their
     // material change first and then use the same parent row when invalidating,
     // which avoids child-to-parent lock inversions while still ensuring any
     // concurrent change returns a non-sticky override to review.
     await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
+    const validation = await validateLessonForFinalApproval(lessonId);
+    if (validation.errors.length > 0) {
+      return { blocked: validation, repairedIds: [] as number[] };
+    }
 
     // One bounded, deterministic normalization pass: an existing canonical
     // SUPPORTING relation can become REQUIRED only when it is the sole
@@ -4365,8 +4388,26 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
       repairedIds.push(alignment.id);
     }
 
-    return repairedIds;
-  });
+      return { blocked: null, repairedIds };
+    });
+    if (preRepair.blocked) {
+      const reviewIssues = [...preRepair.blocked.overrideable, ...preRepair.blocked.warnings];
+      res.status(422).json({
+        approved: false,
+        lessonId,
+        errors: preRepair.blocked.errors,
+        overrideable: preRepair.blocked.overrideable,
+        reviewIssues,
+        confirmationRequired: false,
+        readiness: preRepair.blocked.readiness,
+        repairedAlignmentIds: [],
+        warnings: preRepair.blocked.warnings,
+        summary: preRepair.blocked.summary,
+      });
+      return;
+    }
+    repairedAlignmentIds = preRepair.repairedIds;
+  }
 
   const finalization = await db.transaction(async (tx) => {
     // Re-lock after the committed bounded repair so validation reads the latest
@@ -4990,6 +5031,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     const topicRows: { id: number; sequence: number; title: string }[] = [];
     const nodeRows:  { id: number; topicId: number; topicSequence: number; microNodeIndex: number; title: string; sequence: number }[] = [];
     let mappingReport!: Record<string, unknown>;
+    let assignmentReadiness: "READY" | "CONFIRMATION_REQUIRED" | "BLOCKED" = "BLOCKED";
 
     const verifiedPhysicalPageProvenance = physicalPageProvenance;
     if (!verifiedPhysicalPageProvenance) {
@@ -5432,6 +5474,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       });
     }
     const activityIssues = activityIssuesRaw;
+    assignmentReadiness = classifyMappingAssignmentReadiness({
+      sourceScopeVerified: sourceScope.valid === true,
+      sourceSetVerified: sourceSet.titleMatch.valid === true,
+      structuralCoverageValid: pass2.coverageValidation.valid === true,
+      microNodeCount: totalNodes,
+      reviewFindingCount: reviewItems.length,
+    });
 
     mappingReport = {
       lessonId,
@@ -5477,6 +5526,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         coverageIssues,
         granularityIssues,
         activityIssues,
+        assignmentReadiness,
         reviewItems,
         coverageValidation: pass2.coverageValidation,
         instructionalCoverage: pass2.instructionalCoverage,
@@ -5612,6 +5662,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         result: {
           // P3.1: surface coverage validity at the top level for easy polling
           coverageValid:        pass2.coverageValidation.valid,
+          assignmentReadiness,
           providerBlocksExtracted: Number(physicalPageProvenance.providerBlockCount ?? pass1.blocks.length),
           verifiedSourceBlocks: Number(physicalPageProvenance.verifiedBlockCount ?? pass1.blocks.length),
           quarantinedSourceBlocks: Number(physicalPageProvenance.quarantinedBlockCount ?? 0),

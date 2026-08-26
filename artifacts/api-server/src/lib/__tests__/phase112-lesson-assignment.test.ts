@@ -20,6 +20,7 @@ import {
   classStudentsTable,
   usersTable,
   teachersTable,
+  coursesTable,
   lessonSessionsTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -42,8 +43,10 @@ function it(name: string, fn: () => Promise<void>) { tests.push([name, fn]); }
 let LESSON_ID = 0;
 let DRAFT_LESSON_ID = 0;
 let CLASS_ID = 0;
+let COURSE_ID = 0;
 let STUDENT_ID = 0;
 let studentToken = "";
+const COURSE_NAME = runTag(RUN_ID, "assignment_course");
 
 // ── Dynamic fixture setup ──────────────────────────────────────────────────────
 
@@ -81,6 +84,13 @@ const [dynClass] = await db.insert(classesTable).values({
   teacherId: teacherRow.id,
 }).returning({ id: classesTable.id });
 CLASS_ID = dynClass.id;
+const [dynCourse] = await db.insert(coursesTable).values({
+  classId: CLASS_ID,
+  teacherId: TEACHER_ID,
+  subjectId: SUBJECT_ID,
+  name: COURSE_NAME,
+}).returning({ id: coursesTable.id });
+COURSE_ID = dynCourse.id;
 
 // 2. Create a temp student user
 const [dynStudent] = await db.insert(usersTable).values({
@@ -101,6 +111,7 @@ const [dynLesson] = await db.insert(lessonsTable).values({
   subjectId: SUBJECT_ID,
   teacherId: TEACHER_ID,
   classId: CLASS_ID,
+  courseId: COURSE_ID,
   status: "approved",
   everApproved: true,
   mappingMetadata: { sourceExerciseCount: 2 },
@@ -156,6 +167,7 @@ const [draftLesson] = await db.insert(lessonsTable).values({
   subjectId: SUBJECT_ID,
   teacherId: TEACHER_ID,
   classId: CLASS_ID,
+  courseId: COURSE_ID,
   status: "draft",
   everApproved: false,
 }).returning({ id: lessonsTable.id });
@@ -187,6 +199,34 @@ it("B: PUT /teacher/lessons/:id/status → active blocked when lesson is not app
   assert.equal(r.status, 400, `Expected 400 for non-approved (draft) lesson, got ${r.status}`);
   const body = await r.json();
   assert.equal((body as any).error, "LESSON_NOT_APPROVED", `Expected LESSON_NOT_APPROVED, got ${JSON.stringify(body)}`);
+});
+
+it("B2: learner course list includes only active lessons", async () => {
+  const getVisibleLessons = async () => {
+    const response = await fetch(
+      `${BASE}/student/course-lessons?subject=${encodeURIComponent(COURSE_NAME)}`,
+      { headers: authH(studentToken) },
+    );
+    assert.equal(response.status, 200);
+    return response.json() as Promise<Array<{ id: number; status: string }>>;
+  };
+
+  const initiallyVisible = await getVisibleLessons();
+  assert.ok(initiallyVisible.some((lesson) => lesson.id === LESSON_ID && lesson.status === "active"));
+  assert.equal(initiallyVisible.some((lesson) => lesson.id === DRAFT_LESSON_ID), false);
+
+  try {
+    await db.update(lessonsTable).set({ status: "approved" })
+      .where(eq(lessonsTable.id, DRAFT_LESSON_ID));
+    assert.equal((await getVisibleLessons()).some((lesson) => lesson.id === DRAFT_LESSON_ID), false);
+
+    await db.update(lessonsTable).set({ status: "needs_review" })
+      .where(eq(lessonsTable.id, DRAFT_LESSON_ID));
+    assert.equal((await getVisibleLessons()).some((lesson) => lesson.id === DRAFT_LESSON_ID), false);
+  } finally {
+    await db.update(lessonsTable).set({ status: "draft" })
+      .where(eq(lessonsTable.id, DRAFT_LESSON_ID));
+  }
 });
 
 // ── C: shared structure — lesson returned by GET includes status field ─────────

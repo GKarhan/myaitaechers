@@ -242,7 +242,8 @@ router.get("/student/course-lessons", requireAuth, async (req: AuthRequest, res)
 
   if (!matchingCourse) { res.json([]); return; }
 
-  // Return non-draft lessons for this course with per-student session status
+  // Learners may discover only lessons that completed approval and activation.
+  // Draft, needs_review, approved, and assigned authoring states remain hidden.
   const rows = await db
     .select({
       id: lessonsTable.id,
@@ -270,7 +271,7 @@ router.get("/student/course-lessons", requireAuth, async (req: AuthRequest, res)
     )
     .where(and(
       eq(lessonsTable.courseId, matchingCourse.id),
-      sql`${lessonsTable.status} != 'draft'`
+      eq(lessonsTable.status, "active")
     ));
   const lessons = rows;
 
