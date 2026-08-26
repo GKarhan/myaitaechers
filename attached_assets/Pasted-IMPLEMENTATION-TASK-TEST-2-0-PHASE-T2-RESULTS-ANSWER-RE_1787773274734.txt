@@ -1,0 +1,797 @@
+IMPLEMENTATION TASK — TEST 2.0 / PHASE T2
+RESULTS → ANSWER REVIEW → CANONICAL RETEST CHOICE
+
+GOAL
+
+Build the learner-facing Results/Review/Choice step for Test 2.0.
+
+T1 is already complete and established the canonical backend-owned retest authority.
+
+T2 must expose that authority safely in the completed-quiz Results experience.
+
+The learner should:
+
+1. complete the quiz using the existing flow;
+2. see the existing quiz result;
+3. review the questions and answers;
+4. clearly see incorrect answers and the existing short feedback/explanations;
+5. see what canonical retest options are currently available;
+6. choose a next action.
+
+IMPORTANT:
+
+T2 DOES NOT CREATE A NEW QUIZ YET.
+
+Automatic targeted retest creation belongs to T3.
+
+This task is primarily:
+
+RESULTS
+→ REVIEW
+→ CANONICAL RETEST OPTIONS
+→ USER CHOICE
+
+Do not implement the next quiz generation.
+
+==================================================
+0. FIRST — INSPECT, DO NOT MODIFY
+==================================================
+
+Before editing anything, inspect the current implementation and report internally:
+
+A. current student quiz completion flow;
+
+B. current Results page/component;
+
+C. how questions, learner answers, correct answers, and explanations are currently rendered;
+
+D. the T1 canonical retest authority service/route;
+
+E. the exact T1 response contract;
+
+F. how the current Results page derives:
+   - score,
+   - correct/incorrect,
+   - node grouping,
+   - knowledge labels;
+
+G. current navigation after quiz completion;
+
+H. existing frontend/API types relevant to quiz results.
+
+Do not redesign working functionality unnecessarily.
+
+Preserve existing behavior wherever possible.
+
+==================================================
+1. PROTECTED T1 CONTRACT
+==================================================
+
+T1 established the authoritative rule:
+
+RETEST ELIGIBILITY MUST COME FROM CANONICAL C5 KNOWLEDGE STATE.
+
+The client must NOT derive canonical retest eligibility from:
+
+- Results-page labels,
+- score percentages,
+- correct answer counts,
+- current-attempt fallback classification,
+- materialized knowledge_nodes alone.
+
+Use the T1 backend authority.
+
+Do NOT recreate C5 classification logic in the frontend.
+
+Do NOT duplicate mastery thresholds in the frontend.
+
+==================================================
+2. DESIRED LEARNER FLOW
+==================================================
+
+After successful final quiz submission:
+
+CURRENT QUIZ COMPLETION
+→ RESULTS
+→ ANSWER REVIEW
+→ RETEST CHOICE
+
+The learner should be able to understand:
+
+1. How did I do?
+2. Which questions were correct?
+3. Which questions were incorrect?
+4. What was my answer?
+5. What was the correct answer?
+6. Why was the correct answer correct?
+7. Where existing data supports it, why was my answer incorrect?
+8. What can I do next?
+
+Keep this lightweight.
+
+This is NOT AI Teacher teaching.
+
+Do not add long tutoring explanations.
+
+==================================================
+3. PRESERVE EXISTING FEEDBACK
+==================================================
+
+The current system already has useful feedback/explanation behavior.
+
+Reuse it.
+
+For each question, preserve the existing presentation of:
+
+- question;
+- learner answer;
+- correct answer;
+- correct / incorrect state;
+- explanation / feedback where already available.
+
+Do NOT add a new AI call.
+
+Do NOT regenerate explanations.
+
+Do NOT make explanations longer.
+
+Do NOT introduce a new feedback engine.
+
+If an explanation is absent in existing data, do not invent one in the frontend.
+
+The desired style remains:
+
+short,
+clear,
+visual,
+easy to scan.
+
+==================================================
+4. ANSWER REVIEW MUST COME BEFORE RETEST ACTIONS
+==================================================
+
+The learner should first have a clear opportunity to review the completed attempt.
+
+The page structure should conceptually be:
+
+A. Overall result
+
+B. Question review
+
+C. What next?
+
+Do not place the main retest actions in a way that encourages immediately skipping the review.
+
+However:
+
+Do NOT introduce a forced timer.
+
+Do NOT require opening every question.
+
+Do NOT require scrolling detection.
+
+Do NOT create complex gating.
+
+The review should be naturally visible and easy to inspect before the action section.
+
+==================================================
+5. QUESTION REVIEW PRESENTATION
+==================================================
+
+Use the existing Results design as the base.
+
+Improve only where necessary to make these states immediately understandable.
+
+For correct answers:
+
+✓ Ճիշտ
+
+For incorrect answers:
+
+✕ Սխալ
+
+For an incorrect answer, the learner should be able to see:
+
+Քո պատասխանը
+[learner answer]
+
+Ճիշտ պատասխանը
+[correct answer]
+
+[existing short explanation]
+
+Exact Armenian wording may follow the application's existing terminology and style.
+
+Do not duplicate the same explanation multiple times.
+
+Do not redesign the entire Results page.
+
+==================================================
+6. CANONICAL RETEST SUMMARY
+==================================================
+
+After the answer-review section, add a clearly separated next-step section.
+
+Suggested concept:
+
+«Ի՞նչ անել հիմա»
+
+The UI must query/use the T1 canonical retest authority.
+
+The UI must NOT infer eligibility from its own displayed Results grouping.
+
+Retrieve canonical eligibility for:
+
+PARTIAL_AND_NOT_KNOWN
+
+and
+
+NOT_KNOWN_ONLY
+
+Prefer the smallest safe request pattern consistent with the T1 API.
+
+Avoid unnecessary duplicate network calls if the T1 contract can support both counts safely through one existing response/read pattern.
+
+Do not change T1 semantics merely for UI convenience.
+
+==================================================
+7. REQUIRED ACTIONS
+==================================================
+
+Present these learner choices when applicable:
+
+A.
+
+🔁 Նորից ստուգել
+Մասնակի գիտի + Չգիտի
+
+Show the canonical eligible count.
+
+Example:
+
+Մասնակի գիտի + Չգիտի · 5 գիտելիքի հանգույց
+
+B.
+
+🔴 Նորից ստուգել
+Միայն Չգիտի
+
+Show the canonical eligible count.
+
+Example:
+
+Չգիտի · 2 գիտելիքի հանգույց
+
+C.
+
+✓ Ավարտել
+
+This exits the immediate Test 2.0 continuation flow using the safest existing student navigation destination.
+
+Use existing application terminology where appropriate.
+
+==================================================
+8. EMPTY / UNAVAILABLE ACTION STATES
+==================================================
+
+If PARTIAL_AND_NOT_KNOWN returns zero eligible nodes:
+
+do not present it as an actionable retest.
+
+Either disable it clearly or hide it according to the existing UI conventions.
+
+If NOT_KNOWN_ONLY returns zero:
+
+same rule.
+
+If BOTH return zero:
+
+show a positive completion state conceptually equivalent to:
+
+«Այս թեստից նորից ստուգելու գիտելիքներ չկան»։
+
+Do not create a quiz.
+
+Do not fabricate weak nodes.
+
+==================================================
+9. IMPORTANT OVERLAP RULE
+==================================================
+
+PARTIAL_AND_NOT_KNOWN includes:
+
+PARTIAL + NOT_KNOWN.
+
+NOT_KNOWN_ONLY is therefore a subset.
+
+The UI must not incorrectly add their counts together.
+
+Example:
+
+PARTIAL = 3
+NOT_KNOWN = 2
+
+Expected:
+
+PARTIAL_AND_NOT_KNOWN = 5
+
+NOT_KNOWN_ONLY = 2
+
+Do NOT display this as 7 total weak nodes.
+
+==================================================
+10. USER CHOICE IN T2
+==================================================
+
+This is important.
+
+T2 must allow the learner to select/trigger the intended next strategy in the UI architecture, but MUST NOT create the next quiz.
+
+Prepare a clean boundary for T3.
+
+Preferred conceptual state:
+
+selectedNextAction =
+  PARTIAL_AND_NOT_KNOWN
+  | NOT_KNOWN_ONLY
+  | FINISH
+
+But follow existing frontend conventions.
+
+For the two retest actions:
+
+do NOT call quiz generation.
+
+do NOT create assignment.
+
+do NOT navigate into a fake quiz.
+
+The action may enter a bounded T2-ready state / placeholder transition suitable for T3.
+
+The user-facing behavior must not misleadingly imply that a new quiz was already created.
+
+If a temporary T2 message is needed, keep it simple and explicit, e.g. conceptually:
+
+«Ընտրված է։ Նոր թեստի ստեղծումը կմիանա հաջորդ փուլում»։
+
+But prefer the cleanest implementation that does not expose development language in production UI.
+
+If necessary, make the retest action controls visibly present but non-destructive until T3 wiring.
+
+==================================================
+11. FINISH ACTION
+==================================================
+
+«Ավարտել» must work now.
+
+It should use the safest existing learner navigation behavior.
+
+Do not create a new dashboard or destination.
+
+Reuse the current appropriate student destination.
+
+Do not modify Knowledge Tree when Finish is clicked.
+
+Knowledge Tree should already reflect completed-attempt evidence through the existing pipeline.
+
+==================================================
+12. LOADING STATE
+==================================================
+
+Canonical retest authority may require an API request.
+
+Provide a normal bounded loading state.
+
+Do not show:
+
+0 eligible
+
+before the authority response has actually loaded.
+
+Distinguish:
+
+LOADING
+
+from
+
+SUCCESSFUL EMPTY RESULT.
+
+==================================================
+13. ERROR STATE
+==================================================
+
+If the T1 authority request fails:
+
+do NOT fall back to frontend Results labels.
+
+This is fundamental.
+
+Do not say:
+
+"authority failed, so use nodeBreakdown instead."
+
+Instead show a bounded retry-safe UI state conceptually equivalent to:
+
+«Չհաջողվեց ստանալ շարունակելու տարբերակները։ Փորձեք կրկին»։
+
+The learner must still be able to:
+
+- review the completed result;
+- use Finish / safe exit.
+
+Canonical authority failure must not break the completed Results page.
+
+==================================================
+14. HISTORICAL ATTEMPT SAFETY
+==================================================
+
+T1 completion review hardened attempt scope to persisted answer-time node snapshots.
+
+T2 must consume T1 as-is.
+
+Do NOT rebuild scope from current quiz_questions.
+
+Do NOT derive scope from current quiz structure.
+
+Do NOT send arbitrary nodeIds from the client.
+
+The Results page should identify the completed attempt and ask T1 for authority.
+
+==================================================
+15. DO NOT CHANGE RESULTS SCORING
+==================================================
+
+Do NOT modify:
+
+- quiz score;
+- answer correctness;
+- point calculation;
+- granular scoring;
+- nodeBreakdown;
+- existing Results percentage;
+- existing result labels;
+- C3 evidence;
+- C4;
+- C5;
+- Knowledge Tree classification.
+
+T2 is presentation + canonical continuation choice.
+
+==================================================
+16. DO NOT REMOVE CURRENT RESULTS INFORMATION
+==================================================
+
+Preserve useful existing Results functionality.
+
+Do not replace the current Results page with only the Test 2.0 controls.
+
+Existing useful information such as:
+
+- overall score;
+- question-level feedback;
+- correctness;
+- existing breakdowns;
+
+must remain unless there is a proven duplicate/bug.
+
+This task is additive and narrowly scoped.
+
+==================================================
+17. MOBILE / VISUAL REQUIREMENTS
+==================================================
+
+The review must remain readable on normal student screens.
+
+Avoid:
+
+- giant cards;
+- excessive explanatory text;
+- developer terminology;
+- raw enum names such as PARTIAL_AND_NOT_KNOWN;
+- raw IDs;
+- internal C5 terminology.
+
+Student-facing text should remain Armenian and understandable.
+
+The learner should visually distinguish:
+
+correct,
+incorrect,
+their answer,
+correct answer,
+next actions.
+
+Do not perform a broad visual redesign.
+
+==================================================
+18. ACCESSIBILITY / INTERACTION
+==================================================
+
+Use real buttons for actions.
+
+Buttons must have clear labels.
+
+Disabled actions must be visibly disabled.
+
+Loading must not leave active duplicate-submit controls.
+
+Avoid color-only meaning:
+
+correct/incorrect must also have text/icon labels.
+
+==================================================
+19. REQUIRED FRONTEND TEST MATRIX
+==================================================
+
+Add deterministic tests at the appropriate frontend/domain boundary.
+
+T2-1
+
+Authority:
+
+PARTIAL = 3
+NOT_KNOWN = 2
+
+Expected UI:
+
+PARTIAL + NOT_KNOWN action count = 5
+NOT_KNOWN action count = 2
+
+T2-2
+
+PARTIAL = 0
+NOT_KNOWN = 2
+
+Expected:
+
+combined = 2
+not-known-only = 2
+
+T2-3
+
+PARTIAL = 3
+NOT_KNOWN = 0
+
+Expected:
+
+combined = 3
+not-known-only is disabled/hidden
+
+T2-4
+
+both = 0
+
+Expected:
+
+no actionable retest
+completion message visible
+Finish remains available
+
+T2-5
+
+authority loading
+
+Expected:
+
+no false zero-state
+
+T2-6
+
+authority error
+
+Expected:
+
+no fallback classification
+Results review remains usable
+Finish remains available
+
+T2-7
+
+incorrect question with existing explanation
+
+Expected:
+
+learner answer visible
+correct answer visible
+existing explanation visible
+
+T2-8
+
+incorrect question without explanation
+
+Expected:
+
+answers still render correctly
+no fabricated explanation
+
+T2-9
+
+correct question
+
+Expected:
+
+clearly marked correct
+no confusing incorrect-answer treatment
+
+T2-10
+
+duplicate questions for same MicroNode
+
+Expected:
+
+question review still shows both questions
+canonical retest count comes from T1 authority
+frontend does not count question cards as eligible nodes
+
+T2-11
+
+canonical authority disagrees with current Results grouping
+
+Expected:
+
+retest actions/counts use canonical authority only.
+
+T2-12
+
+click Finish
+
+Expected:
+
+safe existing student navigation
+no quiz creation
+no evidence mutation caused by Finish.
+
+==================================================
+20. BACKEND NON-REGRESSION
+==================================================
+
+T2 should require little or no backend semantic change.
+
+If an API shape needs a narrowly scoped read-only adjustment for frontend consumption:
+
+preserve the T1 authority contract.
+
+Do not weaken:
+
+- ownership;
+- completed-attempt requirement;
+- answer-snapshot scope;
+- canonical C5 authority;
+- allowlisted strategies.
+
+Run T1 regression tests after any backend touch.
+
+==================================================
+21. DO NOT IMPLEMENT IN T2
+==================================================
+
+STRICTLY DO NOT IMPLEMENT:
+
+- new targeted quiz creation;
+- new quiz assignment;
+- retest round lineage;
+- automatic question regeneration;
+- answer-option shuffling;
+- number substitution;
+- question-history avoidance;
+- resume;
+- AI Teacher integration;
+- Knowledge Tree redesign;
+- new scoring;
+- new feedback generation;
+- provider calls.
+
+These belong to later phases.
+
+==================================================
+22. NON-REGRESSION VERIFICATION
+==================================================
+
+Run:
+
+- T2 frontend/domain tests;
+- existing student quiz Results tests;
+- T1 canonical retest authority tests;
+- quiz-taking tests;
+- scoring tests if touched;
+- frontend typecheck/build;
+- API typecheck/build if backend touched.
+
+Do not alter unrelated production behavior merely to make a stale test pass.
+
+Report stale/unrelated failures separately.
+
+==================================================
+23. INDEPENDENT REVIEW
+==================================================
+
+Before completion, request one focused independent review.
+
+Reviewer must verify:
+
+1. Results review remains intact.
+2. Existing feedback is reused, not regenerated.
+3. Retest eligibility/counts come only from T1.
+4. No frontend C5/mastery classifier was created.
+5. Authority failure does not fall back to Results labels.
+6. Historical attempt scope remains T1-owned.
+7. T2 does not create a quiz.
+8. T2 does not create an assignment.
+9. Finish does not mutate evidence/Knowledge Tree.
+10. No T3 functionality leaked into T2.
+
+Fix concrete blockers before completion.
+
+==================================================
+24. RUNTIME SAFETY
+==================================================
+
+Do NOT:
+
+- submit a real learner quiz;
+- create a real quiz;
+- create a real assignment;
+- modify real learner evidence;
+- modify Knowledge Tree data;
+- run provider calls.
+
+Use deterministic fixtures/mocks/provider-free tests.
+
+Restart only affected services if required.
+
+==================================================
+25. FINAL REPORT
+==================================================
+
+Return:
+
+A. Files changed
+
+B. Existing Results behavior preserved
+
+C. Answer-review behavior
+
+D. Existing feedback reuse behavior
+
+E. T1 authority integration
+
+F. Combined retest action behavior
+
+G. Not-known-only action behavior
+
+H. Empty-state behavior
+
+I. Loading/error behavior
+
+J. Finish behavior
+
+K. Tests added + results
+
+L. Non-regression results
+
+M. Independent review result
+
+N. Build/typecheck result
+
+O. Confirmation that no real quiz/assignment/evidence/KT data changed
+
+End exactly with:
+
+RESULTS REVIEW PRESERVED: YES / NO
+
+EXISTING FEEDBACK REUSED: YES / NO
+
+RETEST COUNTS COME ONLY FROM CANONICAL T1 AUTHORITY: YES / NO
+
+FRONTEND RETEST CLASSIFIER CREATED: YES / NO
+
+T2 CREATES A NEW QUIZ: YES / NO
+
+T2 CREATES A NEW ASSIGNMENT: YES / NO
+
+SAFE FINISH ACTION WORKS: YES / NO
+
+READY FOR TEST 2.0 T3 TARGETED RETEST CREATION: YES / NO
+
+STOP.
+DO NOT IMPLEMENT T3.
