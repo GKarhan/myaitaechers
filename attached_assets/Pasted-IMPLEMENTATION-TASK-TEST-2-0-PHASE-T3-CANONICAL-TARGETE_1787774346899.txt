@@ -1,0 +1,621 @@
+IMPLEMENTATION TASK — TEST 2.0 — PHASE T3
+CANONICAL TARGETED RETEST CREATION
+
+We have completed:
+
+T0 — Test 2.0 audit
+T1 — Canonical Retest Authority
+T2 — Results → Answer Review → Canonical Retest Choice
+
+Now implement ONLY Phase T3:
+
+RESULTS → CANONICAL STRATEGY → NEW TARGETED RETEST → START NEW QUIZ
+
+This must be a systemic implementation.
+Do NOT patch one quiz, lesson, attempt, student, or fixture.
+
+==================================================
+0. FIRST INSPECT — DO NOT EDIT YET
+==================================================
+
+Before changing code, inspect the current implementation and report the exact relevant paths/functions for:
+
+1. T1 canonical retest authority
+2. T1 attempt-scoped strategy endpoint
+3. T2 Results page
+4. T2 local retest strategy selection
+5. current quiz creation backend
+6. current quiz question generation path
+7. quiz assignment creation
+8. student quiz start/navigation flow
+9. quiz/attempt ownership and authorization
+10. current question-count/difficulty configuration
+11. existing quiz generation transaction boundaries
+12. existing provider-free quiz tests
+
+Also inspect whether there is already a reusable backend service for creating a quiz from canonical nodeIds.
+
+Do not create a second quiz-generation implementation if one already exists.
+
+After inspection, implement the smallest shared-boundary solution.
+
+==================================================
+1. CORE AUTHORITY RULE
+==================================================
+
+Frontend MUST NOT be authoritative for retest MicroNode selection.
+
+The client must NOT submit:
+
+nodeIds[]
+knowledge states
+partial node lists
+weak node lists
+mastery values
+Knowledge Tree classifications
+
+The retest creation request should contain only the minimum authority inputs, conceptually:
+
+{
+  sourceAttemptId,
+  strategy
+}
+
+Allowed strategies remain exactly the canonical T1 strategies:
+
+- partial_and_weak
+- weak_only
+
+Use the exact existing T1 enum/names if they differ.
+
+Backend MUST call/reuse the completed T1 canonical retest authority.
+
+T1 remains the ONLY authority for deciding which MicroNodes belong in the retest.
+
+Do NOT duplicate C3/C4/C5 classification logic.
+
+==================================================
+2. HISTORICAL ATTEMPT BOUNDARY
+==================================================
+
+Preserve the final T1 historical-scope rule.
+
+Retest eligibility must remain bounded to the MicroNodes represented by the completed source attempt's persisted answer-time snapshots.
+
+Do NOT reconstruct historical scope from current quiz questions.
+
+Do NOT allow later-added, moved, edited, or deleted quiz questions to change the source attempt's retest scope.
+
+T3 must consume T1 output rather than independently reconstructing scope.
+
+==================================================
+3. NEW TARGETED RETEST CREATION SERVICE
+==================================================
+
+Create or extend ONE backend-owned service for targeted retest creation.
+
+Conceptually:
+
+createTargetedRetest({
+  userId,
+  sourceAttemptId,
+  strategy
+})
+
+The service must:
+
+A. validate authenticated user ownership/access
+
+B. validate source attempt exists
+
+C. validate source attempt is completed
+
+D. validate strategy is allowlisted
+
+E. call T1 canonical retest authority
+
+F. receive canonical eligible MicroNode IDs
+
+G. reject/return bounded empty result if no eligible nodes exist
+
+H. create the new quiz using ONLY those canonical nodes
+
+I. create whatever assignment/link is required by the existing student quiz flow
+
+J. return only the identifiers/data needed to start the new quiz
+
+Reuse the existing quiz creation/generation infrastructure.
+
+Do NOT implement a parallel quiz engine.
+
+==================================================
+4. RETEST MUST BE A REAL NEW QUIZ
+==================================================
+
+The retest must create a new quiz/assignment.
+
+Do NOT mutate the original quiz.
+
+Do NOT mutate the completed source attempt.
+
+Do NOT delete or rewrite previous answers.
+
+Do NOT reset the previous attempt.
+
+Historical attempts must remain immutable.
+
+The relationship should conceptually be:
+
+Attempt 1
+   ↓
+strategy selection
+   ↓
+Retest Quiz / Assignment
+   ↓
+Attempt 2
+
+If the existing schema already has a safe place to record lineage, reuse it.
+
+If no lineage field currently exists, inspect carefully before adding schema.
+
+Do NOT introduce a migration merely for convenience unless lineage is genuinely required for correctness.
+
+At minimum, sourceAttemptId must be available during creation for authority resolution.
+
+==================================================
+5. USE EXISTING QUIZ GENERATION BEHAVIOR
+==================================================
+
+Do NOT redesign question generation in T3.
+
+Preserve the existing quiz-generation behavior for:
+
+- question types
+- difficulty
+- AI generation
+- validation
+- question count rules
+- scoring
+- feedback
+- quiz taking
+
+The only new behavior is:
+
+instead of teacher-selected lesson/node scope,
+the retest scope comes from T1 canonical authority.
+
+If the existing quiz generator requires configuration that the learner does not provide, derive/reuse safe defaults from the source quiz or existing system behavior.
+
+Do NOT invent a new difficulty model.
+
+Document exactly which existing settings are reused.
+
+==================================================
+6. QUESTION COUNT — KEEP T3 SIMPLE
+==================================================
+
+Do NOT build adaptive question-count logic yet.
+
+Use the existing quiz-generation count behavior wherever possible.
+
+If a count must be supplied, derive it deterministically from the existing quiz configuration / selected canonical node count using existing rules.
+
+Do NOT introduce a new pedagogical algorithm in T3.
+
+The goal of T3 is reliable loop creation, not Question Engine optimization.
+
+==================================================
+7. EMPTY ELIGIBILITY
+==================================================
+
+If T1 returns zero eligible MicroNodes for the selected strategy:
+
+DO NOT create an empty quiz.
+
+Return a safe explicit result such as:
+
+{
+  created: false,
+  reason: "NO_ELIGIBLE_NODES"
+}
+
+Use project conventions if an equivalent result/error pattern already exists.
+
+Frontend must show a clear Armenian message.
+
+Example meaning:
+
+«Այս խմբում կրկին ստուգման կարիք ունեցող գիտելիքի հանգույցներ չկան»։
+
+Do not show a generic server error for this normal state.
+
+==================================================
+8. DUPLICATE CLICK / IDEMPOTENCY SAFETY
+==================================================
+
+Inspect the current UI/API behavior for double submission.
+
+A learner double-clicking the retest button must not accidentally create multiple retests.
+
+Use the project's existing request-lock/idempotency pattern if available.
+
+At minimum:
+
+- disable the selected action while creation is pending
+- ignore repeated frontend submission while pending
+
+If a backend idempotency mechanism already exists, reuse it.
+
+Do NOT invent a large new idempotency subsystem solely for T3 unless required.
+
+==================================================
+9. T2 RESULTS PAGE INTEGRATION
+==================================================
+
+Extend the existing T2 continuation section.
+
+Current T2 behavior:
+strategy button → local selection only
+
+T3 behavior:
+strategy selection remains visible,
+then learner can explicitly start the retest.
+
+Prefer a clear two-step interaction if it fits the current UI:
+
+1. choose strategy
+2. create/start retest
+
+Example:
+
+[ Մասնակի + Չգիտի · 4 ]
+[ Միայն Չգիտի · 2 ]
+
+Selected:
+«Մասնակի + Չգիտի · 4 հանգույց»
+
+[ Նորից ստուգել այս հանգույցները ]
+
+When clicked:
+
+- show pending state
+- call T3 endpoint
+- on success navigate into the existing student quiz-taking flow
+- on empty show the bounded empty message
+- on failure preserve Results/Review and show retryable error
+
+Do NOT remove the existing answer review.
+
+Do NOT hide the previous result.
+
+Do NOT navigate away before retest creation succeeds.
+
+==================================================
+10. FINISH MUST REMAIN AVAILABLE
+==================================================
+
+The learner is never forced into another retest.
+
+Keep the existing Finish action.
+
+The learner can:
+
+Review → Retest
+
+OR
+
+Review → Finish
+
+This is learner-controlled repetition.
+
+Do NOT create an automatic infinite retest loop.
+
+==================================================
+11. FAILURE BEHAVIOR
+==================================================
+
+If retest generation fails:
+
+- original Results page remains intact
+- original attempt remains intact
+- original Evidence remains intact
+- Knowledge Tree remains intact
+- no partially usable quiz should be presented
+- learner can retry creation
+
+Reuse existing quiz-generation transactional/failure behavior.
+
+Fail closed.
+
+==================================================
+12. SECURITY / OWNERSHIP
+==================================================
+
+The authenticated learner must not be able to create a retest from another learner's attempt.
+
+Verify:
+
+sourceAttempt.userId === authenticated user
+
+or the equivalent existing ownership rule.
+
+Do not trust a client-provided student/user ID.
+
+Strategy must be validated server-side.
+
+==================================================
+13. DO NOT CHANGE THESE SYSTEMS
+==================================================
+
+T3 must NOT modify:
+
+- Mapping
+- Cognitive Path / C2
+- Teaching Content
+- AI Teacher
+- Knowledge Tree classification rules
+- C3 Evidence semantics
+- C4 materialization
+- C5 canonical read semantics
+- existing scoring formulas
+- existing answer feedback semantics
+- teacher quiz creation behavior
+- lesson mapping
+- MicroNode definitions
+- advanced Question Engine
+- adaptive question rewriting
+- spaced repetition
+- Flashcards
+- Homework
+
+Do not weaken existing validators to make T3 pass.
+
+==================================================
+14. PROVIDER-FREE CONTRACT TESTS
+==================================================
+
+Add deterministic/provider-free tests covering at least:
+
+CASE 1
+Source attempt:
+partial = A, B
+weak = C
+
+strategy = partial_and_weak
+
+Expected canonical scope:
+A, B, C
+
+CASE 2
+Same attempt
+
+strategy = weak_only
+
+Expected:
+C
+
+CASE 3
+No weak nodes
+
+strategy = weak_only
+
+Expected:
+no quiz created
+NO_ELIGIBLE_NODES
+
+CASE 4
+Attempt belongs to another user
+
+Expected:
+rejected
+
+CASE 5
+Attempt is not completed
+
+Expected:
+rejected
+
+CASE 6
+Invalid strategy
+
+Expected:
+rejected
+
+CASE 7
+Current quiz questions changed after historical attempt
+
+Expected:
+T3 scope remains exactly T1 historical snapshot scope
+
+CASE 8
+Canonical T1 result disagrees with any stale/materialized/frontend representation
+
+Expected:
+T1 result wins
+
+CASE 9
+Retest creation succeeds
+
+Expected:
+- original attempt unchanged
+- new quiz exists
+- new assignment/startable object exists
+- new quiz scope equals canonical node scope
+
+CASE 10
+Generation fails before completion
+
+Expected:
+- original attempt unchanged
+- no usable partial retest exposed
+
+CASE 11
+Repeated frontend action while request pending
+
+Expected:
+only one active creation request from UI
+
+CASE 12
+T2 answer review remains visible before retest creation
+
+Expected:
+no regression
+
+==================================================
+15. DATABASE-BACKED REGRESSION
+==================================================
+
+Where practical, add an isolated DB-backed fixture proving:
+
+completed Attempt 1
+→ persisted answer snapshot scope
+→ canonical T1 strategy resolution
+→ T3 retest creation
+→ new quiz/assignment
+→ original Attempt 1 unchanged
+
+Then mutate current quiz/question metadata if needed to prove historical scope does not drift.
+
+Fixture must clean up after itself.
+
+Do not depend on a hard-coded existing lesson/student fixture if avoidable.
+
+==================================================
+16. FRONTEND TESTS
+==================================================
+
+Add deterministic frontend/domain tests for:
+
+- strategy selected
+- create button enabled only when valid
+- pending state
+- double-click protection
+- success navigation
+- empty eligibility
+- retryable error
+- Finish still works
+- answer review remains intact
+- strategy can be changed before creation
+
+==================================================
+17. REAL BROWSER VERIFICATION
+==================================================
+
+After deterministic tests pass, verify the learner flow in a real browser using isolated/intercepted data where appropriate:
+
+Complete Results state
+→ inspect answer review
+→ select partial_and_weak
+→ create retest
+→ navigate to existing quiz-taking page
+
+Also verify:
+
+Results
+→ weak_only
+→ create retest
+
+and:
+
+Results
+→ Finish
+
+Do not use production/student data destructively merely for UI verification.
+
+==================================================
+18. ACCEPTANCE CRITERIA
+==================================================
+
+T3 is complete only if all are true:
+
+1. T1 is the sole authority for retest node scope.
+2. Frontend never submits nodeIds for retest authority.
+3. Historical attempt scope remains snapshot-bound.
+4. Retest creates a genuinely new quiz.
+5. Original quiz attempt remains immutable.
+6. Existing quiz generator is reused.
+7. No new Question Engine is introduced.
+8. Empty eligibility does not create an empty quiz.
+9. Results/Review remains visible until creation succeeds.
+10. Finish remains available.
+11. Retest creation failure does not damage prior state.
+12. Ownership is enforced server-side.
+13. Provider-free contract tests pass.
+14. DB-backed historical-scope regression passes.
+15. Frontend tests pass.
+16. Existing T1/C3/C4/C5 tests remain green.
+17. Existing teacher quiz creation behavior is unchanged.
+18. API/frontend typecheck and build pass.
+19. Real-browser flow is verified.
+20. Independent review finds no unresolved blocker.
+
+==================================================
+19. REQUIRED FINAL REPORT
+==================================================
+
+At completion report:
+
+A. exact files changed
+
+B. exact backend retest creation service/route
+
+C. how T1 authority is consumed
+
+D. exact request contract
+
+E. exact success response contract
+
+F. exact empty-state contract
+
+G. how existing quiz generation is reused
+
+H. what question-count/difficulty behavior is reused
+
+I. how original attempt immutability is guaranteed
+
+J. ownership/security behavior
+
+K. provider-free tests added and results
+
+L. DB-backed regression result
+
+M. frontend tests/results
+
+N. existing T1/C3/C4/C5 regression results
+
+O. typecheck/build results
+
+P. browser verification result
+
+Q. independent review result
+
+R. explicit confirmation that T4 was NOT implemented
+
+==================================================
+20. STOP BOUNDARY
+==================================================
+
+STOP after T3.
+
+Do NOT implement T4.
+
+Specifically do NOT redesign:
+
+multi-round Knowledge Tree semantics
+cross-round evidence accumulation
+adaptive next-question selection
+question rewriting
+mastery convergence rules
+
+Those belong to the next phase.
+
+The expected final state is only:
+
+TEST 1
+→ RESULTS
+→ ANSWER REVIEW
+→ CANONICAL STRATEGY
+→ CREATE TARGETED RETEST
+→ START TEST 2
+
+Nothing beyond that.
