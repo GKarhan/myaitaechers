@@ -1,0 +1,785 @@
+IMPLEMENTATION TASK — TEST 2.0 / PHASE T3.1
+CONTINUOUS RETEST SESSION + KNOWS/LEARNING STATE + IMMEDIATE ANSWER FEEDBACK
+
+IMPORTANT:
+This is the next implementation phase after the already completed Test 2.0
+T1 Canonical Retest Authority and T2 Results Review / Retest Choice work.
+
+Do NOT redesign the whole quiz system.
+Do NOT touch AI Teacher, mapping, Cognitive Paths/C2, C1 teaching packages,
+or unrelated Knowledge Tree architecture.
+
+The goal is to turn repeated retesting into one coherent learner session
+under the original teacher-assigned quiz.
+
+============================================================
+PART 0 — INSPECT FIRST. DO NOT CHANGE CODE YET
+============================================================
+
+Before implementation, inspect the current code and report the exact existing
+architecture for:
+
+1. teacher-created quiz
+2. quiz assignment
+3. learner quiz list/dashboard
+4. quiz attempt creation
+5. quiz answering/submission
+6. Results page
+7. T1 canonical retest authority
+8. T2 retest-choice UI
+9. Knowledge Tree evidence/update flow
+10. question feedback/explanation fields
+11. quiz question → MicroNode relationship
+12. attempt → answers → MicroNode snapshot relationship
+
+Also inspect the exact code implemented in Tasks #202 and #204.
+
+Identify:
+
+- which table/entity represents the original teacher-assigned quiz
+- which table/entity represents attempts
+- whether a retest currently creates a new quiz, a new assignment,
+  a new attempt, or some combination
+- what currently appears on the learner dashboard
+- where Knowledge Tree evidence is currently written
+- whether feedback is currently available before submission or only on Results
+- how correct answer and explanations are stored/generated
+
+Do not edit anything until this inspection is complete.
+
+Then implement the smallest systemic change satisfying the contract below.
+
+============================================================
+PART 1 — CORE PRODUCT MODEL
+============================================================
+
+The learner must NOT experience every retest as a separate independent quiz.
+
+The teacher assigns ONE quiz.
+
+That assigned quiz becomes the root of one continuous learner testing session.
+
+Conceptually:
+
+Teacher Quiz / Assignment
+    ├── Attempt 1
+    ├── Attempt 2
+    ├── Attempt 3
+    └── ...
+
+The learner dashboard must continue to show ONE teacher-assigned quiz item,
+not a new dashboard quiz card for every retest.
+
+Opening that quiz should allow the learner to see its current state/history.
+
+Do NOT create duplicate learner-dashboard assignments merely because the learner
+chooses to continue practicing/retesting.
+
+If the current schema already supports multiple attempts under the same quiz
+or assignment, reuse it.
+
+Do not create a parallel duplicate quiz architecture unless absolutely required.
+
+============================================================
+PART 2 — ONLY TWO LEARNER STATES INSIDE THIS TEST SESSION
+============================================================
+
+For this Test 2.0 continuation experience, simplify the learner-facing state.
+
+Show only:
+
+1. Գիտի
+2. Սովորելու
+
+Do NOT expose separate retest choices for:
+
+- Մասնակի գիտի
+- Չգիտի
+- Մասնակի գիտի + Չգիտի
+
+inside this continuation UI.
+
+Canonical meaning:
+
+Գիտի
+= MicroNode currently classified as mastered by the existing canonical
+Knowledge Tree/C5 authority.
+
+Սովորելու
+= every MicroNode from this test session that is NOT currently mastered.
+
+Therefore:
+
+learningNodeIds =
+sessionScopedNodeIds - masteredNodeIds
+
+IMPORTANT:
+
+Do not invent a second mastery classifier.
+
+Reuse the existing canonical C3 → C4 → C5 / T1 authority.
+
+The UI simplification from 4 Knowledge Tree states to 2 Test-session states
+must be a projection only.
+
+Knowledge Tree itself may keep its existing canonical state model.
+
+============================================================
+PART 3 — RESULTS PAGE AFTER EACH ATTEMPT
+============================================================
+
+After every completed attempt, preserve the existing Results experience:
+
+- total score
+- correct / incorrect count
+- per-question review
+- learner answer
+- correct answer
+- short why-wrong explanation
+- short why-correct explanation
+
+Then replace/simplify the current continuation section.
+
+Show something conceptually like:
+
+Գիտի — X գիտելիքի հանգույց
+Սովորելու — Y գիտելիքի հանգույց
+
+Actions:
+
+[ Դիտել գիտեմ ]
+[ Շարունակել սովորել — Y ]
+
+and
+
+[ Ավարտել ]
+
+Exact Armenian copy may follow the existing UI style.
+
+Rules:
+
+A. "Դիտել գիտեմ"
+- optional review only
+- must NOT create another quiz
+- allows learner to review questions/answers associated with currently
+  mastered nodes
+
+B. "Շարունակել սովորել"
+- creates/starts the next attempt ONLY from the current "Սովորելու" MicroNodes
+- must stay under the SAME original teacher-assigned quiz/session
+- must not create another learner-dashboard quiz card
+
+C. "Ավարտել"
+- exits the continuous testing session
+- current canonical state remains the learner's final current state
+
+If Y = 0:
+
+show a completed/mastered state and do not offer another learning retest.
+
+============================================================
+PART 4 — RETEST QUESTION SCOPE
+============================================================
+
+When learner chooses:
+
+Շարունակել սովորել
+
+the next attempt must contain questions only from the current:
+
+Սովորելու MicroNodes.
+
+Do NOT include already-mastered nodes in the learning retest.
+
+Example:
+
+Original test scope:
+N1 N2 N3 N4 N5
+
+After Attempt 1:
+
+Գիտի:
+N1 N4
+
+Սովորելու:
+N2 N3 N5
+
+Attempt 2 scope must be:
+
+N2 N3 N5
+
+After Attempt 2 suppose:
+
+Գիտի:
+N1 N2 N4 N5
+
+Սովորելու:
+N3
+
+Attempt 3 must target only:
+
+N3
+
+This loop can continue until:
+
+- learner chooses Finish, OR
+- no learning nodes remain.
+
+============================================================
+PART 5 — RETEST MUST REMAIN UNDER THE ORIGINAL QUIZ
+============================================================
+
+This is a hard acceptance requirement.
+
+Suppose teacher assigned:
+
+Quiz A
+
+Learner completes:
+
+Attempt 1
+Attempt 2
+Attempt 3
+Attempt 4
+
+The learner dashboard must still show:
+
+Quiz A
+
+NOT:
+
+Quiz A
+Quiz A Retest
+Quiz A Retest 2
+Quiz A Retest 3
+
+When opening Quiz A, the system may show:
+
+Current state
+Գիտի: X
+Սովորելու: Y
+
+and optionally attempt history:
+
+Attempt 1
+Attempt 2
+Attempt 3
+...
+
+But these are children/history of the same assigned quiz.
+
+Do not pollute the dashboard with generated retest quiz cards.
+
+============================================================
+PART 6 — IMMEDIATE FEEDBACK WHILE ANSWERING
+============================================================
+
+Change the learner answering experience so that after the learner commits an
+answer to a question, the learner immediately receives lightweight feedback
+before moving to the next question.
+
+For each answered question show:
+
+If correct:
+
+✓ Ճիշտ
+
+Քո պատասխանը: ...
+
+Կարճ բացատրություն:
+why this answer is correct.
+
+If incorrect:
+
+✗ Սխալ
+
+Քո պատասխանը: ...
+
+Ճիշտ պատասխանը: ...
+
+Կարճ բացատրություն:
+why learner's answer is wrong.
+
+Then allow:
+
+[ Հաջորդ հարցը ]
+
+IMPORTANT:
+
+This is lightweight test-based learning.
+
+Do NOT turn this into AI Teacher.
+
+No long tutoring dialogue.
+No remediation conversation.
+No Socratic loop.
+No Cognitive Path teaching flow.
+
+Feedback should remain concise and visual.
+
+============================================================
+PART 7 — CALCULATION / PROBLEM QUESTIONS NEED SOLUTION EVIDENCE
+============================================================
+
+For a simple conceptual multiple-choice question, a short explanation is enough.
+
+Example:
+
+Question:
+Ո՞ր թվերն են զույգ։
+
+Correct answer:
+2-ի բաժանելիս մնացորդը 0 է։
+
+Explanation:
+Զույգ թվերը 2-ի բաժանվում են առանց մնացորդի։
+
+But for a calculation/problem question, displaying only the final numeric
+answer is NOT sufficient educational feedback.
+
+Example:
+
+Question:
+4000-ը 72-ի բաժանելիս ի՞նչ մնացորդ է ստացվում։
+
+Do not teach only:
+
+Ճիշտ պատասխանը՝ 40։
+
+Prefer a short solution/evidence such as:
+
+72 × 55 = 3960
+4000 − 3960 = 40
+
+Ուրեմն մնացորդը 40 է։
+
+The purpose is:
+
+the learner should see WHY the answer is correct,
+not memorize an arbitrary number.
+
+IMPORTANT:
+
+Reuse existing explanation/solution data if already available.
+
+Do not introduce a full AI Teacher generation pipeline here.
+
+If current quiz generation already produces whyCorrect / whyWrong /
+solution/explanation fields, preserve and surface them appropriately.
+
+If the current data model cannot distinguish a calculation solution from a
+simple explanation, inspect first and implement the smallest backward-compatible
+extension.
+
+Do not fabricate mathematical solution steps client-side.
+
+============================================================
+PART 8 — REPEATED QUESTION BEHAVIOR
+============================================================
+
+For this phase, DO NOT build a new Question Engine.
+
+Do NOT dynamically rewrite every question.
+
+Do NOT generate equivalent-number variants yet.
+
+It is acceptable for the same question to appear again in a later attempt.
+
+However, for multiple-choice questions:
+
+shuffle answer option positions on a new attempt.
+
+Hard requirements:
+
+- the semantic correct answer must remain correct
+- correctness must not depend on old A/B/C/D position
+- stored learner answer and Results rendering must remain accurate
+- feedback must point to the correct shuffled option
+- shuffling must occur per attempt, not mutate the canonical source question
+
+Example:
+
+Attempt 1:
+A wrong
+B correct
+C wrong
+D wrong
+
+Attempt 2 may render:
+
+A wrong
+B wrong
+C wrong
+D correct
+
+but the underlying semantic answer is unchanged.
+
+Do not alter the canonical question merely to shuffle presentation order.
+
+============================================================
+PART 9 — CURRENT STATE MUST BE RECALCULATED AFTER EVERY ATTEMPT
+============================================================
+
+After every attempt:
+
+1. persist the attempt/evidence through the existing canonical evidence path
+2. resolve the current canonical state for the session's MicroNodes
+3. project them into:
+
+Գիտի
+Սովորելու
+
+4. render the new counts
+5. use that CURRENT state for the next retest scope
+
+Do not freeze the categories from Attempt 1.
+
+Example:
+
+Attempt 1:
+Գիտի 2
+Սովորելու 3
+
+Attempt 2 may become:
+Գիտի 4
+Սովորելու 1
+
+Attempt 3 may become:
+Գիտի 5
+Սովորելու 0
+
+The UI must always represent the latest canonical state.
+
+============================================================
+PART 10 — KNOWLEDGE TREE UPDATE / EXIT SAFETY
+============================================================
+
+The learner must never lose the latest evidence merely because they did not
+press a special final button.
+
+Knowledge Tree/evidence must remain correct if learner:
+
+- presses Finish
+- navigates away
+- closes the page
+- returns to dashboard
+- stops after any completed attempt
+
+Therefore:
+
+DO NOT make Knowledge Tree persistence depend only on the Finish button.
+
+Each completed attempt must persist its canonical evidence normally.
+
+"Finish" is session/navigation semantics, not the sole evidence commit.
+
+If the existing architecture already writes evidence on attempt completion,
+preserve that architecture.
+
+Do not duplicate evidence writes on Finish.
+
+============================================================
+PART 11 — REOPENING THE ORIGINAL QUIZ
+============================================================
+
+When learner later opens the same teacher-assigned quiz, show the current state
+of that quiz session rather than pretending it has never been attempted.
+
+At minimum expose:
+
+- latest/current result state
+- Գիտի count
+- Սովորելու count
+- ability to review existing attempt/result history
+- if learning nodes remain, ability to continue learning
+- if none remain, completed/mastered state
+
+Do not require the learner to search through separate retest cards.
+
+============================================================
+PART 12 — HISTORY MUST NOT OVERRIDE CURRENT STATE
+============================================================
+
+Attempts are historical evidence.
+
+They are NOT independent competing current states.
+
+Attempt 1 may show:
+N1 = Սովորելու
+
+Attempt 3 may establish:
+N1 = Գիտի
+
+The current Test-session UI must show N1 as Գիտի.
+
+Attempt 1 remains visible only as historical review.
+
+Use the canonical current Knowledge Tree/C5 authority for current state.
+
+Do not calculate current state by simply reading the last local Results object
+or by merging percentages client-side.
+
+============================================================
+PART 13 — IMPORTANT EXISTING BEHAVIOR TO PRESERVE
+============================================================
+
+Preserve:
+
+- teacher quiz creation
+- quiz assignment
+- original quiz generation
+- existing scoring semantics
+- current correct/incorrect evaluation
+- existing per-question feedback
+- existing Results page information
+- T1 canonical authority
+- T2 Results review work
+- C3/C4/C5 Knowledge Tree authority
+- historical attempts
+- authentication / ownership rules
+
+Do not weaken validators or ownership checks to make the feature pass.
+
+============================================================
+PART 14 — PROVIDER-FREE / DETERMINISTIC TEST MATRIX
+============================================================
+
+Add deterministic tests for at least these cases.
+
+CASE 1 — two-state projection
+
+Canonical states:
+mastered
+partial
+weak
+in_progress
+
+Expected Test-session projection:
+
+mastered → Գիտի
+all others → Սովորելու
+
+CASE 2 — retest scope
+
+Original:
+N1 N2 N3 N4
+
+Current mastered:
+N1 N3
+
+Expected retest:
+N2 N4 only
+
+CASE 3 — progression
+
+Attempt 1:
+mastered N1
+learning N2 N3
+
+Attempt 2:
+mastered N1 N2
+learning N3
+
+Expected next retest:
+N3 only
+
+CASE 4 — fully mastered
+
+All nodes mastered.
+
+Expected:
+learning count = 0
+no learning retest action
+
+CASE 5 — same root quiz
+
+Create multiple retest attempts.
+
+Expected:
+one original assignment/root quiz
+multiple child attempts
+no extra learner-dashboard assignments
+
+CASE 6 — MCQ shuffle
+
+Same semantic question across two attempts.
+
+Expected:
+option order can differ
+correct semantic option remains correct
+evaluation remains correct
+
+CASE 7 — immediate correct feedback
+
+Learner answers correctly.
+
+Expected before next question:
+correct state + learner answer + concise correct explanation
+
+CASE 8 — immediate incorrect feedback
+
+Learner answers incorrectly.
+
+Expected before next question:
+incorrect state + learner answer + correct answer +
+why-wrong + why-correct/solution where available
+
+CASE 9 — calculation feedback
+
+Calculation question with solution evidence.
+
+Expected:
+feedback includes short solution/evidence,
+not only final numeric answer
+
+CASE 10 — exit safety
+
+Complete attempt then leave without Finish.
+
+Expected:
+evidence already persisted
+canonical current state reflects completed attempt
+
+CASE 11 — history/current-state separation
+
+Old attempt says N1 learning.
+Later canonical state says N1 mastered.
+
+Expected:
+history preserves old result
+current session state shows N1 mastered
+
+CASE 12 — reopening quiz
+
+Learner returns later.
+
+Expected:
+same original assigned quiz
+current knows/learning counts restored
+history available
+continue-learning action available only if learning nodes remain
+
+============================================================
+PART 15 — NON-REGRESSION
+============================================================
+
+Run focused existing tests for:
+
+- quiz creation
+- quiz assignment
+- quiz attempt lifecycle
+- quiz completion
+- scoring
+- Results
+- T1 retest authority
+- T2 Results/retest choice
+- C3 evidence
+- C4
+- C5 Knowledge Tree
+- frontend typecheck
+- API typecheck
+- frontend build
+- API build
+
+Do not modify unrelated failing legacy fixtures merely to get a green suite.
+
+If a legacy test fails for a pre-existing fixture/schema reason, report it
+separately with evidence.
+
+============================================================
+PART 16 — UI / UX RULE
+============================================================
+
+Keep the experience simple.
+
+The learner should conceptually understand:
+
+Թեստ
+→ պատասխանում եմ
+→ անմիջապես տեսնում եմ ճիշտ/սխալը
+→ ավարտում եմ փորձը
+→ տեսնում եմ՝
+
+Գիտի: X
+Սովորելու: Y
+
+→ նայում եմ սխալներս/բացատրությունները
+→ Շարունակել սովորել
+→ նորից պատասխանում եմ միայն մնացած գիտելիքից
+→ մինչև ավարտեմ կամ բոլորը դառնան Գիտի
+
+Do not expose internal terminology such as:
+
+C3
+C4
+C5
+canonical authority
+MicroNode IDs
+attempt snapshot
+evidence resolver
+
+to the learner.
+
+============================================================
+PART 17 — IMPLEMENTATION DISCIPLINE
+============================================================
+
+This must be a systemic implementation.
+
+Do NOT hardcode a specific lesson, quiz, student, attempt, question, or node.
+
+Do NOT create Lesson-specific fixes.
+
+Do NOT use frontend percentages as mastery authority.
+
+Do NOT create another mastery classifier.
+
+Do NOT create a second Knowledge Tree state store.
+
+Do NOT create duplicate retest assignments.
+
+Do NOT weaken T1.
+
+Do NOT weaken C5.
+
+Prefer extending existing shared services and contracts.
+
+Before completion, request an independent architecture review specifically for:
+
+1. single-root quiz/session ownership
+2. canonical knows/learning projection
+3. retest scope authority
+4. no duplicate dashboard assignments
+5. attempt-history vs current-state separation
+6. immediate feedback correctness
+7. MCQ shuffle correctness
+8. evidence persistence / exit safety
+9. no regression to T1/T2/C3/C4/C5
+
+Fix concrete reviewer findings before marking complete.
+
+============================================================
+PART 18 — FINAL REPORT
+============================================================
+
+At completion report:
+
+1. exact files changed
+2. exact DB/schema changes, if any
+3. how root quiz → multiple attempts now works
+4. how Գիտի / Սովորելու is resolved
+5. how next retest scope is resolved
+6. how immediate feedback works
+7. how calculation solution feedback works
+8. how MCQ shuffling preserves correctness
+9. how Knowledge Tree remains safe when learner exits
+10. how reopening the quiz restores current state
+11. tests run and exact results
+12. any pre-existing unrelated failures
+13. independent review result
+
+Do not implement a future Question Engine in this task.
+
+Do not implement AI Teacher changes.
+
+Do not proceed to another phase automatically after completing this task.
