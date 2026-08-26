@@ -1,0 +1,235 @@
+FORENSIC AUDIT ONLY — DO NOT CHANGE CODE OR DATA YET
+
+We have a real lesson that is mapped but cannot be successfully assigned to a student.
+
+REAL CASE
+
+Textbook: Մաթեմատիկա 5
+Author: Ս Գոգյան
+Topic: ԳՈՐԾՈՂՈՒԹՅՈՒՆՆԵՐ ԲՆԱԿԱՆ ԹՎԵՐՈՎ
+Lesson: Մնացորդով բաժանում
+§2.11
+Pages: 66–68
+
+Current teacher UI shows:
+
+- “Հանձնարարել սովորողին”
+- “Ընթեռնելի ուսումնական աղբյուրից 4 հատված MicroNode-ի պատասխանատու չունի։”
+- “Քարտեզագրումը ստեղծվել է։ 3 հանգույց պատրաստ է, 0 հանգույց և 4 աղբյուրային բլոկ խորհուրդ է տրվում վերանայել։”
+- 3 MicroNodes are reported as ready.
+
+PROBLEM
+
+The lesson does not successfully proceed through the learner-assignment flow.
+
+Do NOT guess that the 4 unowned readable source blocks are the cause.
+Prove the actual blocking condition from code/runtime/data.
+
+==================================================
+GOAL
+==================================================
+
+Determine exactly why this lesson cannot be assigned to a learner and identify the systemic ownership boundary responsible for the failure.
+
+We do NOT want a Lesson-specific patch.
+
+We want to know whether the failure belongs to:
+
+1. frontend assignment/readiness logic,
+2. backend assignment endpoint,
+3. lesson readiness / validation gate,
+4. mapping status interpretation,
+5. cognitive-path requirement,
+6. teaching-content requirement,
+7. MicroNode readiness,
+8. source-coverage warning incorrectly treated as blocking,
+9. assignment persistence,
+10. student delivery/read path,
+11. or another proven cause.
+
+==================================================
+PART 1 — TRACE THE FULL ASSIGNMENT FLOW
+==================================================
+
+Trace from the teacher clicking:
+
+“Հանձնարարել սովորողին”
+
+through:
+
+Teacher UI
+→ frontend handler
+→ API request
+→ backend route
+→ readiness/validation checks
+→ assignment persistence
+→ learner visibility/delivery.
+
+For every stage report:
+
+- file path
+- function/component/route
+- relevant condition
+- what can block progression
+- what error/status is returned
+- what the UI displays.
+
+Do not modify anything.
+
+==================================================
+PART 2 — INSPECT THIS REAL LESSON STATE
+==================================================
+
+Identify the lesson ID from the real current lesson.
+
+Inspect its persisted state read-only.
+
+Report at minimum:
+
+lessonId
+mapping status
+topic count
+MicroNode count
+ready MicroNode count
+review-required MicroNode count
+source-block count
+unowned readable instructional source count
+cognitive-path status/count
+teaching-content status/count
+lesson validation/finalization status if applicable
+existing assignments if applicable.
+
+Do not remap the lesson.
+Do not generate cognitive paths.
+Do not generate teaching content.
+Do not edit DB records.
+
+==================================================
+PART 3 — PROVE THE EXACT BLOCKER
+==================================================
+
+Find the exact condition that prevents assignment.
+
+Give the actual predicate in conceptual form.
+
+Example only:
+
+assignmentAllowed =
+  A
+  && B
+  && C
+
+Then show which term is false for this lesson.
+
+If the assignment request reaches the backend and fails, report:
+
+- HTTP status
+- safe error code
+- blocking gate
+- relevant safe diagnostics.
+
+If the frontend prevents the request before it reaches the backend, prove that instead.
+
+If assignment succeeds in persistence but learner delivery fails, prove that instead.
+
+==================================================
+PART 4 — INVESTIGATE THE 4 UNOWNED SOURCE BLOCKS
+==================================================
+
+Determine whether:
+
+“Ընթեռնելի ուսումնական աղբյուրից 4 հատված MicroNode-ի պատասխանատու չունի”
+
+is:
+
+A. informational warning only,
+B. review-required state,
+C. hard assignment blocker,
+D. indirectly causing another readiness failure.
+
+Show the code path proving the answer.
+
+Also determine what those 4 blocks are by safe structural classification/index where possible.
+
+Do NOT paste large textbook/source contents.
+
+We need to know whether they are:
+
+- instructional theory,
+- example,
+- activity/exercise,
+- heading/supporting material,
+- or another category.
+
+==================================================
+PART 5 — CHECK SYSTEM DESIGN CONSISTENCY
+==================================================
+
+Compare the actual assignment gate with the intended architecture.
+
+Important design principle:
+
+A review warning must not silently become a hard blocker unless the system contract explicitly requires it.
+
+Likewise, a lesson must not be assignable if a genuinely required downstream teaching artifact is missing.
+
+Determine whether the current behavior is:
+
+1. correct fail-closed behavior,
+2. overly strict gate,
+3. missing prerequisite generation,
+4. stale/legacy gate,
+5. frontend/backend contract mismatch,
+6. data inconsistency,
+7. another architectural defect.
+
+==================================================
+PART 6 — SYSTEMIC FIX RECOMMENDATION
+==================================================
+
+Do NOT implement yet.
+
+After proving the root cause, propose the smallest systemic fix.
+
+The recommendation must specify:
+
+- shared ownership boundary to change,
+- exact invariant,
+- what should remain blocking,
+- what should remain warning/review-only,
+- regression tests required,
+- protected behavior that must not change.
+
+Do not weaken mapping/source-coverage validation merely to make this lesson assignable.
+
+Do not special-case this lesson ID.
+
+Do not change C1/C2/Test 2.0/AI Teacher unless the evidence proves that the assignment contract genuinely depends on one of them.
+
+==================================================
+PART 7 — REQUIRED OUTPUT
+==================================================
+
+Return:
+
+A. EXECUTIVE DIAGNOSIS
+B. REAL LESSON STATE
+C. FULL ASSIGNMENT FLOW
+D. EXACT BLOCKING PREDICATE
+E. STATUS OF THE 4 UNOWNED SOURCE BLOCKS
+F. ROOT CAUSE
+G. SYSTEMIC FIX DESIGN
+H. REGRESSION TEST MATRIX
+I. FILES THAT WOULD NEED CHANGES
+J. THINGS THAT MUST NOT BE CHANGED
+
+End with exactly one recommendation:
+
+IMPLEMENT
+or
+DO NOT IMPLEMENT YET
+
+Do not make code changes in this audit.
+Do not modify lesson data.
+Do not remap.
+Do not call an AI provider.
