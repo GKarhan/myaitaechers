@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import {
+  buildTargetedRetestRequest,
   formatAnswer,
   getRetestAuthorityUiState,
+  parseTargetedRetestCreationPayload,
   STUDENT_RESULTS_FINISH_PATH,
   shouldShowExplanation,
   summarizeRetestAuthority,
@@ -101,4 +103,57 @@ console.log("PASS T2-11 — authority counts win over any alternate grouping");
 assert.equal(STUDENT_RESULTS_FINISH_PATH, "/dashboard");
 console.log("PASS T2-12 — Finish uses the existing safe student destination");
 
-console.log("T2 frontend/domain suite passed (12/12)");
+assert.deepEqual(
+  buildTargetedRetestRequest(42, "PARTIAL_AND_NOT_KNOWN"),
+  { sourceAttemptId: 42, strategy: "PARTIAL_AND_NOT_KNOWN" },
+);
+console.log("PASS T3-F1 — create request contains only source attempt and strategy");
+
+assert.deepEqual(
+  parseTargetedRetestCreationPayload({
+    created: true,
+    reused: false,
+    sourceAttemptId: 42,
+    strategy: "NOT_KNOWN_ONLY",
+    quizId: 91,
+    assignmentId: 92,
+  }),
+  {
+    created: true,
+    reused: false,
+    sourceAttemptId: 42,
+    strategy: "NOT_KNOWN_ONLY",
+    quizId: 91,
+    assignmentId: 92,
+  },
+);
+console.log("PASS T3-F2 — valid create/start response is accepted");
+
+assert.deepEqual(
+  parseTargetedRetestCreationPayload({
+    created: false,
+    reason: "NO_ELIGIBLE_NODES",
+    sourceAttemptId: 42,
+    strategy: "PARTIAL_AND_NOT_KNOWN",
+  }),
+  {
+    created: false,
+    reason: "NO_ELIGIBLE_NODES",
+    sourceAttemptId: 42,
+    strategy: "PARTIAL_AND_NOT_KNOWN",
+  },
+);
+console.log("PASS T3-F3 — bounded empty eligibility remains a normal state");
+
+assert.equal(
+  parseTargetedRetestCreationPayload({
+    created: true,
+    sourceAttemptId: 42,
+    strategy: "PARTIAL_AND_NOT_KNOWN",
+    quizId: 91,
+  }),
+  null,
+);
+console.log("PASS T3-F4 — incomplete creation responses fail closed");
+
+console.log("T2/T3 frontend/domain suite passed (16/16)");

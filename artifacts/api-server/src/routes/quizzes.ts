@@ -20,8 +20,7 @@ import {
 } from "@workspace/db";
 import { updateTopicScoring } from "../services/scoring";
 import { eq, and, asc, inArray, desc, sql, count, ne } from "drizzle-orm";
-import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { generateQuizQuestions } from "../services/quiz-generation";
+import { requireAuth, requireStudent, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
 import { classifyQualifyingEvidence } from "../lib/evidence-contract.js";
@@ -31,6 +30,13 @@ import {
   resolveRetestEligibleNodes,
   RetestAuthorityError,
 } from "../services/quiz-retest-authority.js";
+import {
+  createQuizFromNodeScope,
+} from "../services/quiz-creation.js";
+import {
+  createTargetedRetest,
+  TargetedRetestError,
+} from "../services/quiz-retest-creation.js";
 
 // ---------------------------------------------------------------------------
 // Helper: wraps an async route handler so unhandled rejections are forwarded
@@ -458,81 +464,30 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     : resolvedLessonIds.length  >  1 ? "summary"
     : null); // no lesson linkage (edge case — book-only or free-form)
 
-  // Create DRAFT quiz
   const quizTitle = title?.trim() || `Թեստ — ${new Date().toLocaleDateString("hy-AM")}`;
-  const [quiz] = await db
-    .insert(quizzesTable)
-    .values({
-      teacherId:    req.userId!,
-      subjectId,
-      classId:      classId ?? null,
-      sourceBookId: sourceBookId ?? null,
-      nodeIds:      resolvedNodeIds,
-      title:        quizTitle,
-      questionCount,
-      difficultyMode,
-      status:       "DRAFT",
-      quizType:     derivedQuizType,
-    })
-    .returning();
-
-  // Persist lesson relationships immediately so the lesson card can show this
-  // quiz even before generation completes (avoids partial state on rollback too
-  // because the quiz delete in the catch block cascades to links).
-  if (resolvedLessonIds.length > 0) {
-    await db
-      .insert(quizLessonLinksTable)
-      .values(resolvedLessonIds.map((lid) => ({ quizId: quiz.id, lessonId: lid })))
-      .onConflictDoNothing(); // idempotent
-  }
-
   try {
-    // Generate questions via AI
-    const generated = await generateQuizQuestions({
-      nodeIds:       resolvedNodeIds,
+    const created = await createQuizFromNodeScope({
+      teacherId: req.userId!,
+      subjectId,
+      classId,
+      sourceBookId,
+      lessonIds: resolvedLessonIds,
+      nodeIds: resolvedNodeIds,
+      title: quizTitle,
       questionCount,
       difficultyMode: difficultyMode as "SIMPLE" | "MEDIUM" | "HARD" | "MIXED",
+      quizType: derivedQuizType,
+      allowEmptyQuestions: true,
     });
 
-    // Persist questions
-    if (generated.length > 0) {
-      await db.insert(quizQuestionsTable).values(
-        generated.map((q, i) => ({
-          quizId:              quiz.id,
-          nodeId:              q.nodeId,
-          cognitiveLevelId:    q.cognitiveLevelId,
-          questionText:        q.questionText,
-          options:             q.options,
-          correctOptionIndex:  q.correctOptionIndex,
-          difficultyLevel:     q.difficultyLevel,
-          sequence:            i + 1,
-          optionExplanations:  (q.optionExplanations?.map(s => s ?? "") ?? null),
-          interactionType:     "multiple_choice",
-        }))
-      );
-    }
-
-    // Mark GENERATED
-    await db
-      .update(quizzesTable)
-      .set({ status: "GENERATED", updatedAt: new Date() })
-      .where(eq(quizzesTable.id, quiz.id));
-
-    // Return full quiz
-    const questions = await db
-      .select()
-      .from(quizQuestionsTable)
-      .where(eq(quizQuestionsTable.quizId, quiz.id))
-      .orderBy(asc(quizQuestionsTable.sequence));
-
     res.status(201).json({
-      id:             quiz.id,
+      id:             created.quiz.id,
       title:          quizTitle,
-      subjectId:      quiz.subjectId,
-      questionCount:  generated.length,
-      difficultyMode: quiz.difficultyMode,
+      subjectId:      created.quiz.subjectId,
+      questionCount:  created.generated.length,
+      difficultyMode: created.quiz.difficultyMode,
       status:         "GENERATED",
-      questions:      questions.map((q) => ({
+      questions:      created.questions.map((q) => ({
         id:                 q.id,
         nodeId:             q.nodeId,
         questionText:       q.questionText,
@@ -543,21 +498,74 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
       })),
     });
   } catch (err) {
-    // Roll back the DRAFT record so the teacher can retry cleanly.
-    // Guard the delete so that a secondary DB failure does NOT re-throw
-    // (which would cause asyncHandler to call next(err) after headers were
-    // potentially already sent, or produce a double-response).
-    try {
-      await db.delete(quizzesTable).where(eq(quizzesTable.id, quiz.id));
-    } catch (deleteErr) {
-      logger.error({ err: deleteErr, quizId: quiz.id }, "failed to rollback DRAFT quiz");
-    }
-    logger.error({ err, quizId: quiz.id }, "quiz generation failed — DRAFT deleted");
+    logger.error({ err }, "quiz generation failed");
     if (!res.headersSent) {
       res.status(500).json({
         error: err instanceof Error ? err.message : "Quiz generation failed, please retry",
       });
     }
+  }
+}));
+
+// ── POST /api/quizzes/retests ──────────────────────────────────────────────────
+// Student: create one new quiz from the current canonical T1 eligibility of a
+// completed source attempt. The client supplies no node IDs or learner state.
+router.post("/quizzes/retests", requireStudent, asyncHandler(async (req: AuthRequest, res) => {
+  const body = req.body as {
+    sourceAttemptId?: unknown;
+    strategy?: unknown;
+  };
+  const sourceAttemptId = Number(body.sourceAttemptId);
+  if (!Number.isInteger(sourceAttemptId) || sourceAttemptId <= 0) {
+    res.status(400).json({ error: "Invalid source attempt id" });
+    return;
+  }
+
+  const strategy = parseRetestStrategy(body.strategy);
+  if (!strategy) {
+    res.status(400).json({
+      error: "strategy must be PARTIAL_AND_NOT_KNOWN or NOT_KNOWN_ONLY",
+    });
+    return;
+  }
+
+  try {
+    const result = await createTargetedRetest({
+      learnerId: req.userId!,
+      sourceAttemptId,
+      strategy,
+    });
+
+    if (!result.created) {
+      res.status(200).json(result);
+      return;
+    }
+
+    res.status(result.reused ? 200 : 201).json(result);
+  } catch (error) {
+    if (error instanceof RetestAuthorityError) {
+      if (error.code === "RETEST_ATTEMPT_NOT_OWNED") {
+        res.status(403).json({ error: "Retest attempt access denied" });
+        return;
+      }
+      if (error.code === "RETEST_ATTEMPT_INCOMPLETE") {
+        res.status(409).json({ error: "Retest requires a completed attempt" });
+        return;
+      }
+      if (error.code === "RETEST_STRATEGY_INVALID") {
+        res.status(400).json({
+          error: "strategy must be PARTIAL_AND_NOT_KNOWN or NOT_KNOWN_ONLY",
+        });
+        return;
+      }
+      res.status(404).json({ error: "Completed attempt not found" });
+      return;
+    }
+    if (error instanceof TargetedRetestError) {
+      res.status(500).json({ error: "Retest creation failed, please retry" });
+      return;
+    }
+    throw error;
   }
 }));
 

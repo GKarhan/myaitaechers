@@ -24,6 +24,56 @@ export type SelectedNextAction = RetestStrategy | "FINISH";
 
 export const STUDENT_RESULTS_FINISH_PATH = "/dashboard";
 
+export type TargetedRetestCreationPayload =
+  | {
+      created: false;
+      reason: "NO_ELIGIBLE_NODES";
+      sourceAttemptId: number;
+      strategy: RetestStrategy;
+    }
+  | {
+      created: true;
+      reused: boolean;
+      sourceAttemptId: number;
+      strategy: RetestStrategy;
+      quizId: number;
+      assignmentId: number;
+    };
+
+export function buildTargetedRetestRequest(
+  sourceAttemptId: number,
+  strategy: RetestStrategy,
+) {
+  return { sourceAttemptId, strategy };
+}
+
+export function parseTargetedRetestCreationPayload(
+  value: unknown,
+): TargetedRetestCreationPayload | null {
+  if (!value || typeof value !== "object") return null;
+  const payload = value as Record<string, unknown>;
+  const strategy = payload.strategy;
+  if (
+    !Number.isInteger(payload.sourceAttemptId) ||
+    (strategy !== "PARTIAL_AND_NOT_KNOWN" && strategy !== "NOT_KNOWN_ONLY")
+  ) {
+    return null;
+  }
+
+  if (payload.created === false && payload.reason === "NO_ELIGIBLE_NODES") {
+    return payload as TargetedRetestCreationPayload;
+  }
+  if (
+    payload.created === true &&
+    typeof payload.reused === "boolean" &&
+    Number.isInteger(payload.quizId) &&
+    Number.isInteger(payload.assignmentId)
+  ) {
+    return payload as TargetedRetestCreationPayload;
+  }
+  return null;
+}
+
 export function summarizeRetestAuthority(
   combined: RetestAuthorityPayload,
   notKnownOnly: RetestAuthorityPayload,

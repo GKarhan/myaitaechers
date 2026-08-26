@@ -58,6 +58,20 @@ export function requireTeacher(
   });
 }
 
+export function requireStudent(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): void {
+  requireAuth(req, res, () => {
+    if (req.userRole !== "student") {
+      res.status(403).json({ error: "Student access required" });
+      return;
+    }
+    next();
+  });
+}
+
 export function signToken(userId: number, role: string): string {
   return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "7d" });
 }

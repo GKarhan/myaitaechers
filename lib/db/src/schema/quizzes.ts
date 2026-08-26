@@ -31,9 +31,16 @@ export const quizzesTable = pgTable("quizzes", {
   status: text("status").notNull().default("DRAFT"),
   // Phase 1.9: explicit quiz scope — 'lesson' (1 linked lesson) | 'summary' (≥1 lessons) | null (legacy/unclassified)
   quizType: text("quiz_type"),
+  // Test 2.0: nullable lineage for a targeted retest created from a completed attempt.
+  // These fields are set together and are never used to alter the source attempt.
+  retestSourceAttemptId: integer("retest_source_attempt_id"),
+  retestStrategy: text("retest_strategy"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  // Makes repeated creation requests for the same source/strategy safely reusable.
+  unique("quizzes_retest_lineage_uq").on(t.retestSourceAttemptId, t.retestStrategy),
+]);
 
 export type Quiz = typeof quizzesTable.$inferSelect;
 

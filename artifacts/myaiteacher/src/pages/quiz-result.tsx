@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useAuth } from "@/lib/auth";
 import {
   formatAnswer,
+  buildTargetedRetestRequest,
   getRetestAuthorityUiState,
+  parseTargetedRetestCreationPayload,
   STUDENT_RESULTS_FINISH_PATH,
   shouldShowExplanation,
   type RetestAuthorityPayload,
@@ -146,6 +148,10 @@ export default function QuizResult() {
   const [notKnownAuthority, setNotKnownAuthority] = useState<RetestAuthorityPayload | null>(null);
   const [selectedNextAction, setSelectedNextAction] = useState<SelectedNextAction | null>(null);
   const [authorityRetry, setAuthorityRetry] = useState(0);
+  const [retestCreationStatus, setRetestCreationStatus] = useState<
+    "idle" | "creating" | "empty" | "error"
+  >("idle");
+  const retestRequestInFlight = useRef(false);
 
   useEffect(() => {
     if (!token || !id || !user) return;
@@ -161,6 +167,8 @@ export default function QuizResult() {
     setCombinedAuthority(null);
     setNotKnownAuthority(null);
     setSelectedNextAction(null);
+    setRetestCreationStatus("idle");
+    retestRequestInFlight.current = false;
 
     const url = isTeacherView
       ? `${BASE}/api/quizzes/${id}/results/${studentId}`
@@ -246,6 +254,55 @@ export default function QuizResult() {
       cancelled = true;
     };
   }, [token, id, result?.attemptId, isTeacherView, authorityRetry]);
+
+  async function handleCreateRetest() {
+    if (
+      !token ||
+      result?.attemptId == null ||
+      (selectedNextAction !== "PARTIAL_AND_NOT_KNOWN" &&
+        selectedNextAction !== "NOT_KNOWN_ONLY") ||
+      retestRequestInFlight.current
+    ) {
+      return;
+    }
+
+    retestRequestInFlight.current = true;
+    setRetestCreationStatus("creating");
+    try {
+      const response = await fetch(`${BASE}/api/quizzes/retests`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(buildTargetedRetestRequest(
+          result.attemptId,
+          selectedNextAction,
+        )),
+      });
+      const rawPayload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error("retest_creation_failed");
+
+      const payload = parseTargetedRetestCreationPayload(rawPayload);
+      if (
+        !payload ||
+        payload.sourceAttemptId !== result.attemptId ||
+        payload.strategy !== selectedNextAction
+      ) {
+        throw new Error("retest_creation_invalid");
+      }
+      if (!payload.created) {
+        setRetestCreationStatus("empty");
+        return;
+      }
+
+      setLocation(`/quiz/${payload.quizId}/take`);
+    } catch {
+      setRetestCreationStatus("error");
+    } finally {
+      retestRequestInFlight.current = false;
+    }
+  }
 
   if (loading) {
     return (
@@ -606,7 +663,11 @@ export default function QuizResult() {
                       <button
                         type="button"
                         aria-pressed={selectedNextAction === "PARTIAL_AND_NOT_KNOWN"}
-                        onClick={() => setSelectedNextAction("PARTIAL_AND_NOT_KNOWN")}
+                        disabled={retestCreationStatus === "creating"}
+                        onClick={() => {
+                          setSelectedNextAction("PARTIAL_AND_NOT_KNOWN");
+                          setRetestCreationStatus("idle");
+                        }}
                         className={`w-full text-left rounded-xl border px-4 py-4 transition-all ${
                           selectedNextAction === "PARTIAL_AND_NOT_KNOWN"
                             ? "border-primary/70 bg-primary/20"
@@ -636,7 +697,11 @@ export default function QuizResult() {
                       <button
                         type="button"
                         aria-pressed={selectedNextAction === "NOT_KNOWN_ONLY"}
-                        onClick={() => setSelectedNextAction("NOT_KNOWN_ONLY")}
+                        disabled={retestCreationStatus === "creating"}
+                        onClick={() => {
+                          setSelectedNextAction("NOT_KNOWN_ONLY");
+                          setRetestCreationStatus("idle");
+                        }}
                         className={`w-full text-left rounded-xl border px-4 py-4 transition-all ${
                           selectedNextAction === "NOT_KNOWN_ONLY"
                             ? "border-red-400/70 bg-red-400/10"
@@ -669,9 +734,39 @@ export default function QuizResult() {
                 )}
 
                 {selectedNextAction && selectedNextAction !== "FINISH" && (
-                  <p className="text-xs text-muted-foreground">
-                    Ընտրությունը նշված է այս էջում։
-                  </p>
+                  <div className="space-y-3">
+                    {retestCreationStatus === "empty" && (
+                      <div
+                        role="status"
+                        className="rounded-xl border border-teal-400/20 bg-teal-400/5 px-4 py-3 text-sm text-teal-200"
+                      >
+                        Այս ընտրությամբ նորից ստուգելու գիտելիքներ այլևս չկան։
+                      </div>
+                    )}
+                    {retestCreationStatus === "error" && (
+                      <div
+                        role="alert"
+                        className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-200"
+                      >
+                        Չհաջողվեց ստեղծել նոր թեստը։ Կարող եք կրկին փորձել։
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleCreateRetest}
+                      disabled={
+                        retestCreationStatus === "creating" ||
+                        retestCreationStatus === "empty"
+                      }
+                      className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {retestCreationStatus === "creating"
+                        ? "Ստեղծում ենք նոր թեստը…"
+                        : retestCreationStatus === "error"
+                          ? "Կրկին փորձել ստեղծել"
+                          : "Ստեղծել և սկսել նոր թեստը"}
+                    </button>
+                  </div>
                 )}
               </>
             )}
