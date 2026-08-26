@@ -5,7 +5,9 @@ import {
   quizQuestionsTable,
   quizAssignmentsTable,
   quizAttemptsTable,
+  quizAttemptQuestionsTable,
   quizAnswersTable,
+  quizSessionsTable,
   quizLessonLinksTable,
   classStudentsTable,
   lessonNodesTable,
@@ -19,7 +21,7 @@ import {
   lessonExercisesTable,
 } from "@workspace/db";
 import { updateTopicScoring } from "../services/scoring";
-import { eq, and, asc, inArray, desc, sql, count, ne } from "drizzle-orm";
+import { eq, and, asc, inArray, desc, sql, count, ne, isNull, isNotNull } from "drizzle-orm";
 import { requireAuth, requireStudent, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
@@ -34,9 +36,16 @@ import {
   createQuizFromNodeScope,
 } from "../services/quiz-creation.js";
 import {
-  createTargetedRetest,
-  TargetedRetestError,
-} from "../services/quiz-retest-creation.js";
+  getOrCreateActiveAttempt,
+  ensureQuizSession,
+  presentAttemptQuestion,
+  resolveQuizSessionProjection,
+  scorePresentedAnswer,
+} from "../services/quiz-session.js";
+import {
+  collapseToLatestCompletedAttempt,
+  getLatestCompletedQuizScoreStats,
+} from "../services/quiz-reporting.js";
 
 // ---------------------------------------------------------------------------
 // Helper: wraps an async route handler so unhandled rejections are forwarded
@@ -79,11 +88,27 @@ async function buildStudentResultAnalysis(
       selectedOptionIndex: quizAnswersTable.selectedOptionIndex,
       isCorrect:           quizAnswersTable.isCorrect,
       sequence:            quizQuestionsTable.sequence,
-      nodeId:              quizQuestionsTable.nodeId,
+      nodeId:              sql<number | null>`coalesce(${quizAttemptQuestionsTable.nodeId}, ${quizAnswersTable.nodeId}, ${quizQuestionsTable.nodeId})`,
       optionExplanations:  quizQuestionsTable.optionExplanations,
+      solutionExplanation: quizQuestionsTable.solutionExplanation,
+      snapshotQuestionText: quizAttemptQuestionsTable.questionText,
+      snapshotOptions: quizAttemptQuestionsTable.options,
+      snapshotCorrectOptionIndex: quizAttemptQuestionsTable.correctOptionIndex,
+      snapshotOptionExplanations: quizAttemptQuestionsTable.optionExplanations,
+      snapshotSolutionExplanation: quizAttemptQuestionsTable.solutionExplanation,
+      snapshotOptionOrder: quizAttemptQuestionsTable.optionOrder,
+      selectedPresentationIndex: quizAnswersTable.selectedPresentationIndex,
+      snapshotSequence: quizAttemptQuestionsTable.sequence,
     })
     .from(quizAnswersTable)
     .innerJoin(quizQuestionsTable, eq(quizQuestionsTable.id, quizAnswersTable.questionId))
+    .leftJoin(
+      quizAttemptQuestionsTable,
+      and(
+        eq(quizAttemptQuestionsTable.attemptId, attemptId),
+        eq(quizAttemptQuestionsTable.questionId, quizAnswersTable.questionId),
+      ),
+    )
     .where(eq(quizAnswersTable.attemptId, attemptId))
     .orderBy(asc(quizQuestionsTable.sequence));
 
@@ -141,14 +166,25 @@ async function buildStudentResultAnalysis(
   // Build enriched question list
   const questions = rawAnswers.map((a) => {
     const ln = a.nodeId != null ? lnMap.get(a.nodeId) : null;
+    const canonicalOptions = Array.isArray(a.snapshotOptions)
+      ? a.snapshotOptions as string[]
+      : Array.isArray(a.options) ? a.options as string[] : [];
+    const optionOrder = Array.isArray(a.snapshotOptionOrder)
+      ? a.snapshotOptionOrder as number[]
+      : canonicalOptions.map((_, index) => index);
+    const canonicalCorrect = a.snapshotCorrectOptionIndex ?? a.correctOptionIndex;
+    const correctPresentationIndex = optionOrder.indexOf(canonicalCorrect);
+    const selectedPresentationIndex = a.selectedPresentationIndex
+      ?? optionOrder.indexOf(a.selectedOptionIndex);
+    const explanations = a.snapshotOptionExplanations ?? a.optionExplanations;
     return {
       questionId:          a.questionId,
-      questionText:        a.questionText,
-      options:             a.options,
-      correctOptionIndex:  a.correctOptionIndex,
-      selectedOptionIndex: a.selectedOptionIndex,
+      questionText:        a.snapshotQuestionText ?? a.questionText,
+      options:             optionOrder.map((index) => canonicalOptions[index]),
+      correctOptionIndex:  correctPresentationIndex,
+      selectedOptionIndex: selectedPresentationIndex,
       isCorrect:           a.isCorrect,
-      sequence:            a.sequence,
+      sequence:            a.snapshotSequence ?? a.sequence,
       nodeId:              a.nodeId ?? null,
       nodeTitle:           ln?.title ?? null,
       // feedback: question-specific, option-specific (PART 3.5 Model C)
@@ -157,10 +193,14 @@ async function buildStudentResultAnalysis(
       //   whyWrong   = option_explanations[selectedOptionIndex]  (null when isCorrect=true)
       // No fallback to node-level fields — null means null, never fabricate.
       feedback: (() => {
-        const expl = Array.isArray(a.optionExplanations) ? a.optionExplanations as (string | null)[] : null;
-        const whyCorrect = expl?.[a.correctOptionIndex] ?? null;
+        const expl = Array.isArray(explanations) ? explanations as (string | null)[] : null;
+        const whyCorrect = expl?.[canonicalCorrect] ?? null;
         const whyWrong   = (!a.isCorrect && expl != null) ? (expl[a.selectedOptionIndex] ?? null) : null;
-        return { whyCorrect, whyWrong };
+        return {
+          whyCorrect,
+          whyWrong,
+          solutionExplanation: a.snapshotSolutionExplanation ?? a.solutionExplanation ?? null,
+        };
       })(),
       errorState:          a.isCorrect ? ("correct" as const) : ("wrong" as const),
     };
@@ -508,65 +548,13 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
 }));
 
 // ── POST /api/quizzes/retests ──────────────────────────────────────────────────
-// Student: create one new quiz from the current canonical T1 eligibility of a
-// completed source attempt. The client supplies no node IDs or learner state.
+// T3.1 retired child-quiz retests. Kept as a bounded compatibility response so
+// older clients cannot create a second quiz/assignment or mastery system.
 router.post("/quizzes/retests", requireStudent, asyncHandler(async (req: AuthRequest, res) => {
-  const body = req.body as {
-    sourceAttemptId?: unknown;
-    strategy?: unknown;
-  };
-  const sourceAttemptId = Number(body.sourceAttemptId);
-  if (!Number.isInteger(sourceAttemptId) || sourceAttemptId <= 0) {
-    res.status(400).json({ error: "Invalid source attempt id" });
-    return;
-  }
-
-  const strategy = parseRetestStrategy(body.strategy);
-  if (!strategy) {
-    res.status(400).json({
-      error: "strategy must be PARTIAL_AND_NOT_KNOWN or NOT_KNOWN_ONLY",
-    });
-    return;
-  }
-
-  try {
-    const result = await createTargetedRetest({
-      learnerId: req.userId!,
-      sourceAttemptId,
-      strategy,
-    });
-
-    if (!result.created) {
-      res.status(200).json(result);
-      return;
-    }
-
-    res.status(result.reused ? 200 : 201).json(result);
-  } catch (error) {
-    if (error instanceof RetestAuthorityError) {
-      if (error.code === "RETEST_ATTEMPT_NOT_OWNED") {
-        res.status(403).json({ error: "Retest attempt access denied" });
-        return;
-      }
-      if (error.code === "RETEST_ATTEMPT_INCOMPLETE") {
-        res.status(409).json({ error: "Retest requires a completed attempt" });
-        return;
-      }
-      if (error.code === "RETEST_STRATEGY_INVALID") {
-        res.status(400).json({
-          error: "strategy must be PARTIAL_AND_NOT_KNOWN or NOT_KNOWN_ONLY",
-        });
-        return;
-      }
-      res.status(404).json({ error: "Completed attempt not found" });
-      return;
-    }
-    if (error instanceof TargetedRetestError) {
-      res.status(500).json({ error: "Retest creation failed, please retry" });
-      return;
-    }
-    throw error;
-  }
+  res.status(410).json({
+    error: "CONTINUOUS_SESSION_REQUIRED",
+    message: "Վերափորձը շարունակվում է նույն թեստի «Արդյունքներ» էջից։",
+  });
 }));
 
 // ── GET /api/quizzes ──────────────────────────────────────────────────────────
@@ -621,15 +609,7 @@ router.get("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
     .groupBy(quizAssignmentsTable.quizId);
 
   // Average score per quizId (only for completed attempts)
-  const scoreStats = await db
-    .select({
-      quizId:              quizAssignmentsTable.quizId,
-      averageScorePercent: sql<number | null>`round(avg(${quizAttemptsTable.scorePercent}))`,
-    })
-    .from(quizAttemptsTable)
-    .innerJoin(quizAssignmentsTable, eq(quizAssignmentsTable.id, quizAttemptsTable.quizAssignmentId))
-    .where(inArray(quizAssignmentsTable.quizId, quizIds))
-    .groupBy(quizAssignmentsTable.quizId);
+  const scoreStats = await getLatestCompletedQuizScoreStats(quizIds);
 
   const assignMap = new Map(assignStats.map((s) => [s.quizId, s]));
   const scoreMap  = new Map(scoreStats.map((s) => [s.quizId, s]));
@@ -683,15 +663,7 @@ router.get("/quizzes/all", requireTeacher, async (req: AuthRequest, res) => {
     .where(inArray(quizAssignmentsTable.quizId, quizIds))
     .groupBy(quizAssignmentsTable.quizId);
 
-  const scoreStats = await db
-    .select({
-      quizId:              quizAssignmentsTable.quizId,
-      averageScorePercent: sql<number | null>`round(avg(${quizAttemptsTable.scorePercent}))`,
-    })
-    .from(quizAttemptsTable)
-    .innerJoin(quizAssignmentsTable, eq(quizAssignmentsTable.id, quizAttemptsTable.quizAssignmentId))
-    .where(inArray(quizAssignmentsTable.quizId, quizIds))
-    .groupBy(quizAssignmentsTable.quizId);
+  const scoreStats = await getLatestCompletedQuizScoreStats(quizIds);
 
   const assignMap = new Map(assignStats.map((s) => [s.quizId, s]));
   const scoreMap  = new Map(scoreStats.map((s) => [s.quizId, s]));
@@ -723,21 +695,61 @@ router.get("/quizzes/assigned", requireAuth, async (req: AuthRequest, res) => {
       totalCorrect:   quizAttemptsTable.totalCorrect,
       totalQuestions: quizAttemptsTable.totalQuestions,
       scorePercent:   quizAttemptsTable.scorePercent,
+      attemptSequence: quizAttemptsTable.attemptSequence,
+      completedAt: quizAttemptsTable.completedAt,
+      sessionId: quizSessionsTable.id,
+      sessionStatus: quizSessionsTable.status,
+      retestSourceAttemptId: quizzesTable.retestSourceAttemptId,
     })
     .from(quizAssignmentsTable)
     .innerJoin(quizzesTable, eq(quizzesTable.id, quizAssignmentsTable.quizId))
     .leftJoin(quizAttemptsTable, eq(quizAttemptsTable.quizAssignmentId, quizAssignmentsTable.id))
+    .leftJoin(
+      quizSessionsTable,
+      eq(quizSessionsTable.rootAssignmentId, quizAssignmentsTable.id),
+    )
     .where(eq(quizAssignmentsTable.studentId, req.userId!))
     .orderBy(desc(quizAssignmentsTable.assignedAt));
 
-  res.json(rows.map((r) => ({
-    ...r,
-    assignedAt:     r.assignedAt.toISOString(),
-    dueAt:          r.dueAt?.toISOString() ?? null,
-    totalCorrect:   r.totalCorrect   ?? null,
-    totalQuestions: r.totalQuestions ?? null,
-    scorePercent:   r.scorePercent   ?? null,
-  })));
+  const latestByAssignment = new Map<number, typeof rows[number]>();
+  for (const row of rows) {
+    if (row.retestSourceAttemptId !== null) continue;
+    const current = latestByAssignment.get(row.assignmentId);
+    if (!current || (row.attemptSequence ?? 0) > (current.attemptSequence ?? 0)) {
+      latestByAssignment.set(row.assignmentId, row);
+    }
+  }
+  const payload = await Promise.all([...latestByAssignment.values()].map(async (r) => {
+    const adoptedSession = r.sessionId === null && r.status === "COMPLETED"
+      ? await ensureQuizSession({
+          rootQuizId: r.quizId,
+          rootAssignmentId: r.assignmentId,
+          learnerId: req.userId!,
+        })
+      : null;
+    const sessionId = r.sessionId ?? adoptedSession?.id ?? null;
+    const sessionStatus = r.sessionStatus ?? adoptedSession?.status ?? null;
+    const sessionState = sessionId
+      ? await resolveQuizSessionProjection(r.quizId, req.userId!)
+      : null;
+    return {
+      assignmentId: r.assignmentId,
+      quizId: r.quizId,
+      title: r.title,
+      subjectId: r.subjectId,
+      status: r.status,
+      assignedAt: r.assignedAt.toISOString(),
+      dueAt: r.dueAt?.toISOString() ?? null,
+      totalCorrect: r.totalCorrect ?? null,
+      totalQuestions: r.totalQuestions ?? null,
+      scorePercent: r.scorePercent ?? null,
+      sessionId,
+      sessionStatus,
+      sessionState,
+      canContinue: sessionStatus === "ACTIVE" && (sessionState?.learningCount ?? 0) > 0,
+    };
+  }));
+  res.json(payload);
 });
 
 // ── GET /api/quizzes/attempts/:attemptId/retest-eligibility ───────────────────
@@ -817,27 +829,35 @@ router.get("/quizzes/:id/results", requireTeacher, async (req: AuthRequest, res)
       totalQuestions:   quizAttemptsTable.totalQuestions,
       scorePercent:     quizAttemptsTable.scorePercent,
       completedAt:      quizAttemptsTable.completedAt,
+      attemptSequence:  quizAttemptsTable.attemptSequence,
     })
     .from(quizAssignmentsTable)
     .innerJoin(usersTable,        eq(usersTable.id,        quizAssignmentsTable.studentId))
-    .leftJoin(quizAttemptsTable,  eq(quizAttemptsTable.quizAssignmentId, quizAssignmentsTable.id))
+    .leftJoin(
+      quizAttemptsTable,
+      and(
+        eq(quizAttemptsTable.quizAssignmentId, quizAssignmentsTable.id),
+        isNotNull(quizAttemptsTable.completedAt),
+      ),
+    )
     .where(eq(quizAssignmentsTable.quizId, quizId));
 
+  const latestRows = collapseToLatestCompletedAttempt(rows);
   // Sort: completed worst-score-first; non-completed at the bottom
-  rows.sort((a, b) => {
-    const aComp = a.assignmentStatus === "COMPLETED";
-    const bComp = b.assignmentStatus === "COMPLETED";
+  latestRows.sort((a, b) => {
+    const aComp = a.completedAt !== null;
+    const bComp = b.completedAt !== null;
     if (aComp && !bComp) return -1;
     if (!aComp && bComp) return 1;
     if (aComp && bComp) return (a.scorePercent ?? 100) - (b.scorePercent ?? 100);
     return 0;
   });
 
-  res.json(rows.map((r) => ({
+  res.json(latestRows.map((r) => ({
     assignmentId:   r.assignmentId,
     studentId:      r.studentId,
     studentName:    r.studentName,
-    status:         r.assignmentStatus,
+    status:         r.completedAt !== null ? "COMPLETED" : r.assignmentStatus,
     totalCorrect:   r.totalCorrect   ?? null,
     totalQuestions: r.totalQuestions ?? null,
     scorePercent:   r.scorePercent   ?? null,
@@ -877,7 +897,11 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
   const [attempt] = await db
     .select()
     .from(quizAttemptsTable)
-    .where(eq(quizAttemptsTable.quizAssignmentId, assignment.id))
+    .where(and(
+      eq(quizAttemptsTable.quizAssignmentId, assignment.id),
+      isNotNull(quizAttemptsTable.completedAt),
+    ))
+    .orderBy(desc(quizAttemptsTable.attemptSequence))
     .limit(1);
   if (!attempt) {
     res.status(404).json({ error: "Attempt record not found" }); return;
@@ -910,7 +934,6 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
     .where(and(
       eq(quizAssignmentsTable.quizId,    quizId),
       eq(quizAssignmentsTable.studentId, req.userId!),
-      eq(quizAssignmentsTable.status,    "COMPLETED"),
     ))
     .orderBy(desc(quizAssignmentsTable.assignedAt))
     .limit(1);
@@ -919,10 +942,25 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
     return;
   }
 
+  const session = await ensureQuizSession({
+    rootQuizId: quizId,
+    rootAssignmentId: assignment.id,
+    learnerId: req.userId!,
+  });
+  const requestedAttemptId = Number(req.query.attemptId);
+  const attemptWhere = session
+    ? and(
+        eq(quizAttemptsTable.quizSessionId, session.id),
+        requestedAttemptId > 0
+          ? eq(quizAttemptsTable.id, requestedAttemptId)
+          : isNotNull(quizAttemptsTable.completedAt),
+      )
+    : eq(quizAttemptsTable.quizAssignmentId, assignment.id);
   const [attempt] = await db
     .select()
     .from(quizAttemptsTable)
-    .where(eq(quizAttemptsTable.quizAssignmentId, assignment.id))
+    .where(attemptWhere)
+    .orderBy(desc(quizAttemptsTable.attemptSequence), desc(quizAttemptsTable.completedAt))
     .limit(1);
   if (!attempt) {
     res.status(404).json({ error: "Attempt record not found" });
@@ -931,6 +969,22 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
 
   const { questions, nodeBreakdown, recommendations } =
     await buildStudentResultAnalysis(attempt.id, req.userId!);
+  const attemptHistory = session
+    ? await db.select({
+        attemptId: quizAttemptsTable.id,
+        attemptSequence: quizAttemptsTable.attemptSequence,
+        totalCorrect: quizAttemptsTable.totalCorrect,
+        totalQuestions: quizAttemptsTable.totalQuestions,
+        scorePercent: quizAttemptsTable.scorePercent,
+        completedAt: quizAttemptsTable.completedAt,
+      }).from(quizAttemptsTable).where(and(
+        eq(quizAttemptsTable.quizSessionId, session.id),
+        isNotNull(quizAttemptsTable.completedAt),
+      )).orderBy(desc(quizAttemptsTable.attemptSequence))
+    : [];
+  const sessionState = session
+    ? await resolveQuizSessionProjection(quizId, req.userId!)
+    : null;
 
   res.json({
     attemptId:       attempt.id,
@@ -940,8 +994,40 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
     questions,
     nodeBreakdown,
     recommendations,
+    session: session ? {
+      id: session.id,
+      status: session.status,
+      ...sessionState,
+    } : null,
+    attempts: attemptHistory.map((item) => ({
+      ...item,
+      completedAt: item.completedAt?.toISOString() ?? null,
+    })),
   });
 });
+
+router.post("/quizzes/:id/session/finish", requireAuth, asyncHandler(async (req: AuthRequest, res) => {
+  const quizId = parseInt(String(req.params.id), 10);
+  if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
+  const [assignment] = await db.select({ id: quizAssignmentsTable.id })
+    .from(quizAssignmentsTable)
+    .where(and(
+      eq(quizAssignmentsTable.quizId, quizId),
+      eq(quizAssignmentsTable.studentId, req.userId!),
+    ))
+    .orderBy(desc(quizAssignmentsTable.assignedAt))
+    .limit(1);
+  if (!assignment) { res.status(404).json({ error: "Quiz assignment not found" }); return; }
+  const [session] = await db.update(quizSessionsTable).set({
+    status: "FINISHED",
+    completedAt: new Date(),
+  }).where(eq(
+    quizSessionsTable.rootAssignmentId,
+    assignment.id,
+  )).returning({ id: quizSessionsTable.id });
+  if (!session) { res.status(404).json({ error: "Quiz session not found" }); return; }
+  res.json({ finished: true });
+}));
 
 // ── GET /api/quizzes/:id ──────────────────────────────────────────────────────
 // Full quiz record + ordered questions. Teacher-only.
@@ -1144,21 +1230,17 @@ router.post("/quizzes/:id/assign", requireTeacher, async (req: AuthRequest, res)
 });
 
 // ── GET /api/quizzes/:id/take ─────────────────────────────────────────────────
-// Student: get questions for a quiz they are assigned to.
-// Strips correctOptionIndex. Sets assignment status to IN_PROGRESS.
-router.get("/quizzes/:id/take", requireAuth, async (req: AuthRequest, res) => {
+// Student: open the continuous session rooted in the original assignment.
+router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthRequest, res) => {
   const quizId = parseInt(String(req.params.id), 10);
   if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
 
-  // Verify assignment — get the LATEST non-completed assignment for this student.
-  // With re-release, a student may have multiple rows; we want the newest active one.
   const [assignment] = await db
     .select()
     .from(quizAssignmentsTable)
     .where(and(
       eq(quizAssignmentsTable.quizId,    quizId),
       eq(quizAssignmentsTable.studentId, req.userId!),
-      ne(quizAssignmentsTable.status,    "COMPLETED"),
     ))
     .orderBy(desc(quizAssignmentsTable.assignedAt))
     .limit(1);
@@ -1168,33 +1250,70 @@ router.get("/quizzes/:id/take", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
-  // Get questions WITHOUT correctOptionIndex
-  const questions = await db
-    .select({
-      id:             quizQuestionsTable.id,
-      questionText:   quizQuestionsTable.questionText,
-      options:        quizQuestionsTable.options,
-      difficultyLevel: quizQuestionsTable.difficultyLevel,
-      sequence:       quizQuestionsTable.sequence,
-    })
-    .from(quizQuestionsTable)
-    .where(eq(quizQuestionsTable.quizId, quizId))
-    .orderBy(asc(quizQuestionsTable.sequence));
-
-  // Advance status ASSIGNED → IN_PROGRESS
-  if (assignment.status === "ASSIGNED") {
-    await db
-      .update(quizAssignmentsTable)
-      .set({ status: "IN_PROGRESS" })
-      .where(eq(quizAssignmentsTable.id, assignment.id));
+  const opened = await getOrCreateActiveAttempt({
+    rootQuizId: quizId,
+    assignmentId: assignment.id,
+    learnerId: req.userId!,
+  });
+  if (!opened.attempt || opened.snapshots.length === 0) {
+    const projection = await resolveQuizSessionProjection(quizId, req.userId!);
+    res.status(409).json({
+      error: opened.session.status === "ACTIVE" ? "SESSION_HAS_NO_LEARNING_SCOPE" : "SESSION_FINISHED",
+      sessionState: projection,
+    });
+    return;
   }
 
   res.json({
     assignmentId:     assignment.id,
-    assignmentStatus: assignment.status === "ASSIGNED" ? "IN_PROGRESS" : assignment.status,
-    questions,
+    assignmentStatus: "IN_PROGRESS",
+    sessionId: opened.session.id,
+    attemptId: opened.attempt.id,
+    attemptSequence: opened.attempt.attemptSequence,
+    questions: opened.snapshots.map(presentAttemptQuestion),
   });
-});
+}));
+
+// Immediate feedback is scored only against the immutable attempt snapshot.
+router.post("/quizzes/:id/attempts/:attemptId/feedback", requireAuth, asyncHandler(async (req: AuthRequest, res) => {
+  const quizId = parseInt(String(req.params.id), 10);
+  const attemptId = parseInt(String(req.params.attemptId), 10);
+  const questionId = Number(req.body?.questionId);
+  const selectedPresentationIndex = Number(req.body?.selectedOptionIndex);
+  if (![quizId, attemptId, questionId, selectedPresentationIndex].every(Number.isInteger)) {
+    res.status(400).json({ error: "Invalid feedback request" });
+    return;
+  }
+
+  const [access] = await db.select({
+    completedAt: quizAttemptsTable.completedAt,
+  }).from(quizAttemptsTable)
+    .innerJoin(quizSessionsTable, eq(quizSessionsTable.id, quizAttemptsTable.quizSessionId))
+    .where(and(
+      eq(quizAttemptsTable.id, attemptId),
+      eq(quizSessionsTable.rootQuizId, quizId),
+      eq(quizSessionsTable.studentId, req.userId!),
+    )).limit(1);
+  if (!access) { res.status(403).json({ error: "Attempt access denied" }); return; }
+  if (access.completedAt) { res.status(409).json({ error: "Attempt already completed" }); return; }
+
+  const [snapshot] = await db.select().from(quizAttemptQuestionsTable).where(and(
+    eq(quizAttemptQuestionsTable.attemptId, attemptId),
+    eq(quizAttemptQuestionsTable.questionId, questionId),
+  )).limit(1);
+  if (!snapshot) { res.status(404).json({ error: "Question not in this attempt" }); return; }
+
+  const scored = scorePresentedAnswer(snapshot, selectedPresentationIndex);
+  if (!scored) {
+    res.status(400).json({ error: "Invalid option index" });
+    return;
+  }
+  res.json({
+    isCorrect: scored.isCorrect,
+    correctOptionIndex: scored.correctPresentationIndex,
+    feedback: scored.feedback,
+  });
+}));
 
 // ── POST /api/quizzes/:id/submit ──────────────────────────────────────────────
 // Student: submit answers for a quiz. Returns score.
@@ -1203,8 +1322,9 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
   const quizId = parseInt(String(req.params.id), 10);
   if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
 
-  const { answers } = req.body as {
+  const { answers, attemptId: requestedAttemptId } = req.body as {
     answers: { questionId: number; selectedOptionIndex: number }[];
+    attemptId?: number;
   };
 
   if (!Array.isArray(answers) || answers.length === 0) {
@@ -1212,73 +1332,108 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     return;
   }
 
-  // Verify assignment — get the LATEST non-completed assignment for this student.
-  // With re-release, a student may have multiple rows; we target the newest active one.
   const [assignment] = await db
     .select()
     .from(quizAssignmentsTable)
     .where(and(
       eq(quizAssignmentsTable.quizId,    quizId),
       eq(quizAssignmentsTable.studentId, req.userId!),
-      ne(quizAssignmentsTable.status,    "COMPLETED"),
     ))
     .orderBy(desc(quizAssignmentsTable.assignedAt))
     .limit(1);
 
   if (!assignment) {
-    // Either no assignment at all, or all assignments are completed (quiz already done)
-    res.status(403).json({ error: "No active assignment found for this quiz" });
+    res.status(403).json({ error: "No assignment found for this quiz" });
     return;
   }
 
-  // Get all questions for scoring
+  const attemptQuery = db.select({
+    id: quizAttemptsTable.id,
+    attemptSequence: quizAttemptsTable.attemptSequence,
+    completedAt: quizAttemptsTable.completedAt,
+    quizSessionId: quizAttemptsTable.quizSessionId,
+  }).from(quizAttemptsTable)
+    .innerJoin(quizSessionsTable, eq(quizSessionsTable.id, quizAttemptsTable.quizSessionId))
+    .where(and(
+      requestedAttemptId
+        ? eq(quizAttemptsTable.id, requestedAttemptId)
+        : isNull(quizAttemptsTable.completedAt),
+      eq(quizAttemptsTable.quizAssignmentId, assignment.id),
+      eq(quizSessionsTable.rootQuizId, quizId),
+      eq(quizSessionsTable.studentId, req.userId!),
+    ))
+    .orderBy(desc(quizAttemptsTable.attemptSequence))
+    .limit(1);
+  const [attempt] = await attemptQuery;
+  if (!attempt) {
+    res.status(409).json({ error: "No active attempt found" });
+    return;
+  }
+  if (attempt.completedAt) {
+    res.status(409).json({ error: "Attempt already completed" });
+    return;
+  }
+
+  const snapshots = await db.select().from(quizAttemptQuestionsTable)
+    .where(eq(quizAttemptQuestionsTable.attemptId, attempt.id))
+    .orderBy(asc(quizAttemptQuestionsTable.sequence));
+  const snapshotMap = new Map(snapshots.map((snapshot) => [snapshot.questionId, snapshot]));
+  if (
+    answers.length !== snapshots.length ||
+    new Set(answers.map((answer) => answer.questionId)).size !== snapshots.length ||
+    answers.some((answer) => !snapshotMap.has(answer.questionId))
+  ) {
+    res.status(400).json({ error: "Every attempt question must be answered exactly once" });
+    return;
+  }
+
+  // Canonical content remains the evidence source; presentation indices are
+  // mapped through the immutable attempt snapshot before scoring.
   const questions = await db
     .select()
     .from(quizQuestionsTable)
-    .where(eq(quizQuestionsTable.quizId, quizId));
+    .where(inArray(quizQuestionsTable.id, snapshots.map((snapshot) => snapshot.questionId)));
 
-  const questionMap = new Map(questions.map((q) => [q.id, q]));
+  const currentQuestionMap = new Map(questions.map((q) => [q.id, q]));
+  const questionMap = new Map(snapshots.map((snapshot) => {
+    const current = currentQuestionMap.get(snapshot.questionId)!;
+    return [snapshot.questionId, {
+      ...current,
+      id: snapshot.questionId,
+      nodeId: snapshot.nodeId,
+      sourceExerciseId: snapshot.sourceExerciseId,
+      cognitiveLevelId: snapshot.cognitiveLevelId,
+      difficultyLevel: snapshot.difficultyLevel,
+      interactionType: snapshot.interactionType,
+    }] as const;
+  }));
 
   let totalCorrect = 0;
   const answerRows = answers.map((a) => {
-    const q        = questionMap.get(a.questionId);
-    const isCorrect = q ? a.selectedOptionIndex === q.correctOptionIndex : false;
+    const q = questionMap.get(a.questionId);
+    const snapshot = snapshotMap.get(a.questionId)!;
+    const scored = scorePresentedAnswer(snapshot, a.selectedOptionIndex);
+    const canonicalSelected = scored?.canonicalSelectedOptionIndex ?? -1;
+    const isCorrect = scored?.isCorrect === true;
     if (isCorrect) totalCorrect++;
     return {
       questionId:          a.questionId,
-      selectedOptionIndex: a.selectedOptionIndex,
+      selectedOptionIndex: canonicalSelected,
+      selectedPresentationIndex: a.selectedOptionIndex,
       isCorrect,
-      nodeId:              q?.nodeId ?? null,
+      nodeId:              snapshot.nodeId ?? q?.nodeId ?? null,
     };
   });
 
-  const totalQuestions = answers.length;
+  if (answerRows.some((answer) => answer.selectedOptionIndex < 0)) {
+    res.status(400).json({ error: "Invalid option index" });
+    return;
+  }
+
+  const totalQuestions = snapshots.length;
   const scorePercent   = totalQuestions > 0
     ? Math.round((totalCorrect / totalQuestions) * 100)
     : 0;
-
-  // Insert attempt (one per assignment, enforced by unique constraint)
-  const [attempt] = await db
-    .insert(quizAttemptsTable)
-    .values({
-      quizAssignmentId: assignment.id,
-      completedAt:      new Date(),
-      totalCorrect,
-      totalQuestions,
-      scorePercent,
-    })
-    .returning();
-
-  // Insert per-answer rows
-  await db.insert(quizAnswersTable).values(
-    answerRows.map((a) => ({
-      attemptId:           attempt.id,
-      questionId:          a.questionId,
-      selectedOptionIndex: a.selectedOptionIndex,
-      isCorrect:           a.isCorrect,
-      nodeId:              a.nodeId,
-    }))
-  );
 
   // ── C3: awaited canonical evidence persistence ───────────────────────────
   // A quiz score is not reported as recorded Cognitive-Level evidence until
@@ -1286,19 +1441,20 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
   // questions stay usable, but are explicitly unqualified.
   const studentId = req.userId!;
   const scoredTopicIds: number[] = [];
+  const nodeIds = [...new Set(answerRows
+    .map((answer) => answer.nodeId)
+    .filter((id): id is number => id !== null))];
   try {
-    const [quizRow] = await db
+    await db.transaction(async (tx) => {
+    const [quizRow] = await tx
       .select({ subjectId: quizzesTable.subjectId })
       .from(quizzesTable)
       .where(eq(quizzesTable.id, quizId))
       .limit(1);
     if (!quizRow?.subjectId) throw new Error("quiz evidence requires subject");
 
-    const nodeIds = [...new Set(answerRows
-      .map((answer) => answer.nodeId)
-      .filter((id): id is number => id !== null))];
     const nodes = nodeIds.length > 0
-      ? await db
+      ? await tx
           .select({
             id: lessonNodesTable.id,
             title: lessonNodesTable.title,
@@ -1312,7 +1468,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
       : [];
     const nodeMap = new Map(nodes.map((node) => [node.id, node]));
     const levels = nodeIds.length > 0
-      ? await db
+      ? await tx
           .select()
           .from(lessonNodeCognitiveLevelsTable)
           .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeIds))
@@ -1338,11 +1494,11 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
       }).accepted)
       .map((node) => node.id));
 
-    const sourceExerciseIds = [...new Set(questions
+    const sourceExerciseIds = [...new Set([...questionMap.values()]
       .map((question) => question.sourceExerciseId)
       .filter((id): id is number => id !== null))];
     const sourceExercises = sourceExerciseIds.length > 0
-      ? await db
+      ? await tx
           .select({
             id: lessonExercisesTable.id,
             relatedNodeId: lessonExercisesTable.relatedNodeId,
@@ -1358,7 +1514,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
       if (!question || !node || answer.nodeId === null) continue;
 
       let topicId: number | null = null;
-      const [existingKN] = await db
+      const [existingKN] = await tx
         .select({ id: knowledgeNodesTable.id })
         .from(knowledgeNodesTable)
         .where(and(
@@ -1370,7 +1526,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
       if (existingKN) {
         topicId = existingKN.id;
       } else {
-        const [newKN] = await db
+        const [newKN] = await tx
           .insert(knowledgeNodesTable)
           .values({
             subjectId: quizRow.subjectId,
@@ -1406,7 +1562,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
         authoritativeResult: true,
       });
 
-      await db.insert(evidenceEventsTable).values({
+      await tx.insert(evidenceEventsTable).values({
         userId: studentId,
         lessonSessionId: null,
         topicId,
@@ -1425,7 +1581,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
         assistanceLevel: "none",
         lessonExerciseId: question.sourceExerciseId,
         interactionType: question.interactionType ?? "multiple_choice",
-        attemptSequence: 1,
+        attemptSequence: attempt.attemptSequence,
         helpCount: 0,
         lessonNodeId: answer.nodeId,
         cognitiveLevelId,
@@ -1438,23 +1594,44 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
       } as any);
     }
 
-    // C4: once every canonical quiz evidence row is durable, use the same
-    // projector as AI Teacher evidence. A qualified quiz response can therefore
-    // contribute to a learner's contiguous demonstrated ceiling.
-    for (const nodeId of nodeIds) {
-      const projection = await projectLearnerCognitiveCeiling(studentId, nodeId);
-      logger.info({
-        userId: studentId,
-        lessonNodeId: nodeId,
-        ceilingLevelId: projection.ceilingLevelId,
-        ceilingLevel: projection.ceilingLevel,
-        reachedTarget: projection.reachedTarget,
-      }, "C4: learner cognitive ceiling projected from quiz evidence");
+    await tx.insert(quizAnswersTable).values(
+      answerRows.map((answer) => ({
+        attemptId: attempt.id,
+        questionId: answer.questionId,
+        selectedOptionIndex: answer.selectedOptionIndex,
+        selectedPresentationIndex: answer.selectedPresentationIndex,
+        isCorrect: answer.isCorrect,
+        nodeId: answer.nodeId,
+      })),
+    );
+
+    const [completedAttempt] = await tx
+      .update(quizAttemptsTable)
+      .set({
+        completedAt: new Date(),
+        totalCorrect,
+        totalQuestions,
+        scorePercent,
+      })
+      .where(and(
+        eq(quizAttemptsTable.id, attempt.id),
+        isNull(quizAttemptsTable.completedAt),
+      ))
+      .returning({ id: quizAttemptsTable.id });
+    if (!completedAttempt) {
+      throw new Error("QUIZ_ATTEMPT_ALREADY_COMPLETED");
     }
+
+    await tx
+      .update(quizAssignmentsTable)
+      .set({ status: "COMPLETED" })
+      .where(eq(quizAssignmentsTable.id, assignment.id));
+    });
   } catch (err) {
-    // quiz_attempt_id cascades any partially written canonical evidence when
-    // this attempt is rolled back, so retrying cannot duplicate proof.
-    await db.delete(quizAttemptsTable).where(eq(quizAttemptsTable.id, attempt.id));
+    if (err instanceof Error && err.message === "QUIZ_ATTEMPT_ALREADY_COMPLETED") {
+      res.status(409).json({ error: "Attempt already completed" });
+      return;
+    }
     logger.error({ err, quizId, attemptId: attempt.id }, "quiz canonical evidence write failed");
     res.status(503).json({
       error: "EVIDENCE_PERSISTENCE_FAILED",
@@ -1463,12 +1640,33 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     return;
   }
 
-  await db
-    .update(quizAssignmentsTable)
-    .set({ status: "COMPLETED" })
-    .where(eq(quizAssignmentsTable.id, assignment.id));
+  // C4 is a projection derived from the now-durable C3 evidence. It runs only
+  // after commit, so no completed attempt can exist without its answer/evidence
+  // set; projection can be safely retried from those immutable rows.
+  for (const nodeId of nodeIds) {
+    try {
+      const projection = await projectLearnerCognitiveCeiling(studentId, nodeId);
+      logger.info({
+        userId: studentId,
+        lessonNodeId: nodeId,
+        ceilingLevelId: projection.ceilingLevelId,
+        ceilingLevel: projection.ceilingLevel,
+        reachedTarget: projection.reachedTarget,
+      }, "C4: learner cognitive ceiling projected from quiz evidence");
+    } catch (err) {
+      logger.error({ err, userId: studentId, lessonNodeId: nodeId }, "C4: quiz evidence projection failed");
+    }
+  }
 
-  res.json({ totalCorrect, totalQuestions, scorePercent });
+  const sessionState = await resolveQuizSessionProjection(quizId, studentId);
+  res.json({
+    attemptId: attempt.id,
+    attemptSequence: attempt.attemptSequence,
+    totalCorrect,
+    totalQuestions,
+    scorePercent,
+    sessionState,
+  });
 
   for (const topicId of scoredTopicIds) {
     updateTopicScoring(topicId, studentId, { quizId }).catch((err) =>
@@ -1496,26 +1694,33 @@ router.get("/quizzes/:id/analysis", requireTeacher, async (req: AuthRequest, res
   // All completed assignments + their attempt IDs + student names
   const completedRows = await db
     .select({
+      assignmentId: quizAssignmentsTable.id,
       studentId:   quizAssignmentsTable.studentId,
       studentName: usersTable.fullName,
       attemptId:   quizAttemptsTable.id,
+      attemptSequence: quizAttemptsTable.attemptSequence,
+      completedAt: quizAttemptsTable.completedAt,
     })
     .from(quizAssignmentsTable)
     .innerJoin(usersTable,       eq(usersTable.id,       quizAssignmentsTable.studentId))
     .innerJoin(quizAttemptsTable, eq(quizAttemptsTable.quizAssignmentId, quizAssignmentsTable.id))
-    .where(eq(quizAssignmentsTable.quizId, quizId));
+    .where(and(
+      eq(quizAssignmentsTable.quizId, quizId),
+      isNotNull(quizAttemptsTable.completedAt),
+    ));
 
-  const participantCount = completedRows.length;
+  const latestCompletedRows = collapseToLatestCompletedAttempt(completedRows);
+  const participantCount = latestCompletedRows.length;
   if (participantCount === 0) {
     res.json({ quizId, participantCount: 0, commonErrors: [],
       teacherRecommendations: { classLevel: [], individual: [] } });
     return;
   }
 
-  const attemptIds = completedRows.map((r) => r.attemptId);
-  const studentIds = [...new Set(completedRows.map((r) => r.studentId))];
-  const attemptToStudent = new Map(completedRows.map((r) => [r.attemptId, r.studentId]));
-  const studentInfo      = new Map(completedRows.map((r) => [r.studentId, r.studentName]));
+  const attemptIds = latestCompletedRows.map((r) => r.attemptId);
+  const studentIds = [...new Set(latestCompletedRows.map((r) => r.studentId))];
+  const attemptToStudent = new Map(latestCompletedRows.map((r) => [r.attemptId, r.studentId]));
+  const studentInfo      = new Map(latestCompletedRows.map((r) => [r.studentId, r.studentName]));
 
   // All answers for completed attempts
   const allAnswers = await db

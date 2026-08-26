@@ -30,6 +30,8 @@ type AssignedQuiz = {
   assignedAt: string; dueAt: string | null;
   totalCorrect: number | null; totalQuestions: number | null;
   scorePercent: number | null;
+  canContinue?: boolean;
+  sessionState?: { knowsCount: number; learningCount: number } | null;
 };
 
 export default function Dashboard() {
@@ -439,14 +441,29 @@ export default function Dashboard() {
                       Ավարտված · {qz.totalCorrect}/{qz.totalQuestions} ({qz.scorePercent}%)
                     </p>
                   )}
+                  {qz.sessionState && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Գիտի՝ {qz.sessionState.knowsCount} · Սովորելու՝ {qz.sessionState.learningCount}
+                    </p>
+                  )}
                 </div>
                 {qz.status === "COMPLETED" ? (
-                  <Link
-                    href={`/quiz/${qz.quizId}/result`}
-                    className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-teal-400/15 text-teal-400 border border-teal-400/20 font-semibold text-sm hover:bg-teal-400/25 transition-all whitespace-nowrap shrink-0"
-                  >
-                    Տեսնել արդյունք
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/quiz/${qz.quizId}/result`}
+                      className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-teal-400/15 text-teal-400 border border-teal-400/20 font-semibold text-sm hover:bg-teal-400/25 transition-all whitespace-nowrap"
+                    >
+                      Տեսնել արդյունք
+                    </Link>
+                    {qz.canContinue && (
+                      <Link
+                        href={`/quiz/${qz.quizId}/take`}
+                        className="flex items-center justify-center px-5 py-2.5 rounded-xl bg-primary text-white font-semibold text-sm whitespace-nowrap"
+                      >
+                        Շարունակել
+                      </Link>
+                    )}
+                  </div>
                 ) : (
                   <Link
                     href={`/quiz/${qz.quizId}/take`}

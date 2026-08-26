@@ -9,6 +9,11 @@ export type StudentQuizCardQuiz = {
   totalCorrect?: number | null;
   totalQuestions?: number | null;
   scorePercent?: number | null;
+  canContinue?: boolean;
+  sessionState?: {
+    knowsCount: number;
+    learningCount: number;
+  } | null;
 };
 
 const QUIZ_STATUS_LABEL: Record<string, string> = {
@@ -39,13 +44,28 @@ export default function StudentQuizCard({ quiz }: { quiz: StudentQuizCardQuiz })
               {quiz.totalCorrect}/{quiz.totalQuestions} ({quiz.scorePercent}%)
             </p>
           )}
+          {quiz.sessionState && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Գիտի՝ {quiz.sessionState.knowsCount} · Սովորելու՝ {quiz.sessionState.learningCount}
+            </p>
+          )}
         </div>
-        <Link
-          href={`/quiz/${quiz.quizId}/result`}
-          className="text-xs px-4 py-2 rounded-xl bg-teal-400/15 text-teal-400 border border-teal-400/20 font-semibold hover:bg-teal-400/25 transition-all whitespace-nowrap shrink-0"
-        >
-          Արդյունքները
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/quiz/${quiz.quizId}/result`}
+            className="text-xs px-4 py-2 rounded-xl bg-teal-400/15 text-teal-400 border border-teal-400/20 font-semibold hover:bg-teal-400/25 transition-all whitespace-nowrap"
+          >
+            Արդյունքները
+          </Link>
+          {quiz.canContinue && (
+            <Link
+              href={`/quiz/${quiz.quizId}/take`}
+              className="text-xs px-4 py-2 rounded-xl bg-primary text-white font-semibold whitespace-nowrap"
+            >
+              Շարունակել սովորել
+            </Link>
+          )}
+        </div>
       </div>
     );
   }

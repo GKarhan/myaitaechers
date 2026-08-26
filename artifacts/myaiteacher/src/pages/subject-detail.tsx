@@ -42,6 +42,8 @@ type AssignedQuiz = {
   totalCorrect?: number | null;
   totalQuestions?: number | null;
   scorePercent?: number | null;
+  canContinue?: boolean;
+  sessionState?: { knowsCount: number; learningCount: number } | null;
 };
 
 export default function SubjectDetail() {

@@ -101,6 +101,15 @@ try {
         sequence: 3,
         nodeId: null,
       },
+      {
+        quizId,
+        questionText: "Second distinct question for the same node",
+        options: ["A", "B", "C", "D"],
+        correctOptionIndex: 0,
+        difficultyLevel: "MEDIUM",
+        sequence: 4,
+        nodeId: null,
+      },
     ])
     .returning({ id: quizQuestionsTable.id });
 
@@ -119,8 +128,8 @@ try {
       quizAssignmentId: assignment.id,
       completedAt: new Date(),
       totalCorrect: 1,
-      totalQuestions: 3,
-      scorePercent: 33,
+      totalQuestions: 4,
+      scorePercent: 25,
     })
     .returning({ id: quizAttemptsTable.id });
 
@@ -134,7 +143,7 @@ try {
     },
     {
       attemptId: attempt.id,
-      questionId: questions[1].id,
+      questionId: questions[3].id,
       selectedOptionIndex: 1,
       isCorrect: false,
       nodeId: 50102,

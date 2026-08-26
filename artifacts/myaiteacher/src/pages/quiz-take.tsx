@@ -1,244 +1,239 @@
-import { useState, useEffect } from "react";
-import { useParams, useLocation } from "wouter";
-import { useAuth } from "@/lib/auth";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth";
 import { invalidateKnowledgeTreeQueries } from "@/lib/knowledge-tree-cache";
 
-interface TakeQuestion {
+type TakeQuestion = {
   id: number;
   questionText: string;
   options: string[];
   difficultyLevel: string;
+  interactionType: string | null;
   sequence: number;
-}
-
-interface QuizTakeData {
-  assignmentId: number;
-  assignmentStatus: string;
-  questions: TakeQuestion[];
-}
-
-interface SubmitResult {
-  totalCorrect: number;
-  totalQuestions: number;
-  scorePercent: number;
-}
-
-const DIFFICULTY_LABEL: Record<string, string> = {
-  LOW:    "Հեշտ",
-  MEDIUM: "Միջին",
-  HIGH:   "Բարդ",
 };
 
-const OPTS = ["Ա", "Բ", "Գ", "Դ"];
+type TakeData = {
+  assignmentId: number;
+  sessionId: number;
+  attemptId: number;
+  attemptSequence: number;
+  questions: TakeQuestion[];
+};
+
+type Feedback = {
+  isCorrect: boolean;
+  correctOptionIndex: number;
+  feedback: {
+    whyCorrect: string | null;
+    whyWrong: string | null;
+    solutionExplanation: string | null;
+  };
+};
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+const OPTION_LABELS = ["Ա", "Բ", "Գ", "Դ", "Ե", "Զ"];
 
 export default function QuizTake() {
   const { id } = useParams<{ id: string }>();
   const { token, isLoading: authLoading } = useAuth();
-  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
-  const quizId = parseInt(id || "", 10);
-
-  const [data,    setData]    = useState<QuizTakeData | null>(null);
+  const queryClient = useQueryClient();
+  const quizId = Number(id);
+  const [data, setData] = useState<TakeData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState<string | null>(null);
-
-  // answers: questionId → selectedOptionIndex
-  const [answers, setAnswers] = useState<Record<number, number>>({}); 
+  const [error, setError] = useState<string | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [feedback, setFeedback] = useState<Record<number, Feedback>>({});
+  const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [result,     setResult]     = useState<SubmitResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !token) setLocation("/login");
-  }, [token, authLoading, setLocation]);
+  }, [authLoading, token, setLocation]);
 
   useEffect(() => {
-    if (!token || isNaN(quizId)) return;
+    if (!token || !Number.isInteger(quizId)) return;
+    const controller = new AbortController();
     setLoading(true);
     fetch(`${BASE}/api/quizzes/${quizId}/take`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
     })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) throw new Error(d.error);
-        setData(d);
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) {
+          if (payload.error === "SESSION_HAS_NO_LEARNING_SCOPE") {
+            setLocation(`/quiz/${quizId}/result`);
+            return null;
+          }
+          throw new Error(payload.error ?? "Թեստը չի հաջողվել բացել");
+        }
+        return payload as TakeData;
       })
-      .catch((e) => setError(e.message))
+      .then((payload) => payload && setData(payload))
+      .catch((reason: Error) => {
+        if (reason.name !== "AbortError") setError(reason.message);
+      })
       .finally(() => setLoading(false));
-  }, [token, quizId]);
+    return () => controller.abort();
+  }, [quizId, token, setLocation]);
 
-  async function handleSubmit() {
-    if (!token || !data) return;
-    const unanswered = data.questions.filter((q) => answers[q.id] === undefined);
-    if (unanswered.length > 0) {
-      setSubmitError(`${unanswered.length} հartsʼ ditek chi`);
-      return;
+  const question = data?.questions[currentIndex] ?? null;
+  const currentFeedback = question ? feedback[question.id] : null;
+  const progress = data ? Math.round(((currentIndex + (currentFeedback ? 1 : 0)) / data.questions.length) * 100) : 0;
+  const allCommitted = useMemo(
+    () => !!data && data.questions.every((item) => feedback[item.id] != null),
+    [data, feedback],
+  );
+
+  async function commitAnswer(optionIndex: number) {
+    if (!token || !data || !question || currentFeedback || checking) return;
+    setChecking(true);
+    setSubmitError(null);
+    try {
+      const response = await fetch(
+        `${BASE}/api/quizzes/${quizId}/attempts/${data.attemptId}/feedback`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            questionId: question.id,
+            selectedOptionIndex: optionIndex,
+          }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Պատասխանը չհաջողվեց ստուգել");
+      setAnswers((current) => ({ ...current, [question.id]: optionIndex }));
+      setFeedback((current) => ({ ...current, [question.id]: payload as Feedback }));
+    } catch (reason) {
+      setSubmitError(reason instanceof Error ? reason.message : "Պատասխանը չհաջողվեց ստուգել");
+    } finally {
+      setChecking(false);
     }
+  }
+
+  async function submitAttempt() {
+    if (!token || !data || !allCommitted || submitting) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const resp = await fetch(`${BASE}/api/quizzes/${quizId}/submit`, {
+      const response = await fetch(`${BASE}/api/quizzes/${quizId}/submit`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          answers: data.questions.map((q) => ({
-            questionId:          q.id,
-            selectedOptionIndex: answers[q.id] ?? 0,
+          attemptId: data.attemptId,
+          answers: data.questions.map((item) => ({
+            questionId: item.id,
+            selectedOptionIndex: answers[item.id],
           })),
         }),
       });
-      const res = await resp.json();
-      if (!resp.ok) throw new Error(res.error ?? "Ձakholvec");
-      setResult(res);
-      void invalidateKnowledgeTreeQueries(queryClient);
-    } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Ձakholvec");
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message ?? payload.error ?? "Փորձը չհաջողվեց գրանցել");
+      await invalidateKnowledgeTreeQueries(queryClient);
+      setLocation(`/quiz/${quizId}/result`);
+    } catch (reason) {
+      setSubmitError(reason instanceof Error ? reason.message : "Փորձը չհաջողվեց գրանցել");
     } finally {
       setSubmitting(false);
     }
   }
 
   if (authLoading || loading) {
-    return (
-      <div className="min-h-[100dvh] w-full flex items-center justify-center bg-background">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <div className="min-h-[100dvh] grid place-items-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
   }
-
-  if (error || !data) {
+  if (error || !data || !question) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center bg-background text-white">
-        <div className="text-center">
-          <div className="text-4xl mb-3">⚠️</div>
-          <p className="text-muted-foreground">{error ?? "Թեստը չի գտնվել"}</p>
-          <button
-            onClick={() => history.back()}
-            className="mt-4 px-4 py-2 rounded-xl border border-white/10 text-sm hover:bg-white/5"
-          >
-            ← Հետ
-          </button>
+      <div className="min-h-[100dvh] grid place-items-center bg-background text-white px-6">
+        <div className="max-w-md text-center space-y-4">
+          <p className="text-muted-foreground">{error ?? "Այս պահին սովորելու հարց չկա։"}</p>
+          <Link href={`/quiz/${quizId}/result`} className="inline-flex px-5 py-2.5 rounded-xl bg-primary text-white font-semibold">
+            Արդյունքներ
+          </Link>
         </div>
       </div>
     );
   }
-
-  /* ── Result screen ── */
-  if (result) {
-    const pct = result.scorePercent;
-    const color = pct >= 80 ? "text-teal-400" : pct >= 50 ? "text-amber-400" : "text-red-400";
-    const emoji = pct >= 80 ? "🎉" : pct >= 50 ? "👍" : "📚";
-    return (
-      <div className="min-h-[100dvh] bg-background text-white flex flex-col items-center justify-center px-6 py-16 text-center">
-        <div className="text-7xl mb-6">{emoji}</div>
-        <div className={`text-6xl font-extrabold mb-2 ${color}`}>{pct}%</div>
-        <div className="text-muted-foreground text-lg mb-8">
-          {result.totalCorrect} / {result.totalQuestions}
-        </div>
-        <button
-          onClick={() => setLocation(`/quiz/${id}/result`)}
-          className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-bold hover:opacity-90 transition-opacity"
-        >
-          Դիտել մանրամասները
-        </button>
-      </div>
-    );
-  }
-
-  const answered  = Object.keys(answers).length;
-  const total     = data.questions.length;
-  const allAnswered = answered === total;
 
   return (
-    <div className="min-h-[100dvh] bg-background text-white pb-32">
-      {/* Header */}
-      <header className="border-b border-white/10 bg-card/50 backdrop-blur-lg sticky top-0 z-30">
-        <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
-          <button
-            onClick={() => history.back()}
-            className="text-muted-foreground hover:text-white transition-colors"
-          >
-            ← Հետ
-          </button>
-          <div className="text-sm text-muted-foreground">
-            {answered} / {total}
-          </div>
+    <div className="min-h-[100dvh] bg-background text-white pb-28">
+      <header className="sticky top-0 z-20 border-b border-white/10 bg-card/90 backdrop-blur">
+        <div className="max-w-2xl mx-auto px-5 py-4 flex items-center justify-between gap-4">
+          <button onClick={() => history.back()} className="text-sm text-muted-foreground hover:text-white">← Պահել և դուրս գալ</button>
+          <span className="text-xs text-muted-foreground">Փորձ {data.attemptSequence} · {currentIndex + 1}/{data.questions.length}</span>
         </div>
-        {/* Progress bar */}
-        <div className="h-1 bg-white/5">
-          <div
-            className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-300"
-            style={{ width: `${total > 0 ? Math.round((answered / total) * 100) : 0}%` }}
-          />
-        </div>
+        <div className="h-1 bg-white/5"><div className="h-full bg-gradient-to-r from-primary to-secondary transition-all" style={{ width: `${progress}%` }} /></div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-6 pt-8 space-y-6">
-        {data.questions.map((q, idx) => (
-          <div
-            key={q.id}
-            className={`bg-card/60 border rounded-2xl p-5 transition-colors ${
-              answers[q.id] !== undefined
-                ? "border-primary/30"
-                : "border-white/10"
-            }`}
-          >
-            {/* Question header */}
-            <div className="flex items-start gap-3 mb-4">
-              <span className="text-xs font-mono text-primary/60 w-6 shrink-0 mt-0.5">
-                {idx + 1}.
-              </span>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-white leading-relaxed">{q.questionText}</p>
-                <span className={`inline-block mt-1.5 text-xs px-1.5 py-0.5 rounded border ${
-                  q.difficultyLevel === "HIGH"
-                    ? "text-red-400 border-red-400/30 bg-red-400/10"
-                    : q.difficultyLevel === "MEDIUM"
-                    ? "text-amber-400 border-amber-400/30 bg-amber-400/10"
-                    : "text-teal-400 border-teal-400/30 bg-teal-400/10"
-                }`}>
-                  {DIFFICULTY_LABEL[q.difficultyLevel] ?? q.difficultyLevel}
-                </span>
-              </div>
-            </div>
-
-            {/* Options */}
-            <div className="ml-9 space-y-2">
-              {q.options.map((opt, i) => (
+      <main className="max-w-2xl mx-auto px-5 py-8">
+        <section className="rounded-3xl border border-white/10 bg-card/60 p-6">
+          <p className="text-xs text-primary mb-3">Հարց {currentIndex + 1}</p>
+          <h1 className="text-lg font-semibold leading-relaxed">{question.questionText}</h1>
+          <div className="mt-6 space-y-3">
+            {question.options.map((option, optionIndex) => {
+              const selected = answers[question.id] === optionIndex;
+              const correct = currentFeedback?.correctOptionIndex === optionIndex;
+              const cls = currentFeedback
+                ? correct
+                  ? "border-teal-400/60 bg-teal-400/15"
+                  : selected
+                    ? "border-red-400/60 bg-red-400/15"
+                    : "border-white/10 opacity-60"
+                : "border-white/10 hover:border-primary/50 hover:bg-primary/10";
+              return (
                 <button
-                  key={i}
-                  onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: i }))}
-                  className={`w-full text-left text-sm px-3 py-2.5 rounded-xl border transition-all ${
-                    answers[q.id] === i
-                      ? "border-primary/60 bg-primary/15 text-white"
-                      : "border-white/10 bg-background/30 text-muted-foreground hover:border-white/25 hover:text-white"
-                  }`}
+                  key={optionIndex}
+                  disabled={!!currentFeedback || checking}
+                  onClick={() => commitAnswer(optionIndex)}
+                  className={`w-full text-left rounded-2xl border px-4 py-3.5 transition-all ${cls}`}
                 >
-                  <span className="font-mono text-xs opacity-60 mr-2">{OPTS[i]}.</span>
-                  {opt}
+                  <span className="font-mono text-xs text-primary mr-3">{OPTION_LABELS[optionIndex] ?? optionIndex + 1}.</span>
+                  {option}
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        ))}
+
+          {currentFeedback && (
+            <div className={`mt-6 rounded-2xl border p-4 ${currentFeedback.isCorrect ? "border-teal-400/30 bg-teal-400/10" : "border-amber-400/30 bg-amber-400/10"}`}>
+              <p className="font-semibold">{currentFeedback.isCorrect ? "Ճիշտ է" : "Սովորենք այս պատասխանից"}</p>
+              {currentFeedback.feedback.whyWrong && <p className="text-sm text-white/75 mt-2">{currentFeedback.feedback.whyWrong}</p>}
+              {currentFeedback.feedback.whyCorrect && <p className="text-sm text-white/75 mt-2">{currentFeedback.feedback.whyCorrect}</p>}
+              {currentFeedback.feedback.solutionExplanation && (
+                <div className="mt-3 pt-3 border-t border-white/10">
+                  <p className="text-xs font-semibold text-primary">Կարճ լուծում</p>
+                  <p className="text-sm text-white/75 mt-1 whitespace-pre-wrap">{currentFeedback.feedback.solutionExplanation}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
       </main>
 
-      {/* Sticky submit bar */}
-      <div className="fixed bottom-0 inset-x-0 bg-card/80 backdrop-blur-lg border-t border-white/10 px-6 py-4">
-        <div className="max-w-2xl mx-auto space-y-2">
-          {submitError && (
-            <p className="text-sm text-red-400 text-center">{submitError}</p>
+      <div className="fixed bottom-0 inset-x-0 border-t border-white/10 bg-card/90 backdrop-blur px-5 py-4">
+        <div className="max-w-2xl mx-auto">
+          {submitError && <p className="text-sm text-red-400 text-center mb-2">{submitError}</p>}
+          {currentFeedback && currentIndex < data.questions.length - 1 && (
+            <button onClick={() => setCurrentIndex((index) => index + 1)} className="w-full py-3.5 rounded-2xl bg-primary text-white font-bold">
+              Հաջորդ հարցը
+            </button>
           )}
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || !allAnswered}
-            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-base hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 shadow-xl shadow-primary/25"
-          >
-            {submitting ? "Ուղարկվում է..." : "📤 Ուղարկել"}
-          </button>
+          {currentFeedback && currentIndex === data.questions.length - 1 && (
+            <button disabled={submitting} onClick={submitAttempt} className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-bold disabled:opacity-50">
+              {submitting ? "Գրանցվում է..." : "Ավարտել փորձը"}
+            </button>
+          )}
+          {!currentFeedback && <p className="text-center text-xs text-muted-foreground">Ընտրեք պատասխանը՝ անմիջապես ստուգելու համար</p>}
         </div>
       </div>
     </div>

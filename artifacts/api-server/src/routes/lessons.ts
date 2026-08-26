@@ -1,5 +1,6 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
+import { getLatestCompletedQuizScoreStats } from "../services/quiz-reporting.js";
 import { Router, type NextFunction, type Response } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, lessonSourceMaterialsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, lessonNodeTeachingPackageItemsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
@@ -6989,15 +6990,7 @@ router.get("/lessons/:lessonId/quizzes", requireAuth, requireLessonAuthor, async
     for (const r of aRows) assignStats[r.quizId] = { totalAssigned: r.totalAssigned, completedCount: r.completedCount };
 
     // Average score per quiz (completed attempts only)
-    const sRows = await db
-      .select({
-        quizId:              quizAssignmentsTable.quizId,
-        averageScorePercent: sql<number | null>`round(avg(${quizAttemptsTable.scorePercent}))`,
-      })
-      .from(quizAttemptsTable)
-      .innerJoin(quizAssignmentsTable, eq(quizAssignmentsTable.id, quizAttemptsTable.quizAssignmentId))
-      .where(inArray(quizAssignmentsTable.quizId, quizIds))
-      .groupBy(quizAssignmentsTable.quizId);
+    const sRows = await getLatestCompletedQuizScoreStats(quizIds);
     for (const r of sRows) scoreStats[r.quizId] = r.averageScorePercent ?? null;
   }
 

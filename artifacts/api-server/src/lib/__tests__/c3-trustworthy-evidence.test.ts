@@ -151,7 +151,14 @@ test("8 canonical write failure is never silently reported as success", () => {
     chatRoute.indexOf("await (async () =>") < chatRoute.indexOf("res.json({\n    response:"),
     "chat must await canonical evidence before success response",
   );
-  assert.match(quizRoute, /await db\.delete\(quizAttemptsTable\)/u);
+  assert.match(quizRoute, /await db\.transaction\(async \(tx\) =>/u);
+  assert.match(quizRoute, /await tx\.insert\(evidenceEventsTable\)/u);
+  assert.match(quizRoute, /await tx\.insert\(quizAnswersTable\)/u);
+  assert.ok(
+    quizRoute.indexOf("await tx.insert(evidenceEventsTable)") <
+      quizRoute.indexOf(".update(quizAttemptsTable)"),
+    "quiz completion must remain after canonical evidence inside one transaction",
+  );
   assert.match(quizRoute, /quizAttemptId:\s*attempt\.id/u);
 });
 
