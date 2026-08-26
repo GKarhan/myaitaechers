@@ -1,0 +1,525 @@
+IMPLEMENTATION TASK — LESSON FINAL APPROVAL / TEACHER OVERRIDE POLICY
+
+GOAL
+
+Align lesson assignment readiness with the approved product rule:
+
+A lesson should be assignable whenever it is technically safe to deliver.
+
+Pedagogical incompleteness or review findings must be shown clearly to the teacher,
+but the teacher must be allowed to explicitly confirm and assign the lesson anyway.
+
+Only true structural/data-integrity failures remain non-overridable BLOCKED states.
+
+This is a SYSTEMIC policy change.
+
+Do NOT special-case Lesson 722.
+
+==================================================
+0. PROVEN CURRENT PROBLEM
+==================================================
+
+For Lesson 722 — «Մնացորդով բաժանում»:
+
+- mapping completed
+- 3 canonical MicroNodes exist
+- 4 verified-readable instructional blocks have no canonical MicroNode owner
+- final approval currently returns:
+
+HTTP 422
+readiness = BLOCKED
+code = UNRESOLVED_INSTRUCTIONAL_SOURCE
+
+The established product requirement is different:
+
+This condition must be shown to the teacher as a serious warning,
+but the teacher must be able to consciously confirm:
+
+«Այնուամենայնիվ հաստատել և հանձնարարել»
+
+and then the lesson may proceed to approval/activation.
+
+Therefore current final-approval policy is too strict for this class of pedagogical finding.
+
+==================================================
+1. REQUIRED READINESS MODEL
+==================================================
+
+The authoritative final-approval contract must have three semantic classes:
+
+READY
+
+CONFIRMATION_REQUIRED
+
+BLOCKED
+
+Meanings:
+
+READY
+→ no confirmation needed
+
+CONFIRMATION_REQUIRED
+→ one or more pedagogical/review findings exist
+→ teacher sees them
+→ teacher may explicitly accept responsibility
+→ lesson can then be approved/activated
+
+BLOCKED
+→ technical/structural/data-integrity state makes learner delivery unsafe
+→ teacher override is NOT permitted
+
+Do not collapse these states.
+
+==================================================
+2. MOVE UNRESOLVED INSTRUCTIONAL OWNERSHIP
+==================================================
+
+Change:
+
+UNRESOLVED_INSTRUCTIONAL_SOURCE
+
+from:
+
+hard BLOCKED error
+
+to:
+
+CONFIRMATION_REQUIRED / overrideable finding
+
+when:
+
+- source scope is verified;
+- source blocks are readable;
+- canonical lesson structure exists;
+- at least one valid MicroNode exists;
+- the issue is specifically incomplete instructional ownership,
+  not source corruption/loss.
+
+The teacher must see the exact safe count.
+
+Example:
+
+«Ընթեռնելի ուսումնական աղբյուրից 4 հատված MicroNode-ի պատասխանատու չունի»։
+
+But this must no longer prevent explicit teacher confirmation.
+
+==================================================
+3. WHAT MUST REMAIN HARD BLOCKED
+==================================================
+
+Do NOT make everything overrideable.
+
+Keep non-overridable BLOCKED behavior for true unsafe conditions such as:
+
+- unverified lesson source scope;
+- missing/corrupt source identity;
+- zero canonical MicroNodes;
+- invalid/corrupt lesson structure;
+- empty MicroNodes where learner delivery has no usable target;
+- unsafe or invalid node/source identity;
+- broken lesson/course ownership;
+- invalid topic/node sequence where runtime assumptions would fail;
+- persistence/integrity failures;
+- any condition where learner package generation cannot be trusted.
+
+Reuse existing hard blocker codes where available.
+
+Do not invent broad new override permissions.
+
+==================================================
+4. CONFIRMATION_REQUIRED FINDINGS
+==================================================
+
+The following should remain or become teacher-confirmable under the established product rule:
+
+- unresolved readable instructional source ownership;
+- incomplete/unconfirmed Cognitive Paths;
+- incomplete Teaching Content;
+- Goal/Outcome review findings;
+- Outcomes without REQUIRED MicroNode links;
+- draft source exercises;
+- partial but safe source alignment;
+- compound/mega-node advisory findings;
+- other pedagogical completeness findings that do not make runtime delivery unsafe.
+
+Do not change their underlying diagnostics.
+
+Only classify them correctly for approval policy.
+
+==================================================
+5. AUTHORITATIVE FINAL APPROVAL FLOW
+==================================================
+
+Update validateLessonForFinalApproval so it returns conceptually:
+
+READY
+→ approved may proceed
+
+CONFIRMATION_REQUIRED
+→ HTTP / response contract consistent with existing confirmation flow
+→ teacher must explicitly confirm
+→ second confirmed request may approve
+
+BLOCKED
+→ hard error
+→ no override
+
+Reuse the existing confirmation mechanism if one already exists.
+
+Do NOT build a parallel approval system.
+
+==================================================
+6. EXPLICIT TEACHER CONFIRMATION
+==================================================
+
+The teacher override must be explicit.
+
+The teacher must not accidentally assign merely by clicking once.
+
+For confirmation-required lessons, show a dialog summarizing:
+
+- lesson is not fully ready;
+- exact findings;
+- which are warnings/review items;
+- assignment can still proceed if teacher accepts.
+
+Required actions conceptually:
+
+«Վերադառնալ և ուղղել»
+
+«Այնուամենայնիվ հաստատել և հանձնարարել»
+
+Use existing Armenian UI style.
+
+Do not use developer codes in primary UI text.
+
+==================================================
+7. AUDIT TRAIL
+==================================================
+
+Teacher override must be auditable.
+
+Inspect existing final-approval persistence first.
+
+If an existing approval/override audit structure exists, reuse it.
+
+Persist at minimum, where architecture allows safely:
+
+- lessonId
+- approving teacher/user ID
+- timestamp
+- confirmation occurred
+- bounded finding codes accepted
+
+Do NOT persist textbook/source text in the override record.
+
+Do NOT create a large new audit subsystem if current approval metadata already supports this.
+
+If schema change is genuinely unnecessary, avoid one.
+
+==================================================
+8. ACTIVATION FLOW
+==================================================
+
+After explicit confirmation:
+
+final approval
+→ approved
+→ existing activation flow
+→ active
+→ learner visibility
+
+Preserve the existing rule that learner delivery requires active status.
+
+Do not bypass approval by directly setting active.
+
+Do not weaken student-package / lesson-start protections.
+
+==================================================
+9. TEACHER UI READINESS
+==================================================
+
+Update teacher-facing readiness display so it reflects the same authoritative contract:
+
+READY
+→ «Պատրաստ է հանձնարարելու»
+
+CONFIRMATION_REQUIRED
+→ «Կան խնդիրներ, բայց կարող եք հաստատել և հանձնարարել»
+
+BLOCKED
+→ «Հանձնարարումը հնարավոր չէ մինչև այս խնդիրների լուծումը»
+
+Do not say:
+
+“3 MicroNodes ready”
+
+in a way that implies READY if the lesson is actually CONFIRMATION_REQUIRED.
+
+Technical mapping completion and assignment readiness remain distinct.
+
+==================================================
+10. MAPPING STATUS MUST REMAIN SEPARATE
+==================================================
+
+Do NOT change technically successful mapping jobs to failed merely because the lesson requires teacher confirmation.
+
+Example:
+
+mappingStatus = completed
+
+assignmentReadiness = CONFIRMATION_REQUIRED
+
+is valid.
+
+Do not conflate:
+
+mapping pipeline success
+
+with
+
+teacher assignment readiness.
+
+==================================================
+11. LESSON 722 EXPECTED BEHAVIOR
+==================================================
+
+Do NOT edit or remap Lesson 722 during implementation.
+
+But provider-free/synthetic acceptance coverage should prove the equivalent state:
+
+3 valid canonical MicroNodes
+
+4 verified-readable instructional blocks without MicroNode ownership
+
+Expected:
+
+mapping = completed
+
+assignmentReadiness = CONFIRMATION_REQUIRED
+
+teacher click Assign
+→ confirmation dialog
+
+teacher chooses Return
+→ no approval / no activation
+
+teacher chooses Confirm and Assign
+→ approval succeeds
+→ activation succeeds
+→ learner may see/start the lesson
+
+No hard 422 UNRESOLVED_INSTRUCTIONAL_SOURCE after explicit confirmation.
+
+==================================================
+12. REQUIRED REGRESSION MATRIX
+==================================================
+
+Add deterministic/provider-free tests for:
+
+CASE A
+3 valid nodes
+4 unresolved readable instructional blocks
+
+Expected:
+CONFIRMATION_REQUIRED
+
+CASE B
+same state, no teacher confirmation
+
+Expected:
+not approved
+not activated
+
+CASE C
+same state, explicit teacher confirmation
+
+Expected:
+approval succeeds
+activation may proceed
+
+CASE D
+unverified source scope
+
+Expected:
+BLOCKED
+confirmation cannot override
+
+CASE E
+zero MicroNodes
+
+Expected:
+BLOCKED
+confirmation cannot override
+
+CASE F
+missing/corrupt canonical source identity
+
+Expected:
+BLOCKED
+
+CASE G
+only missing Teaching Content
+
+Expected:
+CONFIRMATION_REQUIRED
+existing behavior preserved
+
+CASE H
+only incomplete/unconfirmed Cognitive Path
+
+Expected:
+CONFIRMATION_REQUIRED
+existing behavior preserved
+
+CASE I
+no findings
+
+Expected:
+READY
+normal direct approval
+
+CASE J
+mixed:
+one confirmation-required finding
+plus one hard blocker
+
+Expected:
+BLOCKED
+teacher confirmation cannot bypass hard blocker
+
+CASE K
+teacher cancels confirmation
+
+Expected:
+lesson remains unchanged
+
+CASE L
+teacher confirms
+
+Expected:
+bounded accepted finding codes recorded if audit structure supports it
+
+==================================================
+13. PROTECTED SYSTEMS
+==================================================
+
+DO NOT modify:
+
+- Mapping Core semantics
+- MicroNode ownership generation
+- C1
+- C2
+- Cognitive Path generation
+- Teaching Content generation
+- AI Teacher
+- Test 2.0
+- quiz logic
+- Knowledge Tree
+- learner evidence
+- lesson source content
+- lesson 722 data
+- student active-lesson protection
+
+This task changes only assignment/final-approval readiness policy and matching UI projection.
+
+==================================================
+14. NON-REGRESSION
+==================================================
+
+Run:
+
+- final approval tests
+- activation tests
+- learner visibility/start protection tests
+- mapping result/readiness projection tests
+- teacher assignment UI tests
+- API typecheck/build
+- frontend typecheck/build
+
+No provider calls.
+
+No real lesson assignment required for deterministic verification.
+
+==================================================
+15. INDEPENDENT REVIEW
+==================================================
+
+Request a focused independent review.
+
+Reviewer must verify:
+
+1. READY / CONFIRMATION_REQUIRED / BLOCKED are truly distinct.
+2. UNRESOLVED_INSTRUCTIONAL_SOURCE is overrideable only when source is verified/readable and structure is safe.
+3. true integrity blockers cannot be overridden.
+4. teacher confirmation is explicit.
+5. confirmation does not bypass approval/activation flow.
+6. learner still requires active lesson.
+7. mapping status remains independent.
+8. no Lesson 722 special case.
+9. no C1/C2/Test/AI Teacher changes leaked in.
+
+Fix blockers before completion.
+
+==================================================
+16. RUNTIME SAFETY
+==================================================
+
+Do NOT:
+
+- remap Lesson 722
+- edit its DB records
+- generate Cognitive Paths
+- generate Teaching Content
+- activate Lesson 722 automatically
+- assign it automatically
+- call an AI provider
+
+Restart only affected services after tests if necessary.
+
+==================================================
+17. FINAL REPORT
+==================================================
+
+Return:
+
+A. files changed
+
+B. old readiness policy
+
+C. new READY / CONFIRMATION_REQUIRED / BLOCKED contract
+
+D. which findings are now confirmation-required
+
+E. which findings remain hard blocked
+
+F. teacher confirmation flow
+
+G. audit-trail behavior
+
+H. activation behavior
+
+I. mapping-status separation
+
+J. tests/results
+
+K. typecheck/build results
+
+L. independent-review result
+
+M. confirmation Lesson 722 was not modified/remapped/activated
+
+End with:
+
+UNRESOLVED READABLE INSTRUCTIONAL OWNERSHIP IS TEACHER-OVERRIDABLE: YES / NO
+
+TRUE STRUCTURAL/INTEGRITY BLOCKERS REMAIN NON-OVERRIDABLE: YES / NO
+
+TEACHER MUST EXPLICITLY CONFIRM: YES / NO
+
+LEARNER STILL REQUIRES ACTIVE LESSON: YES / NO
+
+READY FOR ONE MANUAL LESSON 722 ASSIGNMENT TEST: YES / NO
+
+STOP.
+DO NOT ASSIGN LESSON 722 YOURSELF.
