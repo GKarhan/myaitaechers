@@ -1,0 +1,560 @@
+IMPLEMENTATION TASK — TEST 2.0 / PHASE T1
+CANONICAL RETEST AUTHORITY CONTRACT
+
+GOAL
+
+Establish one authoritative server-side rule for deciding which MicroNodes are eligible for Test 2.0 retesting after a completed quiz.
+
+This task does NOT build the retest UI yet.
+This task does NOT create a new quiz yet.
+This task does NOT change feedback.
+This task does NOT change Knowledge Tree semantics.
+This task does NOT change quiz scoring.
+
+The purpose is to eliminate ambiguity between:
+
+- quiz-results labels/materialized knowledge_nodes state
+
+and
+
+- canonical C3 → C4 → C5 Knowledge Tree state.
+
+For Test 2.0, retest eligibility must come from ONE canonical source.
+
+==================================================
+0. CONFIRMED CURRENT ARCHITECTURE
+==================================================
+
+The T0 forensic audit established:
+
+- quiz completion creates canonical C3 evidence;
+- C4 demonstrated ceiling is projected from evidence;
+- C5 Knowledge Tree state is derived from:
+  - meaningful attempts,
+  - qualifying evidence,
+  - demonstrated ceiling,
+  - target cognitive level;
+
+Canonical C5 states are:
+
+MASTERED     → Գիտի
+PARTIAL      → Մասնակի գիտի
+NOT_KNOWN    → Չգիտի
+NOT_STUDIED  → Դեռ չի ուսումնասիրել
+
+The results page currently has a separate read path:
+it may use knowledge_nodes materialized scores or current-attempt fallback.
+
+Therefore Results and canonical Knowledge Tree may temporarily or semantically diverge.
+
+That ambiguity MUST NOT become Test 2.0 retest authority.
+
+==================================================
+1. FUNDAMENTAL INVARIANT
+==================================================
+
+For Test 2.0 retest selection:
+
+CANONICAL C5 KNOWLEDGE STATE IS AUTHORITATIVE.
+
+The retest engine must NOT derive eligibility from:
+
+- display labels alone,
+- current quiz percentage,
+- current quiz nodeBreakdown fallback,
+- raw correct-count thresholds,
+- asynchronous materialized knowledge_nodes status alone.
+
+Those values may be used for display, but not as canonical retest authority.
+
+==================================================
+2. SUPPORTED RETEST STRATEGIES
+==================================================
+
+Define a bounded server-side strategy contract.
+
+Required v1 strategies:
+
+PARTIAL_AND_NOT_KNOWN
+
+Meaning:
+include MicroNodes whose canonical C5 state is:
+
+- PARTIAL
+- NOT_KNOWN
+
+NOT_KNOWN_ONLY
+
+Meaning:
+include only MicroNodes whose canonical C5 state is:
+
+- NOT_KNOWN
+
+Do NOT include:
+
+MASTERED
+NOT_STUDIED
+
+unless a future explicit strategy is introduced.
+
+Do not accept arbitrary free-form strategy strings.
+
+Use naming consistent with project conventions.
+
+==================================================
+3. SERVER-DERIVED ELIGIBLE NODES
+==================================================
+
+Add or extract one pure/shared backend function conceptually equivalent to:
+
+resolveRetestEligibleNodes({
+  learnerId,
+  completedAttemptId,
+  strategy
+})
+
+Exact naming may follow the repository.
+
+The server must derive node IDs itself.
+
+The client must NOT be allowed to decide canonical eligibility by sending arbitrary nodeIds.
+
+The server should:
+
+1. verify the completed attempt exists;
+2. verify it belongs to the requesting learner;
+3. determine which canonical MicroNodes belong to that completed attempt;
+4. read canonical C5 state for those MicroNodes;
+5. filter according to the selected strategy;
+6. return deterministic eligible node IDs + safe status metadata.
+
+==================================================
+4. SCOPE MUST COME FROM THE COMPLETED ATTEMPT
+==================================================
+
+This is critical.
+
+Retest eligibility must be bounded to MicroNodes that were actually in scope for the completed quiz/attempt.
+
+Do NOT allow:
+
+attempt A
+→ request strategy
+→ server scans the learner's entire Knowledge Tree
+→ returns unrelated weak nodes.
+
+The retest scope is:
+
+completed attempt
+→ its quiz questions
+→ their canonical nodeIds
+→ canonical current C5 states
+→ strategy filter.
+
+If a question has no valid nodeId, it cannot create retest eligibility.
+
+==================================================
+5. CANONICAL C5 READ PATH
+==================================================
+
+Reuse the same C5 classification/read logic that the canonical Knowledge Tree uses.
+
+Do NOT implement a second retest-specific mastery classifier.
+
+Do NOT copy/paste thresholds such as:
+
+3/3
+2/3
+1/3
+0/3
+
+into retest authority.
+
+Those rules may contribute evidence upstream, but retest eligibility consumes the canonical C5 result.
+
+If the current C5 logic is only exposed through a UI-oriented function, refactor minimally to reuse the same authoritative domain logic.
+
+==================================================
+6. HANDLING ASYNCHRONOUS MATERIALIZED SCORING
+==================================================
+
+The T0 audit found that knowledge_nodes materialized scores may update asynchronously.
+
+Therefore the new authority contract must NOT depend on waiting for the materialized score projection if canonical C5 can be derived directly from qualified evidence/C4 state.
+
+Determine the safest existing canonical read path.
+
+Preferred behavior:
+
+completed attempt
+→ canonical evidence already committed
+→ canonical C4/C5 state available/readable
+→ retest authority returned.
+
+Do not introduce arbitrary sleeps/timeouts.
+
+==================================================
+7. NO CHANGE TO KNOWLEDGE TREE SEMANTICS
+==================================================
+
+DO NOT change:
+
+- MASTERED definition
+- PARTIAL definition
+- NOT_KNOWN definition
+- NOT_STUDIED definition
+- C3 evidence qualification
+- C4 demonstrated ceiling
+- target cognitive level logic
+- provisional state behavior
+- three-question scoring
+- general scoring
+- mastery thresholds
+
+This task only chooses the authoritative read path for retesting.
+
+==================================================
+8. SAFE DOMAIN RESULT
+==================================================
+
+Return a bounded domain result useful for the future Results UI.
+
+Conceptually:
+
+{
+  attemptId,
+  strategy,
+  eligibleNodes: [
+    {
+      nodeId,
+      canonicalState
+    }
+  ],
+  counts: {
+    partial,
+    notKnown,
+    eligible
+  }
+}
+
+Do not expose unnecessary learner-model internals.
+
+Do not return raw evidence rows.
+
+Do not return source content.
+
+==================================================
+9. EMPTY RESULT BEHAVIOR
+==================================================
+
+If the strategy produces no eligible nodes:
+
+return a successful empty result.
+
+Example:
+
+PARTIAL_AND_NOT_KNOWN
+→ learner has only MASTERED nodes
+
+Expected:
+eligibleNodes = []
+
+This is NOT an error.
+
+The future UI can show:
+
+«Այս թեստից նորից ստուգելու գիտելիքներ չկան»։
+
+Do not create a quiz in this task.
+
+==================================================
+10. AUTHORIZATION / OWNERSHIP
+==================================================
+
+The authority resolver must enforce:
+
+- learner can resolve only their own completed attempt;
+- attempt must belong to an assignment for that learner;
+- incomplete/nonexistent attempt cannot become retest authority;
+- teacher/admin behavior must not be accidentally expanded by this student contract.
+
+Reuse existing auth patterns.
+
+Do not weaken quiz authorization.
+
+==================================================
+11. DUPLICATE NODE HANDLING
+==================================================
+
+A quiz may contain multiple questions for one MicroNode.
+
+The resolver must return each eligible MicroNode exactly once.
+
+Use deterministic ordering.
+
+Prefer the original quiz/node order if safely available; otherwise use a stable canonical order.
+
+Do not let question count duplicate retest node IDs.
+
+==================================================
+12. RESULTS-PAGE STATUS MUST NOT BECOME AUTHORITY
+==================================================
+
+Do NOT change the current Results UI in this task.
+
+But add provider-free/domain tests proving:
+
+If:
+
+results-page fallback says PARTIAL
+
+but canonical C5 says MASTERED
+
+→ retest authority must treat the node as MASTERED and exclude it.
+
+If:
+
+materialized knowledge_nodes says MASTERED
+
+but canonical C5 says PARTIAL
+
+→ retest authority must include it for PARTIAL_AND_NOT_KNOWN.
+
+The canonical state wins.
+
+==================================================
+13. REQUIRED TEST MATRIX
+==================================================
+
+Add deterministic provider-free tests.
+
+T1
+Attempt contains:
+A = PARTIAL
+B = NOT_KNOWN
+C = MASTERED
+
+Strategy:
+PARTIAL_AND_NOT_KNOWN
+
+Expected:
+[A, B]
+
+T2
+Same attempt.
+
+Strategy:
+NOT_KNOWN_ONLY
+
+Expected:
+[B]
+
+T3
+NOT_STUDIED node in attempt scope.
+
+Expected:
+excluded from both v1 strategies.
+
+T4
+Multiple questions map to same PARTIAL node.
+
+Expected:
+node appears once.
+
+T5
+Question with nodeId = null.
+
+Expected:
+ignored safely.
+
+T6
+Attempt not completed.
+
+Expected:
+reject with bounded domain/auth error.
+
+T7
+Attempt belongs to another learner.
+
+Expected:
+reject.
+
+T8
+Canonical C5 and materialized knowledge_nodes disagree.
+
+Expected:
+canonical C5 wins.
+
+T9
+Canonical C5 and result-page fallback disagree.
+
+Expected:
+canonical C5 wins.
+
+T10
+No eligible nodes.
+
+Expected:
+successful empty result.
+
+T11
+Later quiz evidence has changed canonical C5 state since the original attempt.
+
+Expected:
+resolver uses CURRENT canonical C5 state.
+
+This is important:
+retest eligibility is based on the learner's current canonical knowledge state,
+bounded to nodes from the selected completed attempt.
+
+T12
+No canonical state can be safely resolved for a node.
+
+Expected:
+fail closed for that node / bounded review-safe handling according to existing C5 conventions.
+Do not invent PARTIAL/NOT_KNOWN.
+
+==================================================
+14. CURRENT FUNCTIONALITY TO PROTECT
+==================================================
+
+Do NOT regress:
+
+- teacher quiz creation
+- lesson quizzes
+- summary quizzes
+- explicit nodeIds teacher creation
+- difficulty selection
+- question count
+- quiz review/release
+- assignment
+- student take flow
+- scoring
+- current feedback
+- current results page
+- evidence creation
+- C4 projection
+- Knowledge Tree
+- existing mastery mapping
+- no evidence before final submission
+
+No provider calls are needed for this task.
+
+==================================================
+15. DO NOT IMPLEMENT YET
+==================================================
+
+This task MUST NOT yet implement:
+
+- Results-page retest buttons
+- wrong-answer review enforcement
+- automatic new quiz creation
+- automatic assignment
+- retest round lineage
+- answer-option shuffling
+- question reuse/history
+- resume
+- AI Teacher integration
+- new feedback generation
+- Knowledge Tree UI changes
+
+Only establish the canonical retest authority contract.
+
+==================================================
+16. NON-REGRESSION VERIFICATION
+==================================================
+
+Run:
+
+- new retest-authority tests
+- quiz route/scoring tests
+- evidence tests
+- C4/C5 / Knowledge Tree tests
+- current three-question mapping tests
+- API TypeScript check/build
+
+If shared types are touched, run affected frontend typecheck too.
+
+Do not change unrelated production behavior to make tests pass.
+
+==================================================
+17. INDEPENDENT REVIEW
+==================================================
+
+Before completion, request one focused independent architecture review.
+
+Reviewer must verify:
+
+1. C5 is truly authoritative.
+2. No duplicate mastery classifier was created.
+3. Client cannot provide arbitrary eligible node IDs.
+4. Scope is limited to nodes from the completed attempt.
+5. Current canonical state is used.
+6. Duplicate question→node mappings are deduplicated.
+7. NOT_STUDIED is excluded.
+8. Existing quiz/scoring/evidence/KT behavior is unchanged.
+9. No UI/retest-generation work leaked into T1.
+
+Fix concrete blockers before completion.
+
+==================================================
+18. RUNTIME SAFETY
+==================================================
+
+Do NOT:
+
+- create a real quiz
+- submit a quiz
+- modify learner evidence
+- modify Knowledge Tree
+- run a provider call
+- alter test data outside deterministic/provider-free fixtures
+
+Restart only the API if required after verification.
+
+==================================================
+19. FINAL REPORT
+==================================================
+
+Return:
+
+A. Files changed
+
+B. Canonical authority function/contract
+
+C. Exact source of canonical C5 state
+
+D. Supported strategies
+
+E. Attempt-scope rule
+
+F. Authorization rule
+
+G. Duplicate-node rule
+
+H. Empty-result behavior
+
+I. Tests added + results
+
+J. Non-regression results
+
+K. Independent review result
+
+L. API typecheck/build result
+
+M. Confirmation no real quiz/evidence/KT data changed
+
+End exactly with:
+
+CANONICAL C5 IS RETEST AUTHORITY: YES / NO
+
+CLIENT CAN SUPPLY ARBITRARY RETEST NODE IDS: YES / NO
+
+RETEST SCOPE LIMITED TO COMPLETED ATTEMPT: YES / NO
+
+CURRENT QUIZ/SCORING/EVIDENCE BEHAVIOR PRESERVED: YES / NO
+
+READY FOR TEST 2.0 T2 RESULTS UI / REVIEW STEP: YES / NO
+
+STOP.
+DO NOT IMPLEMENT T2.
