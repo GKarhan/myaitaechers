@@ -925,6 +925,7 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
     await buildStudentResultAnalysis(attempt.id, req.userId!);
 
   res.json({
+    attemptId:       attempt.id,
     totalCorrect:   attempt.totalCorrect,
     totalQuestions: attempt.totalQuestions,
     scorePercent:   attempt.scorePercent,

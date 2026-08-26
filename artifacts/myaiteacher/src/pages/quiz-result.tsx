@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
-import { Link, useParams } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 import { useAuth } from "@/lib/auth";
+import {
+  formatAnswer,
+  getRetestAuthorityUiState,
+  STUDENT_RESULTS_FINISH_PATH,
+  shouldShowExplanation,
+  type RetestAuthorityPayload,
+  type RetestStrategy,
+  type SelectedNextAction,
+} from "@/lib/quiz-result-t2";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,6 +70,7 @@ interface Recommendation {
 }
 
 interface MyResult {
+  attemptId?: number;
   totalCorrect: number;
   totalQuestions: number;
   scorePercent: number;
@@ -94,11 +104,14 @@ const MASTERY_BADGE: Record<MasteryLevel, string> = {
   needs_review: "border-violet-400/40 bg-violet-400/10 text-violet-400",
 };
 
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function QuizResult() {
   const { id } = useParams<{ id: string }>();
   const { token, user } = useAuth();
+  const [, setLocation] = useLocation();
 
   // Parse query params
   const { studentId, classId: backClassId, subjectId: backSubjectId, backFrom } = (() => {
@@ -121,32 +134,118 @@ export default function QuizResult() {
     ? (backFrom === "allQuizzes"
         ? "/teacher?section=quizzes"
         : (backClassId && backSubjectId ? `/teacher?classId=${backClassId}&subjectId=${backSubjectId}` : "/teacher"))
-    : "/dashboard";
+    : STUDENT_RESULTS_FINISH_PATH;
   const backLabel = "\u2190 \u0540\u0565\u057f"; // ← Հet
 
   const [result, setResult] = useState<MyResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState<string | null>(null);
+  const [authorityStatus, setAuthorityStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [authorityError, setAuthorityError] = useState(false);
+  const [combinedAuthority, setCombinedAuthority] = useState<RetestAuthorityPayload | null>(null);
+  const [notKnownAuthority, setNotKnownAuthority] = useState<RetestAuthorityPayload | null>(null);
+  const [selectedNextAction, setSelectedNextAction] = useState<SelectedNextAction | null>(null);
+  const [authorityRetry, setAuthorityRetry] = useState(0);
 
   useEffect(() => {
     if (!token || !id || !user) return;
+
+    const controller = new AbortController();
+    let cancelled = false;
+
     setLoading(true);
     setResult(null);
     setError(null);
+    setAuthorityStatus("idle");
+    setAuthorityError(false);
+    setCombinedAuthority(null);
+    setNotKnownAuthority(null);
+    setSelectedNextAction(null);
 
     const url = isTeacherView
-      ? `/api/quizzes/${id}/results/${studentId}`
-      : `/api/quizzes/${id}/my-result`;
+      ? `${BASE}/api/quizzes/${id}/results/${studentId}`
+      : `${BASE}/api/quizzes/${id}/my-result`;
 
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
       .then((r) => {
         if (!r.ok) throw new Error("result_not_found");
         return r.json();
       })
-      .then((data: MyResult) => setResult(data))
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .then((data: MyResult) => {
+        if (!cancelled) setResult(data);
+      })
+      .catch((e: Error) => {
+        if (cancelled || e.name === "AbortError") return;
+        setError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [token, id, studentId, user?.role]);
+
+  useEffect(() => {
+    if (isTeacherView || !result) return;
+
+    let cancelled = false;
+    if (result.attemptId == null) {
+      setAuthorityStatus("error");
+      setAuthorityError(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setAuthorityStatus("loading");
+    setAuthorityError(false);
+
+    const loadAuthority = async (strategy: RetestStrategy): Promise<RetestAuthorityPayload> => {
+      const response = await fetch(
+        `${BASE}/api/quizzes/attempts/${result.attemptId}/retest-eligibility?strategy=${strategy}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!response.ok) throw new Error("authority_unavailable");
+      const payload = await response.json() as RetestAuthorityPayload;
+      if (
+        payload.attemptId !== result.attemptId ||
+        payload.strategy !== strategy ||
+        !payload.counts ||
+        typeof payload.counts.eligible !== "number" ||
+        typeof payload.counts.partial !== "number" ||
+        typeof payload.counts.notKnown !== "number"
+      ) {
+        throw new Error("authority_invalid");
+      }
+      return payload;
+    };
+
+    Promise.all([
+      loadAuthority("PARTIAL_AND_NOT_KNOWN"),
+      loadAuthority("NOT_KNOWN_ONLY"),
+    ])
+      .then(([combined, notKnownOnly]) => {
+        if (cancelled) return;
+        setCombinedAuthority(combined);
+        setNotKnownAuthority(notKnownOnly);
+        setAuthorityStatus("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAuthorityStatus("error");
+        setAuthorityError(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, id, result?.attemptId, isTeacherView, authorityRetry]);
 
   if (loading) {
     return (
@@ -177,6 +276,12 @@ export default function QuizResult() {
     result.nodeBreakdown && result.nodeBreakdown.length > 0;
   const hasRecommendations =
     result.recommendations && result.recommendations.length > 0;
+  const authorityUiState = getRetestAuthorityUiState({
+    loading: authorityStatus !== "ready" && authorityStatus !== "error",
+    error: authorityError,
+    combined: combinedAuthority,
+    notKnownOnly: notKnownAuthority,
+  });
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -336,7 +441,16 @@ export default function QuizResult() {
             >
               {/* Question header */}
               <div className="flex items-start gap-3 mb-4">
-                <span className="shrink-0 text-sm">{q.isCorrect ? "✅" : "❌"}</span>
+                <span className="shrink-0 text-sm" aria-hidden="true">
+                  {q.isCorrect ? "✅" : "❌"}
+                </span>
+                <span
+                  className={`shrink-0 text-xs font-semibold ${
+                    q.isCorrect ? "text-teal-400" : "text-red-400"
+                  }`}
+                >
+                  {q.isCorrect ? "Ճիշտ" : "Սխալ"}
+                </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium leading-snug">{q.questionText}</p>
                   {q.nodeTitle && (
@@ -392,19 +506,20 @@ export default function QuizResult() {
                     • Correct answer text (factual — always shown when block visible)
                     • 💡 Ինչու է ճիշտ + whyCorrect (if non-null)
                   ──────────────────────────────────────────────────────── */}
-              {(q.feedback.whyCorrect || (!q.isCorrect && q.feedback.whyWrong)) && (
-                <div className="mt-4 pl-7 space-y-3">
+              <div className="mt-4 pl-7 space-y-3">
 
                   {/* ① Student's answer — shown in both correct and wrong cases */}
                   <div className={`text-xs ${q.isCorrect ? "text-teal-400/80" : "text-red-400/80"}`}>
                     <span className="font-semibold">Քո պատասխանը: </span>
                     <span className="text-foreground/75">
-                      {String.fromCharCode(65 + q.selectedOptionIndex)}. {(q.options as string[])[q.selectedOptionIndex]}
+                        {formatAnswer(q.options, q.selectedOptionIndex)}
                     </span>
                   </div>
 
                   {/* ② Why wrong — only when isCorrect=false and whyWrong non-null */}
-                  {!q.isCorrect && q.feedback.whyWrong && (
+                  {!q.isCorrect &&
+                    q.feedback.whyWrong &&
+                    shouldShowExplanation(q.feedback.whyWrong, q.feedback.whyCorrect) && (
                     <div className="text-xs rounded-xl px-3 py-2.5 border border-red-400/20 bg-red-400/5 text-red-300/80 leading-relaxed">
                       <span className="font-semibold text-red-400/70 block mb-1">Ինչու է սխալ</span>
                       {q.feedback.whyWrong}
@@ -416,7 +531,7 @@ export default function QuizResult() {
                     <div className="text-xs text-teal-400/80">
                       <span className="font-semibold">✅ Ճիշտ պատասխանը: </span>
                       <span className="text-foreground/75">
-                        {String.fromCharCode(65 + q.correctOptionIndex)}. {(q.options as string[])[q.correctOptionIndex]}
+                        {formatAnswer(q.options, q.correctOptionIndex)}
                       </span>
                     </div>
                   )}
@@ -429,11 +544,152 @@ export default function QuizResult() {
                     </div>
                   )}
 
-                </div>
-              )}
+              </div>
             </div>
           ))}
         </div>
+
+        {/* ── Canonical retest choice ─────────────────────────────────────────
+            This section deliberately consumes only the T1 authority response.
+            Result labels and node breakdowns never determine its counts.
+        ──────────────────────────────────────────────────────────────────── */}
+        {!isTeacherView && (
+          <section
+            aria-labelledby="quiz-next-step-heading"
+            className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card/50 to-secondary/5 p-5 sm:p-6 space-y-5"
+          >
+            <div>
+              <h2 id="quiz-next-step-heading" className="text-lg font-bold">
+                Ի՞նչ անել հիմա
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Ընտրեք հաջորդ քայլը՝ ըստ այս թեստի արդյունքի։
+              </p>
+            </div>
+
+            {authorityUiState.status === "loading" && (
+              <div
+                role="status"
+                className="flex items-center gap-3 rounded-xl border border-white/10 bg-background/30 px-4 py-4 text-sm text-muted-foreground"
+              >
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span>Ստուգում ենք շարունակելու տարբերակները…</span>
+              </div>
+            )}
+
+            {authorityUiState.status === "error" && (
+              <div
+                role="alert"
+                className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-4 space-y-3"
+              >
+                <p className="text-sm text-amber-200">
+                  Չհաջողվեց ստանալ շարունակելու տարբերակները։ Փորձեք կրկին։
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthorityRetry((value) => value + 1);
+                    setAuthorityError(false);
+                  }}
+                  className="px-4 py-2 rounded-xl border border-amber-400/30 text-amber-300 text-sm font-semibold hover:bg-amber-400/10 transition-colors"
+                >
+                  Կրկին փորձել
+                </button>
+              </div>
+            )}
+
+            {authorityUiState.status === "ready" && (
+              <>
+                {authorityUiState.hasActionableRetest ? (
+                  <div className="grid gap-3">
+                    {authorityUiState.combinedCount > 0 && (
+                      <button
+                        type="button"
+                        aria-pressed={selectedNextAction === "PARTIAL_AND_NOT_KNOWN"}
+                        onClick={() => setSelectedNextAction("PARTIAL_AND_NOT_KNOWN")}
+                        className={`w-full text-left rounded-xl border px-4 py-4 transition-all ${
+                          selectedNextAction === "PARTIAL_AND_NOT_KNOWN"
+                            ? "border-primary/70 bg-primary/20"
+                            : "border-white/10 bg-background/30 hover:border-primary/40 hover:bg-primary/10"
+                        }`}
+                      >
+                        <span className="flex items-start gap-3">
+                          <span className="text-xl" aria-hidden="true">🔁</span>
+                          <span className="min-w-0">
+                            <span className="block font-semibold text-sm">
+                              Նորից ստուգել
+                            </span>
+                            <span className="block text-sm text-muted-foreground mt-0.5">
+                              Մասնակի գիտի + Չգիտի · {authorityUiState.combinedCount} գիտելիքի հանգույց
+                            </span>
+                            {selectedNextAction === "PARTIAL_AND_NOT_KNOWN" && (
+                              <span className="block text-xs text-primary mt-2">
+                                Ընտրված է
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                      </button>
+                    )}
+
+                    {authorityUiState.notKnownOnlyCount > 0 && (
+                      <button
+                        type="button"
+                        aria-pressed={selectedNextAction === "NOT_KNOWN_ONLY"}
+                        onClick={() => setSelectedNextAction("NOT_KNOWN_ONLY")}
+                        className={`w-full text-left rounded-xl border px-4 py-4 transition-all ${
+                          selectedNextAction === "NOT_KNOWN_ONLY"
+                            ? "border-red-400/70 bg-red-400/10"
+                            : "border-white/10 bg-background/30 hover:border-red-400/40 hover:bg-red-400/5"
+                        }`}
+                      >
+                        <span className="flex items-start gap-3">
+                          <span className="text-xl" aria-hidden="true">🔴</span>
+                          <span className="min-w-0">
+                            <span className="block font-semibold text-sm">
+                              Նորից ստուգել
+                            </span>
+                            <span className="block text-sm text-muted-foreground mt-0.5">
+                              Միայն Չգիտի · {authorityUiState.notKnownOnlyCount} գիտելիքի հանգույց
+                            </span>
+                            {selectedNextAction === "NOT_KNOWN_ONLY" && (
+                              <span className="block text-xs text-red-300 mt-2">
+                                Ընտրված է
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-teal-400/20 bg-teal-400/5 px-4 py-4 text-sm text-teal-200">
+                    Այս թեստից նորից ստուգելու գիտելիքներ չկան։
+                  </div>
+                )}
+
+                {selectedNextAction && selectedNextAction !== "FINISH" && (
+                  <p className="text-xs text-muted-foreground">
+                    Ընտրությունը նշված է այս էջում։
+                  </p>
+                )}
+              </>
+            )}
+
+            <div className="border-t border-white/10 pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedNextAction("FINISH");
+                  setLocation(backHref);
+                }}
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold hover:bg-white/10 transition-colors"
+              >
+                ✓ Ավարտել
+              </button>
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
