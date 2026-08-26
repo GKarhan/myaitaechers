@@ -80,6 +80,8 @@
     "test:c4-ceiling": "tsx src/services/__tests__/learner-cognitive-ceiling.test.ts",
     "test:c4-ceiling-trace": "DATABASE_URL=$TEST_DATABASE_URL tsx src/services/__tests__/learner-cognitive-ceiling-trace.test.ts",
     "test:c5-knowledge-tree": "tsx src/services/__tests__/knowledge-tree-state.test.ts",
+    "test:retest-authority": "tsx src/services/__tests__/quiz-retest-authority.test.ts",
+    "test:retest-authority-db": "DATABASE_URL=$TEST_DATABASE_URL tsx src/services/__tests__/quiz-retest-authority-db.test.ts",
     "test:c6-personalization": "tsx src/services/__tests__/c6-personalization.test.ts",
     "test:c7-3": "tsx src/services/phase2/__tests__/c7-execution-target.test.ts"
   },

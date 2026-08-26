@@ -26,6 +26,11 @@ import { logger } from "../lib/logger";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
 import { classifyQualifyingEvidence } from "../lib/evidence-contract.js";
 import { projectLearnerCognitiveCeiling } from "../services/learner-cognitive-ceiling.js";
+import {
+  parseRetestStrategy,
+  resolveRetestEligibleNodes,
+  RetestAuthorityError,
+} from "../services/quiz-retest-authority.js";
 
 // ---------------------------------------------------------------------------
 // Helper: wraps an async route handler so unhandled rejections are forwarded
@@ -726,6 +731,58 @@ router.get("/quizzes/assigned", requireAuth, async (req: AuthRequest, res) => {
     scorePercent:   r.scorePercent   ?? null,
   })));
 });
+
+// ── GET /api/quizzes/attempts/:attemptId/retest-eligibility ───────────────────
+// Student: resolve bounded retest eligibility from the current canonical C5
+// state of nodes in a completed, learner-owned attempt.
+router.get(
+  "/quizzes/attempts/:attemptId/retest-eligibility",
+  requireAuth,
+  asyncHandler(async (req: AuthRequest, res) => {
+    const attemptId = parseInt(String(req.params.attemptId), 10);
+    if (isNaN(attemptId) || attemptId <= 0) {
+      res.status(400).json({ error: "Invalid attempt id" });
+      return;
+    }
+
+    const strategy = parseRetestStrategy(req.query.strategy);
+    if (!strategy) {
+      res.status(400).json({
+        error: "strategy must be PARTIAL_AND_NOT_KNOWN or NOT_KNOWN_ONLY",
+      });
+      return;
+    }
+
+    try {
+      const result = await resolveRetestEligibleNodes({
+        learnerId: req.userId!,
+        completedAttemptId: attemptId,
+        strategy,
+      });
+      res.json(result);
+    } catch (error) {
+      if (error instanceof RetestAuthorityError) {
+        if (error.code === "RETEST_STRATEGY_INVALID") {
+          res.status(400).json({
+            error: "strategy must be PARTIAL_AND_NOT_KNOWN or NOT_KNOWN_ONLY",
+          });
+          return;
+        }
+        if (error.code === "RETEST_ATTEMPT_NOT_OWNED") {
+          res.status(403).json({ error: "Retest attempt access denied" });
+          return;
+        }
+        if (error.code === "RETEST_ATTEMPT_INCOMPLETE") {
+          res.status(409).json({ error: "Retest requires a completed attempt" });
+          return;
+        }
+        res.status(404).json({ error: "Completed attempt not found" });
+        return;
+      }
+      throw error;
+    }
+  }),
+);
 
 // ── GET /api/quizzes/:id/results ──────────────────────────────────────────────
 // Teacher: per-student results for a quiz. Completed ones sorted worst-score-first;
