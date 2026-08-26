@@ -1,0 +1,570 @@
+READ-ONLY FORENSIC AUDIT — TEST 2.0 / CURRENT QUIZ SYSTEM
+PHASE T0 ONLY
+
+IMPORTANT:
+This is an audit only.
+
+DO NOT:
+- change code
+- change database data
+- generate a new quiz
+- submit a quiz
+- alter Knowledge Tree
+- alter Evidence
+- alter Mapping
+- alter Cognitive Path
+- alter AI Teacher
+- restart services unless absolutely necessary for read-only inspection
+- implement Test 2.0 yet
+
+GOAL
+
+Before rebuilding the quiz system, fully document the CURRENT end-to-end quiz architecture and determine exactly what can be preserved for Test 2.0 v1.
+
+The target Test 2.0 v1 is intentionally simple:
+
+Teacher creates quiz
+→ Student completes quiz
+→ Results + existing feedback
+→ Student sees:
+   - Գիտի
+   - Մասնակի գիտի
+   - Չգիտի
+→ Student reviews wrong answers
+→ Student chooses:
+   A. Retest Մասնակի + Չգիտի
+   B. Retest only Չգիտի
+   C. Stop
+→ System automatically creates a new quiz from those MicroNodes
+→ Student completes next round
+→ Results update
+→ Knowledge Tree updates
+→ Student may repeat again or stop
+
+For feedback, DO NOT redesign anything yet.
+
+Current desired feedback is simply:
+- student answer
+- correct answer
+- one short explanation why correct
+- one short explanation why student's answer is wrong
+
+If current system already does this adequately, preserve it.
+
+==================================================
+1. CURRENT DATA MODEL
+==================================================
+
+Identify all current quiz-related database tables and important fields.
+
+At minimum inspect:
+
+- quizzes
+- quiz_questions
+- quiz_assignments
+- quiz_attempts
+- quiz_answers
+
+and any related:
+- evidence_events
+- knowledge/mastery tables
+- lesson_nodes / MicroNodes
+- cognitive-level references
+- users/classes/assignments
+
+For each table report:
+
+TABLE
+PURPOSE
+PRIMARY KEY
+IMPORTANT FIELDS
+RELATIONSHIPS
+WRITE PATHS
+READ PATHS
+
+Specifically determine whether questions currently store or reference:
+
+- lessonId
+- nodeId / MicroNodeId
+- cognitiveLevel
+- difficulty
+- question type
+- correct answer
+- options
+- explanation
+- why-correct feedback
+- why-wrong feedback
+- source provenance
+- question generation metadata
+
+Do not guess missing fields.
+
+==================================================
+2. TEACHER QUIZ CREATION FLOW
+==================================================
+
+Trace the CURRENT teacher-side flow from UI to DB.
+
+Report:
+
+Teacher UI file/component
+→ API endpoint
+→ backend handler/service
+→ question generation call
+→ validation
+→ persistence
+
+Confirm current support for:
+
+- one lesson
+- multiple lessons
+- selected MicroNodes
+- all MicroNodes
+- question count
+- easy
+- medium
+- hard
+- mixed difficulty
+
+Also inspect the already implemented:
+
+- nodeIds[]
+- suggested question count
+- minimum/ideal counts
+- current question-generation contract
+
+Report what is working and what is incomplete.
+
+==================================================
+3. QUESTION → MICRONODE LINK
+==================================================
+
+This is critical.
+
+For every generated question, determine:
+
+- Is it tied to exactly one canonical MicroNode?
+- Can it be tied to multiple MicroNodes?
+- Is nodeId persisted?
+- Is cognitive level persisted?
+- Is difficulty persisted?
+- Is the question purpose persisted?
+
+Determine whether the current system can already answer:
+
+“This student answered THIS question about THIS MicroNode.”
+
+If not, identify the exact gap.
+
+==================================================
+4. STUDENT QUIZ-TAKING FLOW
+==================================================
+
+Trace:
+
+quiz assignment
+→ student opens quiz
+→ attempt created
+→ question displayed
+→ answer submitted
+→ answer saved
+→ next question
+→ completion
+
+Report:
+
+- frontend files
+- API routes
+- backend functions
+- attempt state
+- answer state
+- resume behavior if student leaves halfway
+- whether answers are persisted per question or only at final submission
+
+This last point is important.
+
+==================================================
+5. CURRENT SCORING
+==================================================
+
+Trace current scoring logic.
+
+Report:
+
+- question correctness calculation
+- per-question score
+- total score
+- percentage
+- node-level scoring
+- cognitive-level scoring if any
+
+Confirm the known current 3-question node logic if still active:
+
+3/3
+2/3
+1/3
+0/3
+
+and exact mapped mastery values/states.
+
+Report actual current code, not old assumptions.
+
+==================================================
+6. CURRENT FEEDBACK
+==================================================
+
+Inspect the current Results UI and feedback generation.
+
+For a wrong answer determine whether the student currently sees:
+
+- original question
+- student's answer
+- correct answer
+- short explanation why correct
+- short explanation why student's answer is wrong
+
+For a correct answer determine what is shown.
+
+Report whether feedback is:
+
+- generated with the question
+- generated after submission
+- deterministic
+- provider-generated
+- persisted
+- reconstructed later
+
+DO NOT redesign this.
+
+Classify:
+
+CURRENT FEEDBACK SUFFICIENT FOR TEST 2.0 V1:
+YES / NO / PARTIAL
+
+==================================================
+7. RESULTS PAGE
+==================================================
+
+Trace the current results experience.
+
+Report exactly what the student sees after completing a quiz:
+
+- total score
+- percentage
+- correct/incorrect
+- per-question feedback
+- per-MicroNode result
+- Գիտի
+- Մասնակի գիտի
+- Չգիտի
+- Knowledge Tree changes
+
+Identify the frontend component and backend source of these values.
+
+==================================================
+8. TEST → EVIDENCE
+==================================================
+
+This is critical.
+
+Trace exactly how quiz answers become canonical evidence.
+
+Report:
+
+Question
+→ Answer
+→ scoring
+→ evidence event
+→ learner/mastery update
+→ Knowledge Tree
+
+For each step identify:
+
+- file/function
+- DB write
+- evidence type
+- evidence strength
+- node ID
+- cognitive level if used
+- timestamp/source attempt linkage
+
+Determine whether quiz results currently update Knowledge Tree:
+
+A. directly from quiz scoring
+
+or
+
+B. through canonical C3 Evidence
+
+or
+
+C. mixed / partially duplicated.
+
+We need the actual architecture.
+
+==================================================
+9. KNOWLEDGE TREE UPDATE
+==================================================
+
+Confirm the current 4 states:
+
+- Գիտի
+- Մասնակի գիտի
+- Չգիտի
+- Դեռ չի ուսումնասիրել
+
+Trace the exact code that moves a MicroNode between these states after a quiz.
+
+Report:
+
+- input
+- scoring rule
+- mastery rule
+- persistence
+- refresh behavior
+
+Also determine whether a second later quiz for the same node:
+
+- replaces previous state
+- averages evidence
+- appends new evidence and recalculates
+- uses latest attempt only
+- another rule
+
+This is very important for multi-round Test 2.0.
+
+==================================================
+10. CAN CURRENT SYSTEM SUPPORT A RETEST ROUND?
+==================================================
+
+Without implementing anything, determine whether the current backend can already create a quiz from a list of MicroNode IDs.
+
+Example:
+
+Round 1 results:
+
+Partial:
+[nodeA, nodeB, nodeC]
+
+Weak:
+[nodeD, nodeE]
+
+Can current quiz creation endpoint accept:
+
+[nodeA, nodeB, nodeC, nodeD, nodeE]
+
+and create a valid new quiz?
+
+Answer:
+
+YES / NO / PARTIAL
+
+If YES:
+identify the endpoint and minimum required inputs.
+
+If NO:
+identify the smallest missing contract.
+
+==================================================
+11. SAME QUESTION REUSE
+==================================================
+
+Inspect how questions are currently generated/stored.
+
+Determine:
+
+- Does every new quiz call the AI to generate completely new questions?
+- Can existing questions be reused?
+- Is there any question bank?
+- Is question history tracked per student?
+- Can the same exact question appear again in the next quiz?
+- Is duplicate detection present?
+
+Do not implement new variation logic.
+
+We only need to know the current state.
+
+==================================================
+12. ANSWER OPTION SHUFFLING
+==================================================
+
+Check whether multiple-choice options are currently shuffled:
+
+- at generation
+- at assignment
+- at attempt
+- at render
+- not at all
+
+Determine whether shuffling answer positions for a repeated multiple-choice question can be added safely later without changing semantic correctness.
+
+Do NOT implement it now.
+
+Report:
+
+SAFE OPTION SHUFFLING BOUNDARY:
+<file/function/stage>
+
+==================================================
+13. CURRENT RESUME / PARTIAL ATTEMPT BEHAVIOR
+==================================================
+
+Determine what happens if:
+
+- student answers 4 of 10 questions
+- closes the page
+- returns later
+
+Report whether:
+
+- attempt survives
+- answers survive
+- quiz resumes
+- attempt is abandoned
+- Knowledge Tree changes before completion
+- evidence is created before completion
+
+This matters for the later T5 phase.
+
+==================================================
+14. TEST 2.0 V1 GAP ANALYSIS
+==================================================
+
+Compare CURRENT system against this approved target:
+
+T1
+Results page can identify Partial + Weak MicroNodes.
+
+T2
+Student can choose:
+- Retest Partial + Weak
+- Retest only Weak
+- Stop
+
+T3
+System automatically creates a new quiz using those nodeIds.
+
+T4
+Before starting the new quiz, student can review previous wrong answers
+using the CURRENT feedback format.
+
+T5
+New round completes normally.
+
+T6
+Knowledge Tree updates after each completed round.
+
+T7
+Student may repeat this loop multiple times.
+
+T8
+Student may stop whenever desired.
+
+T9
+For repeated multiple choice questions, answer positions can later be shuffled safely.
+
+For EACH item classify:
+
+ALREADY EXISTS
+PARTIALLY EXISTS
+MISSING
+
+==================================================
+15. PROTECTED CURRENT FUNCTIONALITY
+==================================================
+
+Create a protected-behavior list.
+
+At minimum preserve if currently working:
+
+- teacher quiz creation
+- single lesson selection
+- multi-lesson selection
+- MicroNode selection
+- difficulty selection
+- question count
+- suggested count logic
+- quiz assignment
+- student quiz taking
+- scoring
+- existing feedback
+- current Knowledge Tree integration
+- current mastery mapping
+- current UI refresh/persistence
+
+These must not be broken during Test 2.0 work.
+
+==================================================
+16. RECOMMEND IMPLEMENTATION PHASES
+==================================================
+
+Based on the CURRENT architecture only, propose the smallest safe implementation order for:
+
+T1 — Results → Retest selection
+T2 — Mandatory wrong-answer review before retest
+T3 — Automatic retest creation from selected MicroNodes
+T4 — Knowledge Tree correctness across repeated rounds
+T5 — Repeat / stop / resume acceptance
+
+Do not implement any of them.
+
+If some phases can reuse existing code almost completely, say so.
+
+==================================================
+17. FINAL OUTPUT
+==================================================
+
+Return:
+
+A. Current architecture map
+
+B. DB/data model
+
+C. Teacher quiz flow
+
+D. Student attempt flow
+
+E. Scoring flow
+
+F. Feedback flow
+
+G. Evidence flow
+
+H. Knowledge Tree flow
+
+I. nodeIds retest capability
+
+J. question reuse behavior
+
+K. option shuffle capability
+
+L. resume behavior
+
+M. protected current functionality
+
+N. Test 2.0 gap matrix
+
+O. recommended implementation sequence
+
+End exactly with:
+
+CURRENT QUIZ SYSTEM REUSABLE FOR TEST 2.0:
+YES / PARTIAL / NO
+
+RESULTS → MICRONODE RETEST ALREADY POSSIBLE:
+YES / PARTIAL / NO
+
+CURRENT FEEDBACK SUFFICIENT:
+YES / PARTIAL / NO
+
+KNOWLEDGE TREE SUPPORTS MULTI-ROUND EVIDENCE SAFELY:
+YES / PARTIAL / NO
+
+SAFE TO START TEST 2.0 IMPLEMENTATION:
+YES / NO
+
+If NO:
+state exactly what architecture evidence is still missing.
+
+STOP.
+DO NOT IMPLEMENT.
