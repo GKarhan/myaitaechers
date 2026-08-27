@@ -206,6 +206,7 @@ export async function createTargetedRetest(
       studentId: input.learnerId,
       retestSourceAttemptId: input.sourceAttemptId,
       retestStrategy: input.strategy,
+      generationPurpose: "retest",
       requireGeneratedNodeScope: true,
       generateQuestions: input.generateQuestions,
     });

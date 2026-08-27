@@ -7,6 +7,7 @@ import {
 import { asc, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
+import type { CanonicalQuizTarget } from "../lib/cognitive-path-grounding.js";
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
 
@@ -27,6 +28,7 @@ export interface GenerateQuizInput {
   nodeIds: number[];
   questionCount: number;
   difficultyMode: "SIMPLE" | "MEDIUM" | "HARD" | "MIXED";
+  canonicalTargets?: CanonicalQuizTarget[];
 }
 
 /**
@@ -73,11 +75,11 @@ Rules for questions:
 - Exactly 4 options per question. Exactly one correct answer per question.
 - correctOptionIndex: 0=A, 1=B, 2=C, 3=D.
 - Do NOT repeat the same question pattern twice.
-- LOW = direct recall from text (definition, fact). MEDIUM = comprehension or simple application. HIGH = comparison, analysis, or multi-step reasoning.
+- Each NODE may provide exactly one CANONICAL_COGNITIVE_TARGET. Every question for that node MUST use that target's id and require its stated Bloom cognitive operation.
+- Difficulty is secondary complexity WITHIN the required canonical cognitive operation: LOW = least complex valid instance, MEDIUM = standard complexity, HIGH = more demanding context or reasoning. Difficulty MUST NOT lower, raise, replace, or reinterpret the canonical Bloom target.
 - Distribute difficulty levels exactly as specified in the user message counts.
 - Use each node's id as nodeId. Never hallucinate a nodeId not present in the source.
-- When a node lists COGNITIVE_LEVEL_OPTIONS, choose exactly one listed level ID
-  that the question is designed to assess. Never invent or infer a level ID.
+- When a node lists CANONICAL_COGNITIVE_TARGET, use exactly that one level ID. Never choose a lower path level or infer another level from difficulty or question format.
 
 Rules for optionExplanations (CRITICAL — read carefully):
 - optionExplanations MUST be an array of exactly 4 strings, index-aligned with options[].
@@ -140,7 +142,15 @@ export async function generateQuizQuestions(
   }
 
   const allowedLevelIdsByNode = new Map<number, Set<number>>();
+  const canonicalTargetByNode = new Map(
+    (input.canonicalTargets ?? []).map((target) => [target.nodeId, target]),
+  );
   for (const node of nodes) {
+    const canonicalTarget = canonicalTargetByNode.get(node.id);
+    if (canonicalTarget) {
+      allowedLevelIdsByNode.set(node.id, new Set([canonicalTarget.cognitiveLevelId]));
+      continue;
+    }
     const levels = levelsByNode.get(node.id) ?? [];
     const accepted = assessAcceptedCognitivePath({
       cogPathStatus: node.cogPathStatus,
@@ -165,13 +175,25 @@ export async function generateQuizQuestions(
       Array.isArray(n.basicExamples) && (n.basicExamples as string[]).length > 0
         ? `EXAMPLES: ${(n.basicExamples as string[]).join(" | ")}`
         : "",
-      allowedLevelIdsByNode.has(n.id)
-        ? `COGNITIVE_LEVEL_OPTIONS: ${(levelsByNode.get(n.id) ?? [])
-          .filter((level) => allowedLevelIdsByNode.get(n.id)?.has(level.id))
-          .map((level) =>
-            `id=${level.id}, bloom=${level.cognitiveLevel}, objective=${level.performanceObjective ?? ""}`,
-          )
-          .join(" | ")}`
+      canonicalTargetByNode.has(n.id)
+        ? (() => {
+          const target = canonicalTargetByNode.get(n.id)!;
+          return [
+            `CANONICAL_COGNITIVE_TARGET: id=${target.cognitiveLevelId}, bloom=${target.cognitiveLevel}`,
+            `TARGET_OBJECTIVE: ${target.performanceObjective}`,
+            `SUCCESS_CRITERION: ${target.successCriterion}`,
+            target.preferredInteractionTypes.length > 0
+              ? `PREFERRED_INTERACTIONS: ${target.preferredInteractionTypes.join(", ")}`
+              : "",
+          ].filter(Boolean).join("\n");
+        })()
+        : allowedLevelIdsByNode.has(n.id)
+          ? `COGNITIVE_LEVEL_OPTIONS: ${(levelsByNode.get(n.id) ?? [])
+            .filter((level) => allowedLevelIdsByNode.get(n.id)?.has(level.id))
+            .map((level) =>
+              `id=${level.id}, bloom=${level.cognitiveLevel}, objective=${level.performanceObjective ?? ""}`,
+            )
+            .join(" | ")}`
         : "",
     ]
       .filter(Boolean)
@@ -272,11 +294,13 @@ export async function generateQuizQuestions(
     return {
       nodeId: typeof q.nodeId === "number" ? q.nodeId : null,
       cognitiveLevelId:
-        typeof q.nodeId === "number" &&
-        typeof q.cognitiveLevelId === "number" &&
-        allowedLevelIdsByNode.get(q.nodeId)?.has(q.cognitiveLevelId)
-          ? q.cognitiveLevelId
-          : null,
+        typeof q.nodeId === "number" && canonicalTargetByNode.has(q.nodeId)
+          ? canonicalTargetByNode.get(q.nodeId)!.cognitiveLevelId
+          : typeof q.nodeId === "number" &&
+            typeof q.cognitiveLevelId === "number" &&
+            allowedLevelIdsByNode.get(q.nodeId)?.has(q.cognitiveLevelId)
+            ? q.cognitiveLevelId
+            : null,
       questionText: typeof q.questionText === "string" ? q.questionText : `Հarц ${i + 1}`,
       options: opts,
       correctOptionIndex:

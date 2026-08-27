@@ -8,6 +8,8 @@ import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import {
   generateQuizFromNodeScope,
   persistGeneratedQuizInTransaction,
+  QuizCanonicalTargetChangedError,
+  QuizCanonicalTargetError,
   type CreateQuizFromNodeScopeInput,
 } from "./quiz-creation.js";
 import type { GeneratedQuestion } from "./quiz-generation.js";
@@ -24,11 +26,19 @@ export type QuizGenerationJobStatus = (typeof QUIZ_GENERATION_JOB_STATUSES)[numb
 export const QUIZ_GENERATION_ERROR_CODES = [
   "INVALID_REQUEST",
   "QUESTION_SCOPE_INVALID",
+  "CANONICAL_TARGET_INVALID",
+  "CANONICAL_TARGET_CHANGED",
   "EMPTY_GENERATION",
   "GENERATION_FAILED",
   "PERSISTENCE_FAILED",
 ] as const;
 export type QuizGenerationErrorCode = (typeof QUIZ_GENERATION_ERROR_CODES)[number];
+export type QuizGenerationErrorDetails = {
+  nodeId: number;
+  resolverReason?: string;
+  generatedCognitiveLevelId?: number;
+  currentCognitiveLevelId?: number;
+};
 
 export type QuizGenerationRequestSnapshot = {
   schemaVersion: 1;
@@ -271,6 +281,7 @@ export async function failQuizGenerationJob(
   jobId: number,
   claimToken: string,
   errorCode: QuizGenerationErrorCode,
+  errorDetails: QuizGenerationErrorDetails | null = null,
 ): Promise<void> {
   await db
     .update(quizGenerationJobsTable)
@@ -278,6 +289,7 @@ export async function failQuizGenerationJob(
       status: "failed",
       progress: "Quiz generation failed",
       errorCode,
+      errorDetails,
       claimToken: null,
       updatedAt: new Date(),
     })
@@ -333,6 +345,7 @@ export async function finalizeQuizGenerationJob(input: {
   snapshot: QuizGenerationRequestSnapshot;
   nodeIds: number[];
   generated: GeneratedQuestion[];
+  canonicalTargets?: Awaited<ReturnType<typeof generateQuizFromNodeScope>>["canonicalTargets"];
 }): Promise<{ quizId: number; reused: boolean } | null> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`
@@ -363,6 +376,7 @@ export async function finalizeQuizGenerationJob(input: {
       snapshotToCreationInput(input.teacherId, input.snapshot),
       input.nodeIds,
       input.generated,
+      input.canonicalTargets,
     );
 
     const [completed] = await tx
@@ -372,6 +386,7 @@ export async function finalizeQuizGenerationJob(input: {
         progress: "Quiz generation completed",
         quizId: created.quiz.id,
         errorCode: null,
+        errorDetails: null,
         claimToken: null,
         updatedAt: new Date(),
       })
@@ -390,6 +405,12 @@ export async function finalizeQuizGenerationJob(input: {
 }
 
 function errorCodeForGenerationFailure(error: unknown): QuizGenerationErrorCode {
+  if (error instanceof QuizCanonicalTargetError) {
+    return "CANONICAL_TARGET_INVALID";
+  }
+  if (error instanceof QuizCanonicalTargetChangedError) {
+    return "CANONICAL_TARGET_CHANGED";
+  }
   if (
     error &&
     typeof error === "object" &&
@@ -407,6 +428,25 @@ function errorCodeForGenerationFailure(error: unknown): QuizGenerationErrorCode 
     return "EMPTY_GENERATION";
   }
   return "GENERATION_FAILED";
+}
+
+function errorDetailsForGenerationFailure(
+  error: unknown,
+): QuizGenerationErrorDetails | null {
+  if (error instanceof QuizCanonicalTargetError) {
+    return {
+      nodeId: error.nodeId,
+      resolverReason: error.resolverReason,
+    };
+  }
+  if (error instanceof QuizCanonicalTargetChangedError) {
+    return {
+      nodeId: error.nodeId,
+      generatedCognitiveLevelId: error.generatedCognitiveLevelId,
+      currentCognitiveLevelId: error.currentCognitiveLevelId,
+    };
+  }
+  return null;
 }
 
 const scheduledJobIds = new Set<number>();
@@ -468,7 +508,12 @@ export async function runQuizGenerationJob(
   } catch (error) {
     const errorCode = errorCodeForGenerationFailure(error);
     logger.error({ err: error, jobId, errorCode }, "quiz generation job failed");
-    await failQuizGenerationJob(jobId, claimToken, errorCode);
+    await failQuizGenerationJob(
+      jobId,
+      claimToken,
+      errorCode,
+      errorDetailsForGenerationFailure(error),
+    );
     const [failed] = await db
       .select()
       .from(quizGenerationJobsTable)
@@ -486,10 +531,19 @@ export async function runQuizGenerationJob(
       snapshot,
       nodeIds: generatedResult.nodeIds,
       generated: generatedResult.generated,
+      canonicalTargets: generatedResult.canonicalTargets,
     });
   } catch (error) {
     logger.error({ err: error, jobId }, "quiz generation job finalization failed");
-    await failQuizGenerationJob(jobId, claimToken, "PERSISTENCE_FAILED");
+    const canonicalErrorCode = errorCodeForGenerationFailure(error);
+    await failQuizGenerationJob(
+      jobId,
+      claimToken,
+      canonicalErrorCode === "GENERATION_FAILED"
+        ? "PERSISTENCE_FAILED"
+        : canonicalErrorCode,
+      errorDetailsForGenerationFailure(error),
+    );
   }
 
   const [finished] = await db

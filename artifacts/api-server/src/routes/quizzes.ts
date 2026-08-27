@@ -40,7 +40,11 @@ import {
   IdempotencyKeyReusedError,
   scheduleQuizGenerationJob,
 } from "../services/quiz-generation-jobs.js";
-import { createQuizFromNodeScope } from "../services/quiz-creation.js";
+import {
+  createQuizFromNodeScope,
+  QuizCanonicalTargetChangedError,
+  QuizCanonicalTargetError,
+} from "../services/quiz-creation.js";
 import {
   getOrCreateActiveAttempt,
   ensureQuizSession,
@@ -598,6 +602,23 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     } catch (err) {
       logger.error({ err }, "legacy synchronous quiz generation failed");
       if (!res.headersSent) {
+        if (err instanceof QuizCanonicalTargetError) {
+          res.status(409).json({
+            error: err.code,
+            nodeId: err.nodeId,
+            resolverReason: err.resolverReason,
+          });
+          return;
+        }
+        if (err instanceof QuizCanonicalTargetChangedError) {
+          res.status(409).json({
+            error: err.code,
+            nodeId: err.nodeId,
+            generatedCognitiveLevelId: err.generatedCognitiveLevelId,
+            currentCognitiveLevelId: err.currentCognitiveLevelId,
+          });
+          return;
+        }
         res.status(500).json({
           error: err instanceof Error ? err.message : "Quiz generation failed, please retry",
         });
@@ -657,6 +678,7 @@ router.get("/quizzes/generation-jobs/:jobId", requireTeacher, asyncHandler(async
       progress: quizGenerationJobsTable.progress,
       quizId: quizGenerationJobsTable.quizId,
       errorCode: quizGenerationJobsTable.errorCode,
+      errorDetails: quizGenerationJobsTable.errorDetails,
     })
     .from(quizGenerationJobsTable)
     .where(and(
@@ -676,6 +698,7 @@ router.get("/quizzes/generation-jobs/:jobId", requireTeacher, asyncHandler(async
     progress: job.progress ?? null,
     quizId: job.quizId ?? null,
     errorCode: job.errorCode ?? null,
+    errorDetails: job.errorDetails ?? null,
   });
 }));
 

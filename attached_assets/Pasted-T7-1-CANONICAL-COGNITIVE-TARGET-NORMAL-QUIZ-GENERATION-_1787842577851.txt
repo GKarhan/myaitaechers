@@ -1,0 +1,532 @@
+T7.1 — CANONICAL COGNITIVE TARGET → NORMAL QUIZ GENERATION
+SMALL SCOPED IMPLEMENTATION
+
+IMPORTANT:
+This is ONLY T7.1.
+
+Do NOT implement the full quiz redesign.
+Do NOT add student feedback/explanations yet.
+Do NOT redesign quiz review UI yet.
+Do NOT modify Knowledge Tree.
+Do NOT modify AI Teacher.
+Do NOT modify mapping.
+Do NOT modify Cognitive Path authoring/confirmation unless a concrete bug is discovered and reported first.
+Do NOT repair Lesson 754 data.
+Do NOT make unrelated refactors.
+
+T5 and T6 are already implemented and verified.
+
+T5 provides the canonical quiz-target resolver.
+T6 guarantees that a confirmed Cognitive Path satisfies the canonical accepted-path contract.
+
+Your task is to make NORMAL quiz generation consume that canonical target.
+
+══════════════════════════════════════
+1. PRODUCT RULE — AUTHORITATIVE
+══════════════════════════════════════
+
+Normal lesson/node quiz generation must assess each selected MicroNode at ONLY its canonical target Cognitive Level.
+
+Examples:
+
+MicroNode path:
+Remember → Understand → Apply[target]
+
+Normal quiz target:
+Apply ONLY.
+
+Do NOT automatically generate:
+Remember questions,
+Understand questions,
+and Apply questions.
+
+Another MicroNode:
+
+Understand[target]
+
+Normal quiz target:
+Understand ONLY.
+
+Another:
+
+Remember → Understand → Analyze[target]
+
+Normal quiz target:
+Analyze ONLY.
+
+The lower Cognitive Path levels are primarily used by AI Teacher during teaching/scaffolding/micro-check progression.
+
+The normal assessment quiz tests whether the learner has reached the MicroNode's canonical target.
+
+This distinction is intentional:
+
+AI Teacher:
+may traverse the Cognitive Path level by level.
+
+Normal Quiz:
+assesses the canonical target level.
+
+══════════════════════════════════════
+2. REMOVE EASY / MEDIUM / HARD AS
+   COGNITIVE AUTHORITY
+══════════════════════════════════════
+
+The current quiz system has concepts such as:
+
+- easy
+- medium
+- hard
+- mixed
+
+These MUST NOT determine which cognitive level is tested.
+
+Bloom/Cognitive Level is the authoritative pedagogical dimension.
+
+Do not silently translate:
+
+easy = remember
+medium = understand
+hard = apply
+
+That mapping is NOT valid and must not be introduced.
+
+FIRST inspect exactly where difficultyMode currently influences:
+
+- node selection
+- cognitive-level selection
+- prompt construction
+- question generation
+- persistence
+- frontend request contract
+
+Report this before editing.
+
+For T7.1:
+
+If removing difficultyMode from the public frontend/API contract would create unnecessary compatibility work, it may temporarily remain as a compatibility field.
+
+BUT:
+
+difficultyMode MUST NOT choose or override the canonical Cognitive Level used for generation.
+
+If it still affects wording or some secondary behavior, explicitly report exactly how.
+
+Do not redesign/remove the frontend control in this task unless it is required for correctness.
+
+══════════════════════════════════════
+3. USE THE EXISTING T5 RESOLVER
+══════════════════════════════════════
+
+DO NOT implement a second target-selection algorithm.
+
+Locate and reuse the canonical resolver implemented in T5.
+
+For every selected MicroNode:
+
+resolve canonical quiz target
+        ↓
+one canonical Cognitive Level
+        ↓
+generate assessment question(s)
+for that exact level
+
+The quiz-generation path must NOT independently infer the target from:
+
+- lesson_nodes.targetBloomLevel
+- highest Bloom number
+- last array element
+- sequence alone
+- difficultyMode
+- AI guess
+- raw cognitive-level rows
+
+The T5 resolver is the authority.
+
+══════════════════════════════════════
+4. FAIL CLOSED
+══════════════════════════════════════
+
+If a selected MicroNode does NOT have a valid confirmed canonical target, normal quiz generation must NOT guess.
+
+Examples:
+
+PATH_NOT_CONFIRMED
+TARGET_MISSING
+TARGET_AMBIGUOUS
+or any other T5 resolver failure.
+
+Generation must fail BEFORE provider generation for that invalid scope.
+
+Return a machine-readable error containing enough information to identify:
+
+- MicroNode ID
+- resolver failure code/reason
+
+Do NOT silently:
+
+- choose another level,
+- use targetBloomLevel as fallback,
+- choose the highest level,
+- default to Remember,
+- ask AI to decide.
+
+No provider call should occur for a request whose required MicroNode target resolution fails.
+
+══════════════════════════════════════
+5. MULTI-MICRONODE QUIZZES
+══════════════════════════════════════
+
+A quiz may contain several selected MicroNodes with different targets.
+
+Example:
+
+Node A → Understand
+Node B → Apply
+Node C → Analyze
+Node D → Apply
+
+The generation scope must preserve this per-node target information.
+
+It must NOT collapse the whole quiz into one global Bloom level.
+
+Conceptually:
+
+[
+  {
+    microNodeId: A,
+    targetCognitiveLevel: understand
+  },
+  {
+    microNodeId: B,
+    targetCognitiveLevel: apply
+  },
+  {
+    microNodeId: C,
+    targetCognitiveLevel: analyze
+  },
+  {
+    microNodeId: D,
+    targetCognitiveLevel: apply
+  }
+]
+
+Use the existing project types/naming conventions rather than inventing these exact names if equivalent canonical types already exist.
+
+══════════════════════════════════════
+6. QUESTION GENERATION SEMANTICS
+══════════════════════════════════════
+
+The provider prompt must receive the target Cognitive Level for the specific MicroNode being assessed.
+
+The generated question must require the cognitive operation represented by that level.
+
+Important:
+
+Question FORMAT does not equal Bloom level.
+
+For example:
+
+multiple_choice ≠ Remember
+
+A multiple-choice question may test Understand or Analyze if the cognitive task genuinely requires that operation.
+
+Likewise:
+
+short_answer ≠ automatically Understand
+problem_solving ≠ automatically Apply
+
+The target Cognitive Level defines the required cognitive operation.
+
+The interaction/question format is a separate dimension.
+
+Use the existing Cognitive Path data, including preferredInteractionTypes where already authoritative and applicable.
+
+Do NOT invent a new question-format taxonomy in T7.1.
+
+══════════════════════════════════════
+7. QUESTION COUNT DISTRIBUTION
+══════════════════════════════════════
+
+Preserve the already-approved quiz question-count behavior unless a change is strictly required.
+
+The system already supports selecting MicroNodes and generating a requested question count.
+
+For this task, determine how the requested total is currently distributed across selected nodes.
+
+Keep that behavior if valid.
+
+The only required change is:
+
+questions allocated to MicroNode X must assess MicroNode X's canonical target Cognitive Level.
+
+Do not redesign question-count recommendation logic in T7.1.
+
+══════════════════════════════════════
+8. PERSISTENCE — IMPORTANT PREPARATION
+══════════════════════════════════════
+
+Inspect the current quiz-question schema.
+
+We have an upcoming requirement that every generated question must be traceable to:
+
+1. the MicroNode it assesses
+2. the Cognitive Level it assesses
+
+If BOTH are already persisted canonically, reuse them.
+
+If MicroNode is persisted but Cognitive Level is not, report that exact gap.
+
+If neither is persisted correctly, report it.
+
+For T7.1, make the MINIMUM persistence change required so generated questions retain authoritative assessment provenance:
+
+question
+→ MicroNode
+→ canonical Cognitive Level used for generation
+
+Do not build the teacher-facing labels yet.
+
+That UI is T7.2.
+
+But the underlying data must be reliable enough for T7.2 to display.
+
+Do not store only a human-readable label if a canonical enum/reference already exists.
+
+══════════════════════════════════════
+9. ASYNC QUIZ GENERATION MUST REMAIN
+   INTACT
+══════════════════════════════════════
+
+The recently implemented async quiz-generation backend is protected behavior.
+
+Do not regress:
+
+- durable generation jobs
+- idempotency
+- ownership checks
+- claim leases
+- stale recovery
+- periodic supervisor
+- atomic quiz + job finalization
+- polling endpoint
+- client-disconnect independence
+- legacy compatibility path
+
+The canonical target scope must flow through the async job request snapshot / generation boundary correctly.
+
+Do not restore a long synchronous provider request.
+
+══════════════════════════════════════
+10. RETEST / CONTINUOUS QUIZ
+══════════════════════════════════════
+
+Before changing these paths, inspect whether retest or continuous-quiz generation shares the normal generation service.
+
+Do NOT blindly change their semantics.
+
+T7.1 product rule applies to NORMAL quiz generation.
+
+If retest/continuous quiz already has separate semantics based on prior wrong answers / learning-state evidence, preserve it unless it necessarily consumes the same canonical target contract.
+
+Report the boundary explicitly.
+
+Do not broaden scope without approval.
+
+══════════════════════════════════════
+11. PROVIDER-FREE TEST MATRIX
+══════════════════════════════════════
+
+Add focused provider-free regression tests.
+
+At minimum prove:
+
+A.
+Single-level confirmed path:
+
+Understand[target]
+
+→ resolver returns Understand
+→ generator scope receives Understand.
+
+B.
+Multi-level confirmed path:
+
+Remember
+Understand
+Apply[target]
+
+→ generator receives Apply ONLY.
+
+C.
+Higher target:
+
+Understand
+Apply
+Analyze[target]
+
+→ generator receives Analyze ONLY.
+
+D.
+Two selected MicroNodes:
+
+Node A → Understand[target]
+Node B → Apply[target]
+
+→ generated scope preserves:
+A = Understand
+B = Apply.
+
+E.
+Three nodes with different targets do NOT collapse into one global cognitive level.
+
+F.
+Unconfirmed path:
+
+→ generation fails closed
+→ provider mock was NOT called.
+
+G.
+Missing/invalid target:
+
+→ generation fails closed
+→ provider mock was NOT called.
+
+H.
+difficultyMode=MIXED cannot change a node's canonical target.
+
+I.
+difficultyMode=EASY cannot force Remember when canonical target is Apply.
+
+J.
+difficultyMode=HARD cannot raise an Understand target to Analyze/Apply.
+
+K.
+Question persistence retains correct MicroNode provenance.
+
+L.
+Question persistence retains the canonical Cognitive Level actually used for generation.
+
+M.
+Async job execution preserves the resolved per-node canonical targets.
+
+N.
+Idempotent replay does not create a second quiz or change resolved targets.
+
+O.
+Existing async quiz-generation regression suite remains green.
+
+Do not call a real provider in these tests.
+
+══════════════════════════════════════
+12. LESSON 754
+══════════════════════════════════════
+
+Lesson 754 must remain READ ONLY.
+
+Do not confirm its paths.
+Do not repair its Cognitive Paths.
+Do not generate a real quiz.
+Do not change any lesson data.
+
+Run a read-only diagnostic after implementation.
+
+Based on the latest T6 audit, none of its five paths are currently confirmed.
+
+Therefore the expected normal-quiz result under the new T7.1 authority is:
+
+FAIL CLOSED before provider generation.
+
+Report the resolver result for each selected MicroNode.
+
+This is expected behavior, not a defect.
+
+══════════════════════════════════════
+13. DO NOT IMPLEMENT YET
+══════════════════════════════════════
+
+These are explicitly deferred:
+
+T7.2:
+Teacher quiz review UI shows:
+- MicroNode label
+- Cognitive Level label
+
+T7.3:
+Student answers question and immediately sees:
+- Correct / Incorrect
+- correct answer
+- short pedagogical explanation
+- short solution/reasoning where appropriate
+
+T7.4:
+Evidence propagation / Knowledge Tree updates based on:
+MicroNode + Cognitive Level + answer evidence.
+
+Do NOT implement these now.
+
+But do not make architectural choices that prevent them.
+
+══════════════════════════════════════
+14. REQUIRED INSPECTION REPORT
+    BEFORE EDITING
+══════════════════════════════════════
+
+Before changing code, report:
+
+1. Current normal quiz generation entry point.
+2. Current async job execution path.
+3. Current MicroNode selection boundary.
+4. Current cognitive/Bloom selection logic.
+5. Exact role of difficultyMode today.
+6. Whether question rows already persist MicroNode ID.
+7. Whether question rows already persist Cognitive Level.
+8. Existing T5 resolver file/function.
+9. Whether retest/continuous quiz shares this path.
+10. Exact smallest file set you intend to change.
+
+Then implement.
+
+══════════════════════════════════════
+15. REQUIRED FINAL REPORT
+══════════════════════════════════════
+
+At completion report:
+
+1. Root cause / old behavior.
+2. Files changed.
+3. Exact canonical-target flow after T7.1.
+4. What happened to difficultyMode.
+5. How multi-node target scopes are represented.
+6. Persistence contract for:
+   question → MicroNode → Cognitive Level.
+7. Fail-closed behavior.
+8. Async-job compatibility.
+9. Retest/continuous-quiz impact.
+10. Provider-free test results.
+11. Lesson 754 read-only result.
+12. Any remaining blocker before T7.2.
+
+End with exactly:
+
+NORMAL QUIZ USES T5 CANONICAL TARGET: YES/NO
+
+LOWER COGNITIVE PATH LEVELS ARE NOT AUTO-TESTED: YES/NO
+
+DIFFICULTY MODE CAN OVERRIDE COGNITIVE TARGET: YES/NO
+
+MULTI-NODE QUIZ PRESERVES PER-NODE TARGETS: YES/NO
+
+INVALID/UNCONFIRMED PATH FAILS CLOSED BEFORE PROVIDER: YES/NO
+
+QUESTION PERSISTS MICRONODE PROVENANCE: YES/NO
+
+QUESTION PERSISTS COGNITIVE LEVEL PROVENANCE: YES/NO
+
+ASYNC QUIZ JOB FLOW PRESERVED: YES/NO
+
+LESSON 754 MODIFIED: YES/NO
+
+READY FOR T7.2 LABEL UI: YES/NO
+
+STOP after T7.1.
+Do not begin T7.2.

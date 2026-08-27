@@ -1,11 +1,13 @@
 import {
   db,
+  lessonNodeCognitiveLevelsTable,
+  lessonNodesTable,
   quizAssignmentsTable,
   quizLessonLinksTable,
   quizQuestionsTable,
   quizzesTable,
 } from "@workspace/db";
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import {
   generateQuizQuestions,
@@ -13,17 +15,56 @@ import {
   type GeneratedQuestion,
 } from "./quiz-generation.js";
 import type { RetestStrategy } from "./quiz-retest-authority.js";
+import {
+  resolveCanonicalQuizTarget,
+  type CanonicalQuizTarget,
+  type CanonicalQuizTargetFailureReason,
+} from "../lib/cognitive-path-grounding.js";
 
 export const QUIZ_DIFFICULTY_MODES = ["SIMPLE", "MEDIUM", "HARD", "MIXED"] as const;
 export type QuizDifficultyMode = (typeof QUIZ_DIFFICULTY_MODES)[number];
 
 export class QuizCreationError extends Error {
-  readonly code: "EMPTY_GENERATION" | "QUESTION_SCOPE_INVALID";
+  readonly code:
+    | "EMPTY_GENERATION"
+    | "QUESTION_SCOPE_INVALID"
+    | "CANONICAL_TARGET_INVALID";
 
   constructor(code: QuizCreationError["code"]) {
     super(code);
     this.name = "QuizCreationError";
     this.code = code;
+  }
+}
+
+export class QuizCanonicalTargetError extends QuizCreationError {
+  readonly nodeId: number;
+  readonly resolverReason: CanonicalQuizTargetFailureReason;
+
+  constructor(nodeId: number, resolverReason: CanonicalQuizTargetFailureReason) {
+    super("CANONICAL_TARGET_INVALID");
+    this.name = "QuizCanonicalTargetError";
+    this.nodeId = nodeId;
+    this.resolverReason = resolverReason;
+  }
+}
+
+export class QuizCanonicalTargetChangedError extends Error {
+  readonly code = "CANONICAL_TARGET_CHANGED" as const;
+  readonly nodeId: number;
+  readonly generatedCognitiveLevelId: number;
+  readonly currentCognitiveLevelId: number;
+
+  constructor(
+    nodeId: number,
+    generatedCognitiveLevelId: number,
+    currentCognitiveLevelId: number,
+  ) {
+    super("CANONICAL_TARGET_CHANGED");
+    this.name = "QuizCanonicalTargetChangedError";
+    this.nodeId = nodeId;
+    this.generatedCognitiveLevelId = generatedCognitiveLevelId;
+    this.currentCognitiveLevelId = currentCognitiveLevelId;
   }
 }
 
@@ -43,6 +84,7 @@ export type CreateQuizFromNodeScopeInput = {
   retestStrategy?: RetestStrategy;
   allowEmptyQuestions?: boolean;
   requireGeneratedNodeScope?: boolean;
+  generationPurpose?: "normal" | "retest";
   generateQuestions?: (input: GenerateQuizInput) => Promise<GeneratedQuestion[]>;
 };
 
@@ -55,27 +97,140 @@ export type CreatedQuizResult = {
 
 type QuizPersistenceExecutor = typeof db | PgTransaction<any, any, any>;
 
+async function resolveNormalQuizCanonicalTargetsWith(
+  executor: QuizPersistenceExecutor,
+  nodeIds: number[],
+): Promise<CanonicalQuizTarget[]> {
+  const nodes = await executor
+    .select({
+      id: lessonNodesTable.id,
+      cogPathStatus: lessonNodesTable.cogPathStatus,
+      theoryContent: lessonNodesTable.theoryContent,
+      learningObjective: lessonNodesTable.learningObjective,
+      targetBloomLevel: lessonNodesTable.targetBloomLevel,
+    })
+    .from(lessonNodesTable)
+    .where(inArray(lessonNodesTable.id, nodeIds));
+  if (nodes.length !== nodeIds.length) {
+    throw new QuizCreationError("QUESTION_SCOPE_INVALID");
+  }
+
+  const levels = await executor
+    .select()
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeIds))
+    .orderBy(
+      asc(lessonNodeCognitiveLevelsTable.lessonNodeId),
+      asc(lessonNodeCognitiveLevelsTable.sequence),
+      asc(lessonNodeCognitiveLevelsTable.id),
+    );
+  const levelsByNode = new Map<number, typeof levels>();
+  for (const level of levels) {
+    const current = levelsByNode.get(level.lessonNodeId) ?? [];
+    current.push(level);
+    levelsByNode.set(level.lessonNodeId, current);
+  }
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  return nodeIds.map((nodeId) => {
+    const resolution = resolveCanonicalQuizTarget(
+      nodeById.get(nodeId)!,
+      levelsByNode.get(nodeId) ?? [],
+    );
+    if (!resolution.valid) {
+      throw new QuizCanonicalTargetError(nodeId, resolution.reason);
+    }
+    return resolution.target;
+  });
+}
+
+export async function resolveNormalQuizCanonicalTargets(
+  nodeIds: number[],
+): Promise<CanonicalQuizTarget[]> {
+  return resolveNormalQuizCanonicalTargetsWith(db, nodeIds);
+}
+
+function allocateQuestionsByNode(
+  nodeIds: number[],
+  questionCount: number,
+): Map<number, number> {
+  const base = Math.floor(questionCount / nodeIds.length);
+  const remainder = questionCount % nodeIds.length;
+  return new Map(nodeIds.map((nodeId, index) => [
+    nodeId,
+    base + (index < remainder ? 1 : 0),
+  ]));
+}
+
+function canonicalTargetSnapshotMatches(
+  generated: CanonicalQuizTarget,
+  current: CanonicalQuizTarget,
+): boolean {
+  return generated.nodeId === current.nodeId
+    && generated.cognitiveLevelId === current.cognitiveLevelId
+    && generated.cognitiveLevel === current.cognitiveLevel
+    && generated.sequence === current.sequence
+    && generated.performanceObjective === current.performanceObjective
+    && generated.successCriterion === current.successCriterion
+    && generated.minimumIndependentEvidence === current.minimumIndependentEvidence
+    && JSON.stringify(generated.preferredInteractionTypes)
+      === JSON.stringify(current.preferredInteractionTypes);
+}
+
 export async function generateQuizFromNodeScope(
   input: CreateQuizFromNodeScopeInput,
-): Promise<{ nodeIds: number[]; generated: GeneratedQuestion[] }> {
+): Promise<{
+  nodeIds: number[];
+  generated: GeneratedQuestion[];
+  canonicalTargets?: CanonicalQuizTarget[];
+}> {
   const nodeIds = [...new Set(input.nodeIds.filter((id) => Number.isInteger(id) && id > 0))];
   if (nodeIds.length === 0) {
     throw new QuizCreationError("QUESTION_SCOPE_INVALID");
   }
 
+  const canonicalTargets = input.generationPurpose === "retest"
+    ? []
+    : await resolveNormalQuizCanonicalTargets(nodeIds);
   const generate = input.generateQuestions ?? generateQuizQuestions;
-  const generated = await generate({
-    nodeIds,
-    questionCount: input.questionCount,
-    difficultyMode: input.difficultyMode,
-  });
+  let generated: GeneratedQuestion[];
+  if (canonicalTargets.length > 0) {
+    const allocation = allocateQuestionsByNode(nodeIds, input.questionCount);
+    const batches: GeneratedQuestion[] = [];
+    for (const target of canonicalTargets) {
+      const nodeQuestionCount = allocation.get(target.nodeId) ?? 0;
+      if (nodeQuestionCount === 0) continue;
+      const nodeBatch = await generate({
+        nodeIds: [target.nodeId],
+        questionCount: nodeQuestionCount,
+        difficultyMode: input.difficultyMode,
+        canonicalTargets: [target],
+      });
+      if (nodeBatch.some((question) => question.nodeId !== target.nodeId)) {
+        throw new QuizCreationError("QUESTION_SCOPE_INVALID");
+      }
+      batches.push(...nodeBatch.slice(0, nodeQuestionCount).map((question) => ({
+        ...question,
+        nodeId: target.nodeId,
+        cognitiveLevelId: target.cognitiveLevelId,
+      })));
+    }
+    generated = batches;
+  } else {
+    generated = await generate({
+      nodeIds,
+      questionCount: input.questionCount,
+      difficultyMode: input.difficultyMode,
+    });
+  }
 
   if (generated.length === 0 && !input.allowEmptyQuestions) {
     throw new QuizCreationError("EMPTY_GENERATION");
   }
 
+  const requiresNodeScope = input.requireGeneratedNodeScope || canonicalTargets.length > 0;
   if (
-    input.requireGeneratedNodeScope &&
+    requiresNodeScope &&
     generated.some((question) =>
       question.nodeId === null || !nodeIds.includes(question.nodeId)
     )
@@ -83,7 +238,7 @@ export async function generateQuizFromNodeScope(
     throw new QuizCreationError("QUESTION_SCOPE_INVALID");
   }
 
-  return { nodeIds, generated };
+  return { nodeIds, generated, canonicalTargets };
 }
 
 /**
@@ -96,7 +251,35 @@ export async function persistGeneratedQuizInTransaction(
   input: CreateQuizFromNodeScopeInput,
   nodeIds: number[],
   generated: GeneratedQuestion[],
+  canonicalTargets?: CanonicalQuizTarget[],
 ): Promise<CreatedQuizResult> {
+  if (input.generationPurpose !== "retest" && canonicalTargets) {
+    await tx.execute(sql`
+      SELECT id
+      FROM lesson_nodes
+      WHERE id IN (${sql.join(nodeIds.map((nodeId) => sql`${nodeId}`), sql`, `)})
+      ORDER BY id
+      FOR UPDATE
+    `);
+    const currentTargets = await resolveNormalQuizCanonicalTargetsWith(tx, nodeIds);
+    const generatedTargetByNode = new Map(
+      canonicalTargets.map((target) => [target.nodeId, target]),
+    );
+    for (const currentTarget of currentTargets) {
+      const generatedTarget = generatedTargetByNode.get(currentTarget.nodeId);
+      if (
+        !generatedTarget
+        || !canonicalTargetSnapshotMatches(generatedTarget, currentTarget)
+      ) {
+        throw new QuizCanonicalTargetChangedError(
+          currentTarget.nodeId,
+          generatedTarget?.cognitiveLevelId ?? 0,
+          currentTarget.cognitiveLevelId,
+        );
+      }
+    }
+  }
+
   const [quiz] = await tx
     .insert(quizzesTable)
     .values({
@@ -186,10 +369,16 @@ export async function persistGeneratedQuizInTransaction(
 export async function createQuizFromNodeScope(
   input: CreateQuizFromNodeScopeInput,
 ): Promise<CreatedQuizResult> {
-  const { nodeIds, generated } = await generateQuizFromNodeScope(input);
+  const { nodeIds, generated, canonicalTargets } = await generateQuizFromNodeScope(input);
 
   return db.transaction(async (tx) => {
-    return persistGeneratedQuizInTransaction(tx, input, nodeIds, generated);
+    return persistGeneratedQuizInTransaction(
+      tx,
+      input,
+      nodeIds,
+      generated,
+      canonicalTargets,
+    );
   });
 }
 

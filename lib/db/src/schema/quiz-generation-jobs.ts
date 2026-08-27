@@ -27,6 +27,7 @@ export const quizGenerationJobsTable = pgTable(
     attemptCount: integer("attempt_count").notNull().default(0),
     quizId: integer("quiz_id").references(() => quizzesTable.id, { onDelete: "set null" }),
     errorCode: text("error_code"),
+    errorDetails: jsonb("error_details"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
