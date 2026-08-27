@@ -1,0 +1,335 @@
+T8.1 — SMALL TARGETED IMPLEMENTATION
+TEACHER QUIZ CREATION — REMOVE DIFFICULTY AS EDUCATIONAL CHOICE
+
+This is a SMALL, NARROW, REGRESSION-SAFE change.
+
+Do not expand scope.
+
+==================================================
+GOAL
+==================================================
+
+The teacher must no longer choose:
+
+- Պարզ / SIMPLE
+- Միջին / MEDIUM
+- Բարդ / HARD
+- Խառը / MIXED
+
+when creating a normal quiz.
+
+The educational assessment authority is now:
+
+MicroNode
+→ confirmed Cognitive Path
+→ canonical target Cognitive Level
+→ generated assessment question
+
+The teacher must NOT manually choose Bloom or use difficulty
+as a substitute for Bloom.
+
+Instead, the quiz-creation UI must clearly tell the teacher that
+the quiz will assess the mapped target Cognitive Levels.
+
+==================================================
+IMPORTANT — INTERNAL DIFFICULTY IS NOT BEING REMOVED
+==================================================
+
+Do NOT remove:
+
+- quizzes.difficultyMode
+- quiz_questions.difficultyLevel
+- LOW / MEDIUM / HIGH
+- computeSplit()
+- provider difficulty instructions
+- async request snapshot difficultyMode
+- difficulty persistence
+- attempt snapshot difficulty
+- evidence taskDifficulty
+- teacher quiz-review difficulty metadata
+
+No database migration.
+
+For compatibility, the backend may continue normalizing an omitted
+difficultyMode to MIXED.
+
+Therefore:
+
+Teacher no longer chooses difficulty.
+
+Internally:
+
+difficultyMode = MIXED
+
+continues to produce the existing within-level complexity distribution.
+
+This step changes ONLY the teacher-facing quiz creation contract.
+
+==================================================
+FILES IN SCOPE
+==================================================
+
+Only inspect/change unless a test file is strictly necessary:
+
+1.
+artifacts/myaiteacher/src/pages/teacher-dashboard.tsx
+
+2.
+artifacts/myaiteacher/src/pages/subject-detail.tsx
+
+Do not modify backend generation semantics.
+
+==================================================
+CHANGE 1 — REMOVE DIFFICULTY SELECTORS
+==================================================
+
+On BOTH teacher quiz-creation surfaces:
+
+Remove the radio controls for:
+
+Պարզ
+Միջին
+Բարդ
+Խառը
+
+Remove quizMode state if it becomes unused.
+
+Do not replace them with another editable selector.
+
+==================================================
+CHANGE 2 — ADD FIXED ASSESSMENT MODE INFORMATION
+==================================================
+
+In the same location, show a compact non-editable information block.
+
+Use Armenian UI wording approximately:
+
+🧠 Ստուգման եղանակ
+
+Թեստը ստուգելու է յուրաքանչյուր ընտրված գիտելիքի հանգույցի
+քարտեզագրված թիրախային ճանաչողական մակարդակը։
+
+Do NOT display technical enum values.
+
+Do NOT allow the teacher to manually select:
+
+Հիշել
+Հասկանալ
+Կիրառել
+Վերլուծել
+Գնահատել
+Ստեղծել
+
+The mapping/Cognitive Path remains authoritative.
+
+==================================================
+CHANGE 3 — FRONTEND REQUEST
+==================================================
+
+Both quiz-creation requests should stop explicitly sending:
+
+difficultyMode
+
+The backend already defaults an omitted difficultyMode to MIXED.
+
+Do NOT modify that backend default in this task.
+
+Expected conceptual request:
+
+{
+  subjectId,
+  classId,
+  quizType,
+  lessonIds,
+  nodeIds when applicable,
+  questionCount
+}
+
+Do not invent additional fields.
+
+==================================================
+CHANGE 4 — PRESERVE QUESTION COUNT / SELECTION
+==================================================
+
+Do not change:
+
+- lesson selection
+- multi-lesson selection
+- MicroNode selection
+- suggested question count
+- question-count validation
+- quiz type
+- source scope
+- canonical target resolver
+
+==================================================
+NON-REGRESSION — PROTECTED BEHAVIOR
+==================================================
+
+Explicitly protect:
+
+1. Canonical Quiz Target Resolver.
+
+2. Cognitive Path / isTargetCeiling authority.
+
+3. Canonical target must remain backend-owned.
+
+4. Per-MicroNode question allocation.
+
+5. Generated question nodeId.
+
+6. Generated question cognitiveLevelId.
+
+7. Canonical target locking/revalidation.
+
+8. Provider instructions:
+   difficulty remains secondary complexity WITHIN the canonical
+   cognitive operation.
+
+9. Teacher quiz-review provenance labels.
+
+10. Teacher question editing.
+
+11. Learner immediate feedback.
+
+12. Pre-answer secrecy.
+
+13. Finalized-answer locking.
+
+14. Reload reconstruction.
+
+15. Scoring.
+
+16. Evidence.
+
+17. Knowledge Tree.
+
+18. Continuous quiz session / retest behavior.
+
+19. Async generation job schema.
+
+20. Async fingerprint/idempotency.
+
+21. Existing quiz/question data.
+
+22. Mapping.
+
+23. AI Teacher.
+
+24. Lesson assignment.
+
+25. Lesson 754.
+
+==================================================
+REQUIRED TESTS
+==================================================
+
+Do not perform provider generation.
+
+Add or update focused provider-free tests where useful.
+
+Verify at minimum:
+
+A.
+teacher-dashboard quiz creation no longer renders
+the four difficulty choices.
+
+B.
+subject-detail quiz creation no longer renders
+the four difficulty choices.
+
+C.
+Both surfaces show the mapped-target assessment explanation.
+
+D.
+Frontend request from both surfaces omits difficultyMode.
+
+E.
+Backend compatibility test:
+POST /api/quizzes without difficultyMode still normalizes internally
+to MIXED.
+
+Do not actually call the AI provider for this verification.
+
+F.
+Existing canonical-generation tests still pass.
+
+G.
+Async generation tests still pass.
+
+H.
+Retest / continuous-session tests still pass.
+
+I.
+Teacher provenance tests still pass.
+
+J.
+Learner feedback tests still pass.
+
+==================================================
+DO NOT DO YET
+==================================================
+
+Do NOT implement semantic Bloom validation yet.
+
+Specifically do not attempt in this task to determine from question
+wording whether:
+
+Apply is really Apply,
+Understand is really Understand,
+etc.
+
+That will be a separate Test 2.0 quality-gate step.
+
+Do NOT redesign LOW/MEDIUM/HIGH.
+
+Do NOT remove difficulty columns.
+
+Do NOT change provider prompts.
+
+Do NOT change quiz review.
+
+Do NOT change learner UI.
+
+Do NOT change Knowledge Tree.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report:
+
+1. Files changed.
+
+2. Exact teacher UI change.
+
+3. Exact request-contract change.
+
+4. Confirm backend still defaults omitted difficultyMode to MIXED.
+
+5. Confirm internal LOW/MEDIUM/HIGH complexity still exists.
+
+6. Confirm canonical Cognitive Level remains backend-owned.
+
+7. Tests run and results.
+
+8. Any regression discovered.
+
+Finish with exactly:
+
+TEACHER DIFFICULTY SELECTOR REMOVED: YES/NO
+MAPPED-TARGET ASSESSMENT MESSAGE SHOWN: YES/NO
+FRONTEND SENDS difficultyMode: YES/NO
+BACKEND MIXED COMPATIBILITY DEFAULT PRESERVED: YES/NO
+LOW/MEDIUM/HIGH INTERNAL COMPLEXITY PRESERVED: YES/NO
+CANONICAL TARGET RESOLVER MODIFIED: YES/NO
+QUIZ GENERATION SEMANTICS MODIFIED: YES/NO
+SCORING MODIFIED: YES/NO
+RETEST MODIFIED: YES/NO
+KNOWLEDGE TREE MODIFIED: YES/NO
+ASYNC JOB CONTRACT MODIFIED: YES/NO
+PROVIDER CALLED: YES/NO
+LESSON 754 MODIFIED: YES/NO
+
+STOP AFTER T8.1.
+DO NOT START THE NEXT TEST 2.0 STEP.

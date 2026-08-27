@@ -115,7 +115,6 @@ export default function SubjectDetail() {
   const [quizLessonIds, setQuizLessonIds]     = useState<number[]>([]);
   const [quizBookId,    setQuizBookId]        = useState<number | null>(null);
   const [quizCount,     setQuizCount]         = useState(10);
-  const [quizMode,      setQuizMode]          = useState<"SIMPLE"|"MEDIUM"|"HARD"|"MIXED">("MIXED");
   const [quizBooks,     setQuizBooks]         = useState<{id:number;name:string}[]>([]);
   const [quizCreating,  setQuizCreating]      = useState(false);
   const [quizError,     setQuizError]         = useState<string|null>(null);
@@ -147,7 +146,6 @@ export default function SubjectDetail() {
           sourceBookId:   quizBookId ?? undefined,
           lessonIds:      quizLessonIds,
           questionCount:  quizCount,
-          difficultyMode: quizMode,
           title:          quizTitle.trim() || undefined,
         }),
       });
@@ -402,33 +400,12 @@ export default function SubjectDetail() {
               />
             </div>
 
-            {/* Difficulty mode */}
-            <div className="mb-6">
-              <label className="block text-sm text-muted-foreground mb-2">
-                Djvarowthowtyan mart'
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {([["SIMPLE","Pazd"],["MEDIUM","Mjin"],["HARD","Bard"],["MIXED","Xarr"]] as const).map(([val, label]) => (
-                  <label
-                    key={val}
-                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
-                      quizMode === val
-                        ? "border-primary/60 bg-primary/10 text-white"
-                        : "border-white/8 text-muted-foreground hover:border-white/20 hover:bg-white/5"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="quizMode"
-                      value={val}
-                      checked={quizMode === val}
-                      onChange={() => setQuizMode(val)}
-                      className="accent-primary shrink-0"
-                    />
-                    <span className="text-sm font-medium">{label}</span>
-                  </label>
-                ))}
-              </div>
+            {/* Canonical assessment mode */}
+            <div className="mb-6 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+              <p className="text-sm font-semibold text-white">🧠 Ստուգման եղանակ</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                Թեստը ստուգելու է յուրաքանչյուր ընտրված գիտելիքի հանգույցի քարտեզագրված թիրախային ճանաչողական մակարդակը։
+              </p>
             </div>
 
             {quizError && (
