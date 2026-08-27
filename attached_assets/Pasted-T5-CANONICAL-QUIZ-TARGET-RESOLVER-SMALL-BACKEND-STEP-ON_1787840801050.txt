@@ -1,0 +1,282 @@
+T5 — CANONICAL QUIZ TARGET RESOLVER
+SMALL BACKEND STEP ONLY
+
+IMPORTANT:
+This is NOT the quiz-generator rewrite.
+
+Do not modify:
+- quiz generation prompt
+- EASY/MEDIUM/HARD/MIXED behavior
+- frontend
+- async job architecture
+- quiz persistence
+- scoring
+- Knowledge Tree
+- AI Teacher
+- lesson mapping generation
+- existing lesson data
+
+Goal:
+
+Create ONE canonical backend authority for answering:
+
+"What cognitive performance must a normal assessment test for this MicroNode?"
+
+==================================================
+CANONICAL PRODUCT RULE
+==================================================
+
+For normal assessment:
+
+MicroNode
+→ accepted Cognitive Path
+→ exactly one target Cognitive Level
+→ assess ONLY that target level.
+
+Examples:
+
+Understand
+→ assess Understand
+
+Apply
+→ assess Apply
+
+Understand → Apply
+→ assess Apply
+
+Remember → Understand → Apply
+→ assess Apply
+
+Understand → Apply → Analyze
+→ assess Analyze
+
+Lower Cognitive Path levels are NOT separate normal-quiz targets.
+
+They remain part of the AI Teacher instructional/remediation path.
+
+==================================================
+CANONICAL TARGET SOURCE
+==================================================
+
+The canonical target source is:
+
+lesson_node_cognitive_levels.isTargetCeiling
+
+Do NOT infer the assessment target from:
+
+- lesson_nodes.targetBloomLevel
+- highest sequence alone
+- highest Bloom level alone
+- provider judgment
+- difficultyMode
+
+targetBloomLevel remains compatibility/derived data.
+
+==================================================
+IMPLEMENT
+==================================================
+
+Create one pure/shared backend resolver:
+
+resolveCanonicalQuizTarget(node, cognitiveLevels)
+
+Use existing Cognitive Path structural/grounding authorities where possible.
+Do NOT create a second competing definition of a valid Cognitive Path.
+
+The resolver must FAIL CLOSED.
+
+It returns a valid target only when the Cognitive Path satisfies the
+accepted runtime contract.
+
+Successful result must include at minimum:
+
+- nodeId
+- cognitiveLevelId
+- cognitiveLevel
+- sequence
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- minimumIndependentEvidence
+
+Also return/derive enough information to establish that this row is the
+canonical target.
+
+==================================================
+REQUIRED VALIDATION
+==================================================
+
+A valid target requires:
+
+1. Cognitive Path is confirmed/accepted.
+2. At least one applicable level exists.
+3. Exactly one applicable isTargetCeiling=true level exists.
+4. Target level is applicable.
+5. Target is the final ordered applicable level.
+6. Cognitive levels progress in valid increasing cognitive order.
+7. Sequences are structurally valid.
+8. Existing grounding/acceptance requirements pass.
+9. Required target fields satisfy the existing accepted-path contract.
+
+Do not silently repair invalid data.
+
+==================================================
+targetBloomLevel COMPATIBILITY CHECK
+==================================================
+
+Audit the existing intended synchronization contract between:
+
+lesson_nodes.targetBloomLevel
+
+and the canonical target Cognitive Level.
+
+Do not make targetBloomLevel authoritative.
+
+If existing accepted-path rules require the compatibility copy to agree,
+the resolver should expose disagreement as an explicit invalid reason.
+
+Do not automatically overwrite existing lesson data in this task.
+
+==================================================
+FAILURE RESULT
+==================================================
+
+Return machine-readable failure reasons.
+
+At minimum distinguish:
+
+- PATH_NOT_CONFIRMED
+- NO_APPLICABLE_LEVELS
+- TARGET_MISSING
+- MULTIPLE_TARGETS
+- TARGET_NOT_APPLICABLE
+- TARGET_NOT_FINAL
+- INVALID_SEQUENCE
+- INVALID_COGNITIVE_ORDER
+- PATH_GROUNDING_FAILED
+- TARGET_BLOOM_COPY_MISMATCH
+
+Reuse existing canonical error vocabulary where it already exists instead
+of unnecessarily creating duplicate terminology.
+
+==================================================
+IMPORTANT SINGLE-LEVEL CASE
+==================================================
+
+A valid single-level path must work.
+
+Example:
+
+Understand [target]
+
+→ valid target = Understand.
+
+Do not require lower Bloom levels to exist.
+
+==================================================
+TESTS
+==================================================
+
+Add provider-free unit/regression tests for at least:
+
+A.
+Understand[target]
+→ valid Understand
+
+B.
+Apply[target]
+→ valid Apply
+
+C.
+Understand → Apply[target]
+→ valid Apply
+
+D.
+Remember → Understand → Apply[target]
+→ valid Apply
+
+E.
+Understand → Apply → Analyze[target]
+→ valid Analyze
+
+F.
+Understand only, no target
+→ fail TARGET_MISSING
+
+G.
+Understand[target] → Apply
+→ fail TARGET_NOT_FINAL
+
+H.
+Apply[target] → Understand
+→ fail structural/cognitive-order validation
+
+I.
+Target exists but isApplicable=false
+→ fail
+
+J.
+Unconfirmed path
+→ fail
+
+K.
+targetBloomLevel disagrees with canonical target
+→ explicit mismatch result according to existing compatibility contract
+
+L.
+Multiple target state
+→ resolver must reject defensively even if DB normally prevents persistence.
+
+==================================================
+LESSON 754 — READ ONLY
+==================================================
+
+After tests pass, run the resolver READ ONLY against Lesson 754.
+
+Do not modify Lesson 754.
+
+Report for each of its five MicroNodes:
+
+- nodeId
+- validTarget: yes/no
+- target if valid
+- exact failure reason(s) if invalid
+
+This is important because we already know Lesson 754 contains legacy /
+review-state Cognitive Path inconsistencies.
+
+Do NOT repair them in this task.
+
+==================================================
+NON-REGRESSION
+==================================================
+
+Run focused existing Cognitive Path tests.
+
+Confirm:
+
+- no provider call
+- no quiz generated
+- no DB lesson data modified
+- no async #212 behavior changed
+- no frontend behavior changed
+- no AI Teacher behavior changed
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Files changed
+2. Resolver contract
+3. Existing authorities reused
+4. Validation rules
+5. Tests and results
+6. Lesson 754 read-only result
+7. Whether target resolution is now deterministic for ACCEPTED paths
+8. Any remaining blocker before wiring this resolver into quiz generation
+
+Then STOP.
+
+Do not implement quiz-generator integration.
