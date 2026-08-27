@@ -2038,9 +2038,11 @@ function LessonNodesPanel({
                   ({cogPathData[n.id]!.levels.map((l) => COG_LEVEL_LABELS[l.cognitiveLevel] ?? l.cognitiveLevel).join(' → ')})
                 </span>
               ) : null}
-              {cogPathData[n.id]?.cogPathStatus === 'needs_review' && (
+              {cogPathData[n.id]?.levels.length && cogPathData[n.id]?.cogPathStatus === 'confirmed' ? (
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded">✓ Հաստատված</span>
+              ) : cogPathData[n.id]?.levels.length ? (
                 <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">⏳ Ստուգվում է</span>
-              )}
+              ) : null}
             </span>
             <span className="text-[10px]">{cogPathOpen[n.id] ? '▲' : '▼'}</span>
           </button>
@@ -2078,7 +2080,7 @@ function LessonNodesPanel({
                         </span>
                         {level.isTargetCeiling && <span className="text-[9px] bg-indigo-500/30 text-indigo-200 px-1 rounded">🎯 Թիրախային</span>}
                         <span className="text-[9px] text-white/25">
-                          {level.provenance === 'teacher_authored' ? '✏️ Ուսուցչի կողմից հաստատված' : level.provenance === 'ai_generated' ? '🤖 AI' : '📖 Achbyur'}
+                          {level.provenance === 'teacher_authored' ? '✏️ Ուսուցչի կողմից' : level.provenance === 'ai_generated' ? '🤖 AI' : '📖 Աղբյուրից'}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">

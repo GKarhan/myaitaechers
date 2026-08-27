@@ -1,0 +1,326 @@
+TASK — COGNITIVE PATH POST-REPAIR READ-MODEL + AI/MANUAL LEVEL PARITY AUDIT/FIX
+
+Work only on the Cognitive Path authoring/read/display boundary.
+
+IMPORTANT:
+Do not modify quiz generation, scoring, retest, Knowledge Tree, AI Teacher,
+mapping semantics, source data, exercises, or provider prompts/calls.
+
+Lesson 754 may be READ for verification.
+Do not change Lesson 754 pedagogical content, levels, targets, or confirmation
+state unless this task explicitly identifies a stale derived/read-model field
+that must be refreshed systemically.
+
+==================================================
+PART 0 — INSPECT FIRST, DO NOT EDIT
+==================================================
+
+We recently normalized Lesson 754 Cognitive Path sequences.
+
+Expected persisted canonical order now is:
+
+MN1:
+Understand sequence 1
+Apply sequence 2
+
+MN2:
+Understand sequence 1
+
+MN3:
+Apply sequence 1
+
+MN4:
+Apply sequence 1
+
+MN5:
+Analyze sequence 1
+
+First verify this directly from DB, read-only.
+
+Then trace exactly how the teacher UI loads Cognitive Path data after:
+- page load
+- lesson refresh
+- path create
+- path edit
+- path delete
+- target change
+- path confirmation
+- normalization/repair
+
+Identify whether any frontend cache, stale local state, alternate endpoint,
+or read-model can show a different order from persisted sequence.
+
+The UI must display the backend persisted sequence.
+Frontend must not independently reconstruct or infer Bloom order.
+
+==================================================
+PART 1 — VERIFY CURRENT UI ORDER
+==================================================
+
+Using Lesson 754, verify in a real browser that MN1 currently displays:
+
+Understand → Apply
+
+and NOT:
+
+Apply → Understand
+
+If it already displays Understand → Apply after the latest repair/reload,
+do NOT create an unnecessary fix.
+
+Report that the suspected stale-order issue is not reproducible.
+
+If it still displays the old order, find the exact root cause and fix only
+that read/refetch/cache boundary.
+
+==================================================
+PART 2 — AI-CREATED VS MANUALLY-CREATED LEVEL AUDIT
+==================================================
+
+There is a visible difference between Cognitive Levels created by AI and
+levels manually created/edited/confirmed by the teacher.
+
+Examples in the current UI include labels/icons such as:
+
+🤖 AI
+✏️ Ուսուցչի կողմից հաստատված
+🎯 Թիրախային
+
+Do NOT simply make the icons visually identical.
+
+First inspect the persisted schema and API/read model and answer:
+
+1. Which persisted fields differ between:
+   - AI-created Cognitive Level
+   - manually-created Cognitive Level
+   - teacher-edited AI level
+   - teacher-confirmed level
+
+2. Which field is the authoritative provenance field?
+
+3. Is “Ուսուցչի կողմից հաստատված” actually provenance,
+   confirmation state, or both?
+
+4. Does editing an AI-created level change its provenance?
+   If yes, where and why?
+
+5. Does confirming a Cognitive Path change level provenance?
+   It should not silently rewrite historical origin unless that is an
+   explicit existing contract.
+
+6. Are AI and manual levels represented by the SAME canonical
+   Cognitive Level data contract for:
+   - id
+   - nodeId
+   - cognitiveLevel
+   - sequence
+   - isTargetCeiling
+   - performanceObjective
+   - successCriterion
+   - preferredInteractionTypes
+   - provenance/origin
+   - review/confirmation state
+
+7. Can the Canonical Quiz Target Resolver treat AI-created and manually
+   created levels identically once the path is valid and confirmed?
+
+This is the key invariant:
+
+CREATION ORIGIN MUST NOT CREATE TWO DIFFERENT COGNITIVE PATH SEMANTICS.
+
+AI and manual creation are only different authoring origins.
+After persistence, both must participate in the same canonical path,
+Bloom ordering, target-ceiling rules, confirmation rules, and quiz-target
+resolution.
+
+==================================================
+PART 3 — SEPARATE THREE UI CONCEPTS
+==================================================
+
+Verify that the UI does not conflate these concepts:
+
+A. ORIGIN / PROVENANCE
+Examples:
+🤖 AI
+✏️ Ձեռքով / Ուսուցչի կողմից
+
+B. TARGET ROLE
+🎯 Թիրախային
+
+C. PATH REVIEW / CONFIRMATION STATE
+Examples:
+⏳ Վերանայել / Ստուգվում է
+✓ Հաստատված
+
+These are independent dimensions.
+
+For example, one level may legitimately be:
+
+Origin: AI
+Target: YES
+Path state: needs_review
+
+Another may be:
+
+Origin: teacher/manual
+Target: NO
+Path state: needs_review
+
+Do not use provenance to infer target.
+Do not use target to infer provenance.
+Do not use provenance to infer path confirmation.
+
+==================================================
+PART 4 — SMALL FIX ONLY IF REQUIRED
+==================================================
+
+If inspection finds that these concepts are currently conflated,
+make the smallest systemic fix.
+
+Preferred display contract:
+
+Level title
+
+[🎯 Թիրախային]   only if isTargetCeiling=true
+
+[🤖 AI]          if persisted origin is AI
+OR
+[✏️ Ուսուցչի կողմից] if persisted origin is manual/teacher
+
+Path review/confirmation status should remain a separate path-level
+indicator and must not be fabricated from origin.
+
+Do not remove useful provenance information.
+
+If the existing persisted model cannot distinguish “created manually”
+from “AI-created then edited by teacher”, report that limitation before
+inventing a new schema or migration.
+
+NO migration unless absolutely required.
+Prefer existing persisted authority.
+
+==================================================
+PART 5 — NORMALIZATION INVARIANT
+==================================================
+
+Confirm that both AI-created and manually-created Cognitive Levels go through
+the SAME backend Bloom-order normalization authority:
+
+remember
+→ understand
+→ apply
+→ analyze
+→ evaluate
+→ create
+
+Creation time must not determine sequence.
+
+Example:
+
+Existing:
+Apply
+
+Teacher later adds:
+Understand
+
+Persisted result MUST automatically become:
+
+Understand sequence 1
+Apply sequence 2
+
+This must work regardless of whether either row originated from AI or teacher.
+
+Do not auto-create missing intermediate Bloom levels.
+
+==================================================
+PART 6 — TARGET + CONFIRMATION SAFETY
+==================================================
+
+Do not invent missing target ceilings.
+
+Do not auto-confirm any Cognitive Path.
+
+For Lesson 754 specifically, preserve the current pedagogical state:
+- MN1 target remains Apply
+- MN4 target remains Apply
+- missing targets remain missing
+- all paths remain review-required unless the teacher explicitly confirms them
+
+The Canonical Quiz Target Resolver must continue to fail closed for
+unconfirmed paths.
+
+==================================================
+PART 7 — TESTS
+==================================================
+
+Add/extend provider-free tests proving at minimum:
+
+1. AI Apply + manual Understand persists/displays Understand → Apply.
+2. Manual Apply + later manual Understand also normalizes Understand → Apply.
+3. AI/manual origin does not affect canonical ordering.
+4. Origin does not determine target ceiling.
+5. Target ceiling does not determine origin.
+6. Editing does not accidentally change target.
+7. Path confirmation state is independent from provenance.
+8. Resolver behavior is identical for equivalent confirmed AI/manual paths.
+9. Unconfirmed AI/manual paths both fail closed.
+10. UI/read model returns persisted sequence order.
+11. Mutation refresh cannot leave stale path ordering.
+12. Existing canonical resolver regression suite remains green.
+
+No provider calls.
+
+==================================================
+PART 8 — REAL BROWSER VERIFICATION
+==================================================
+
+Open Lesson 754 teacher mapping UI.
+
+Verify:
+
+MN1 visually displays:
+Understand → Apply
+
+Verify that provenance badges/icons correspond to persisted provenance,
+not question wording, Bloom level, or target status.
+
+Verify 🎯 appears only on the actual persisted target level.
+
+Verify review/confirmation state is shown independently.
+
+Do not manually change Lesson 754 merely to make the browser test pass.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report:
+
+1. Current DB order for all 5 Lesson 754 MicroNodes.
+2. Current browser order.
+3. Whether stale UI ordering was reproducible.
+4. Exact AI/manual persisted-field differences.
+5. Exact meaning/authority of each provenance badge.
+6. Whether AI/manual levels share one canonical semantic contract.
+7. Any code changes made and why.
+8. Tests/results.
+9. Confirmation that Lesson 754 pedagogical data was not modified.
+
+End with:
+
+LESSON 754 DB ORDER CANONICAL: YES/NO
+MN1 UI ORDER IS UNDERSTAND → APPLY: YES/NO
+STALE READ-MODEL BUG FOUND: YES/NO
+AI/MANUAL LEVELS SHARE ONE CANONICAL CONTRACT: YES/NO
+PROVENANCE IS INDEPENDENT FROM TARGET: YES/NO
+PROVENANCE IS INDEPENDENT FROM PATH CONFIRMATION: YES/NO
+BLOOM ORDERING IS ORIGIN-INDEPENDENT: YES/NO
+TARGET CEILINGS MODIFIED: NO
+PATHS AUTO-CONFIRMED: NO
+QUIZ GENERATION MODIFIED: NO
+PROVIDER CALLED: NO
+LESSON 754 PEDAGOGICAL DATA MODIFIED: NO
+READY FOR TARGET/CONFIRMATION REVIEW: YES/NO
+
+STOP after this task.
+Do not proceed to quiz generation or target repair.
