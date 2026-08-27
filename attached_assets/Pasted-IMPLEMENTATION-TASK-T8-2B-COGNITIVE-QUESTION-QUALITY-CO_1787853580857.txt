@@ -1,0 +1,678 @@
+IMPLEMENTATION TASK — T8.2B
+COGNITIVE QUESTION QUALITY CONTRACT FOUNDATION
+
+IMPORTANT:
+THIS IS A SMALL, ISOLATED IMPLEMENTATION STEP.
+
+DO NOT wire a second AI/provider semantic-review call yet.
+DO NOT change quiz-generation behavior yet.
+DO NOT change quiz persistence behavior yet.
+DO NOT change interaction-type support.
+DO NOT change learner UI.
+DO NOT change teacher UI.
+DO NOT change scoring.
+DO NOT change retest.
+DO NOT change Knowledge Tree.
+DO NOT change AI Teacher.
+DO NOT change mapping.
+DO NOT change Cognitive Path CRUD.
+DO NOT modify Lesson 754.
+DO NOT create a DB migration.
+
+The goal of T8.2B is to create and fully test the QUALITY CONTRACT FOUNDATION only.
+
+==================================================
+WHY THIS STEP EXISTS
+==================================================
+
+T8.2A confirmed:
+
+- Canonical Quiz Target Resolver correctly determines the target Cognitive Level.
+- nodeId provenance is authoritative.
+- cognitiveLevelId provenance is authoritative.
+- performanceObjective and successCriterion are passed to generation.
+- preferredInteractionTypes are available.
+- BUT there is currently no post-generation semantic validation proving that the generated question actually requires the persisted Cognitive Level.
+
+Example of the current failure possibility:
+
+Canonical target:
+Apply
+
+Generated question:
+"1 կգ-ը քանի՞ գրամ է"
+
+Persisted provenance:
+Apply
+
+This is unacceptable for Test 2.0.
+
+However, T8.2B MUST NOT yet change the live generation pipeline.
+
+We first need one canonical, testable question-quality contract.
+
+==================================================
+ARCHITECTURAL RULE
+==================================================
+
+The mapped Cognitive Path remains the authority for:
+
+WHAT Cognitive Level must be assessed.
+
+The Question Quality Gate will later determine:
+
+WHETHER a generated question actually assesses that target.
+
+The quality gate MUST NEVER:
+
+- change the mapped target,
+- downgrade the Cognitive Level,
+- invent another Cognitive Level,
+- relabel a weak question to make it pass.
+
+Fail closed instead.
+
+==================================================
+PART 1 — CREATE ONE CANONICAL QUALITY MODULE
+==================================================
+
+Create one focused backend module, preferably:
+
+artifacts/api-server/src/services/quiz-question-quality.ts
+
+or the closest existing architectural location if there is a clearly better convention.
+
+Before editing, inspect existing service/lib conventions and report the chosen location.
+
+This module becomes the canonical contract for generated-question quality.
+
+Do not duplicate these rules elsewhere.
+
+==================================================
+PART 2 — NORMALIZED QUESTION CANDIDATE TYPE
+==================================================
+
+Define a strict internal type representing a generated question BEFORE persistence.
+
+It should contain only fields needed for quality validation.
+
+At minimum:
+
+- questionText
+- options
+- correctOptionIndex
+- optionExplanations
+- difficultyLevel
+- nodeId
+- cognitiveLevelId
+
+And validation context supplied separately:
+
+- canonical Cognitive Level
+- MicroNode title
+- relevant node instructional content
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+
+Do not make AI-returned nodeId/cognitiveLevelId authoritative.
+
+Canonical identity remains backend-owned.
+
+==================================================
+PART 3 — SIX-LEVEL OPERATIONAL CONTRACT
+==================================================
+
+Implement ONE explicit operational contract for:
+
+remember
+understand
+apply
+analyze
+evaluate
+create
+
+This is NOT a second curriculum taxonomy.
+
+It operationalizes the existing Cognitive Path taxonomy for assessment validation.
+
+Each level contract must define at minimum:
+
+1. requiredPerformance
+2. validQuestionCharacteristics
+3. rejectedLowerLevelSubstitutes
+4. naturallyCompatibleInteractionTypes
+
+Use the following educational contract.
+
+--------------------------------------------------
+REMEMBER
+--------------------------------------------------
+
+Required performance:
+
+Retrieve or recognize an explicitly taught fact, term, definition, relationship, rule, or step.
+
+Valid demands include:
+
+- recall
+- recognition
+- direct identification
+
+Reject:
+
+- unrelated trivia
+- content outside the MicroNode
+- answer-revealing or malformed questions
+
+--------------------------------------------------
+UNDERSTAND
+--------------------------------------------------
+
+Required performance:
+
+Interpret meaning, explain, paraphrase, classify, connect an example to a concept, or distinguish example/non-example.
+
+Valid demands include:
+
+- interpretation
+- classification
+- explanation selection
+- example/non-example recognition
+- conceptual relationship
+
+Reject as insufficient:
+
+A question answerable only by verbatim recall of a fact, definition, formula, or isolated statement.
+
+--------------------------------------------------
+APPLY
+--------------------------------------------------
+
+Required performance:
+
+Use a mapped rule, method, relationship, procedure, or concept in a concrete case.
+
+Valid demands include:
+
+- calculation
+- procedure execution
+- scenario-based application
+- problem solving
+- applying a relationship to supplied values/conditions
+
+Reject as insufficient:
+
+- asking only for a formula
+- asking only for a memorized unit relationship
+- asking only for a definition
+- asking for a worked answer copied from instructional content
+- pure recognition without use
+
+--------------------------------------------------
+ANALYZE
+--------------------------------------------------
+
+Required performance:
+
+Decompose information, identify relationships, compare components using evidence, distinguish structure/cause, infer relationships, or analyze an error.
+
+Valid demands include:
+
+- relationship analysis
+- evidence comparison
+- error analysis
+- decomposition
+- structured classification
+- determining why/where a solution or claim differs
+
+Reject as insufficient:
+
+Routine one-step application of a rule that requires no decomposition, comparison, relationship reasoning, or structural analysis.
+
+--------------------------------------------------
+EVALUATE
+--------------------------------------------------
+
+Required performance:
+
+Make and justify a judgment using explicit criteria, evidence, correctness conditions, or competing approaches.
+
+Valid demands include:
+
+- critique
+- defensible choice
+- evaluating a claim
+- evaluating a method
+- selecting a better solution AND justifying why
+- evidence-based judgment
+
+Reject as insufficient:
+
+- simple comparison
+- identifying differences
+- analysis without judgment
+- selecting an answer without requiring a defensible criterion
+
+--------------------------------------------------
+CREATE
+--------------------------------------------------
+
+Required performance:
+
+Produce, design, construct, formulate, synthesize, or propose a new valid artifact/solution/plan/model under constraints.
+
+Valid demands include:
+
+- design
+- compose
+- construct
+- formulate
+- propose
+- synthesize
+
+Reject as insufficient:
+
+- selecting among already completed answers
+- merely judging an existing solution
+- ordinary recognition-only multiple choice
+
+==================================================
+PART 4 — INTERACTION COMPATIBILITY CONTRACT
+==================================================
+
+Use the EXISTING canonical interaction vocabulary only:
+
+multiple_choice
+multi_select
+true_false
+matching
+classification
+ordering
+numeric_answer
+short_answer
+constructed_response
+problem_solving
+
+Do not add new interaction types.
+
+Define natural compatibility by Cognitive Level.
+
+IMPORTANT:
+
+This compatibility contract is metadata/design authority for validation.
+
+DO NOT expand learner rendering/scoring in T8.2B.
+
+The current learner flow remains multiple-choice only.
+
+The quality module must be able to report when the mapped preferredInteractionTypes cannot currently be represented safely by the existing quiz delivery system.
+
+Do not silently replace the teacher/mapping preference.
+
+Return an explicit reason code instead.
+
+==================================================
+PART 5 — BOUNDED REASON CODES
+==================================================
+
+Create a finite typed reason-code vocabulary.
+
+Use concise machine-readable codes.
+
+At minimum cover:
+
+INVALID_QUESTION_TEXT
+INVALID_OPTIONS
+DUPLICATE_OPTIONS
+INVALID_CORRECT_OPTION
+INVALID_OPTION_EXPLANATIONS
+NODE_ID_MISMATCH
+COGNITIVE_LEVEL_ID_MISMATCH
+UNSUPPORTED_INTERACTION_TYPE
+PREFERRED_INTERACTION_UNAVAILABLE
+DUPLICATE_QUESTION
+PLACEHOLDER_CONTENT
+
+Also reserve semantic codes for the future semantic reviewer:
+
+MICRONODE_MISALIGNED
+COGNITIVE_DEMAND_TOO_LOW
+COGNITIVE_DEMAND_MISMATCH
+PERFORMANCE_OBJECTIVE_MISALIGNED
+SUCCESS_CRITERION_MISALIGNED
+SOURCE_GROUNDING_FAILED
+SEMANTIC_REVIEW_ERROR
+
+Do not persist free-form provider reasoning.
+
+==================================================
+PART 6 — DETERMINISTIC VALIDATOR
+==================================================
+
+Implement a PURE deterministic validator.
+
+No provider call.
+No database call.
+No mutation.
+
+Suggested contract:
+
+validateGeneratedQuestionCandidate(
+  candidate,
+  context
+)
+
+Return a structured result such as:
+
+{
+  passed: boolean,
+  reasonCodes: QualityReasonCode[]
+}
+
+It must deterministically validate what CAN be known deterministically.
+
+At minimum:
+
+1. question text is non-empty and usable
+2. no placeholder question text
+3. current multiple-choice candidate has exactly 4 usable options
+4. options are non-empty
+5. options are distinct after normalized comparison
+6. correctOptionIndex is valid
+7. optionExplanations shape is valid when present
+8. candidate node identity cannot contradict canonical node identity
+9. candidate Cognitive Level identity cannot contradict canonical target identity
+10. difficulty enum is valid but MUST NOT influence Cognitive Level
+11. current delivery compatibility is explicit
+12. preferred interaction incompatibility is reported
+13. duplicate/near-duplicate detection can be invoked against already accepted questions
+
+DO NOT attempt to determine Bloom semantics with string keyword heuristics.
+
+For example:
+
+Question contains "բացատրիր"
+
+MUST NOT automatically mean Understand.
+
+Question contains "կիրառիր"
+
+MUST NOT automatically mean Apply.
+
+Semantic Cognitive Level judgment belongs to the future semantic-review layer.
+
+==================================================
+PART 7 — DUPLICATE DETECTION
+==================================================
+
+Add a conservative deterministic duplicate check.
+
+It should catch:
+
+- exact duplicate question text
+- normalized duplicate text
+- trivially equivalent duplicate after whitespace/punctuation normalization
+
+Do NOT build an aggressive semantic similarity engine.
+
+False rejection risk must remain low.
+
+==================================================
+PART 8 — SEMANTIC REVIEW INTERFACE ONLY
+==================================================
+
+Define the interface/type contract for a FUTURE independent semantic reviewer.
+
+DO NOT call the provider.
+
+DO NOT implement live semantic review.
+
+Input should contain enough authoritative context to judge:
+
+- MicroNode alignment
+- canonical Cognitive Level
+- operational Cognitive Level contract
+- performanceObjective
+- successCriterion
+- preferred interaction compatibility
+- instructional/source context
+- generated question
+- answer/options as appropriate
+
+Output must be bounded structured data.
+
+For example:
+
+{
+  verdict: "PASS" | "FAIL" | "REVIEW_ERROR",
+  reasonCodes: QualityReasonCode[],
+  measuredCognitiveLevel?: CognitiveLevel,
+  nodeAligned: boolean,
+  objectiveAligned: boolean,
+  criterionAligned: boolean,
+  interactionCompatible: boolean,
+  sourceGrounded: boolean
+}
+
+Do NOT include hidden chain-of-thought.
+
+Do NOT make free-form rationale required.
+
+If a short diagnostic note exists, it must not become authoritative.
+
+==================================================
+PART 9 — IMPORTANT AUTHORITY RULE
+==================================================
+
+The semantic reviewer will eventually be allowed to say:
+
+Target = Apply
+Measured = Remember
+Verdict = FAIL
+
+It must NEVER cause:
+
+Target Apply → rewritten to Remember.
+
+The mapped canonical target remains unchanged.
+
+Likewise:
+
+Target Analyze
+Measured Apply
+→ FAIL
+
+not:
+
+Persist question as Apply.
+
+and not:
+
+Change target to Apply.
+
+==================================================
+PART 10 — PROVIDER-FREE TEST SUITE
+==================================================
+
+Add focused tests for the quality module.
+
+No live AI/provider calls.
+
+At minimum test:
+
+DETERMINISTIC CONTRACT
+
+A. valid current MC candidate → PASS deterministic checks
+
+B. empty question → FAIL
+
+C. placeholder question → FAIL
+
+D. fewer than 4 options → FAIL
+
+E. empty option → FAIL
+
+F. duplicate options → FAIL
+
+G. invalid correct index → FAIL
+
+H. malformed option explanations → FAIL
+
+I. node mismatch → FAIL
+
+J. Cognitive Level ID mismatch → FAIL
+
+K. invalid difficulty enum → FAIL
+
+L. exact duplicate question → FAIL
+
+M. normalized duplicate question → FAIL
+
+N. HIGH difficulty + Understand target remains Understand
+
+O. LOW difficulty + Apply target remains Apply
+
+P. unsupported preferred interaction is reported explicitly
+
+OPERATIONAL CONTRACT
+
+Q. all six Cognitive Levels exist
+
+R. each level has required performance
+
+S. each level has rejected lower-level substitutes
+
+T. each level has compatible interaction metadata
+
+SEMANTIC INTERFACE CONTRACT
+
+Use mocked semantic verdicts only.
+
+U. Apply target + reviewer says measured Remember → FAIL
+
+V. Apply target + reviewer says measured Apply + aligned → PASS
+
+W. Analyze target + reviewer says measured Apply → FAIL
+
+X. Evaluate target + reviewer says no criterion alignment → FAIL
+
+Y. Create target + reviewer says selection-only / demand mismatch → FAIL
+
+Z. REVIEW_ERROR fails closed
+
+No provider call.
+
+==================================================
+PART 11 — NON-REGRESSION TESTS
+==================================================
+
+Run the existing focused suites for:
+
+- Canonical Quiz Target Resolver
+- canonical normal quiz generation
+- async quiz generation jobs
+- teacher provenance
+- learner immediate feedback
+- retest
+- continuous quiz/scoring
+- Cognitive Path integrity
+
+Run API typecheck/build.
+
+Do not modify protected systems merely to make unrelated legacy tests pass.
+
+==================================================
+PART 12 — DO NOT INTEGRATE LIVE GENERATION YET
+==================================================
+
+This is critical.
+
+T8.2B ends when:
+
+- quality contract exists
+- deterministic validator exists
+- bounded reason codes exist
+- semantic-review interface exists
+- provider-free tests pass
+
+DO NOT yet insert a live semantic-review provider call into:
+
+generateQuizQuestions()
+
+or:
+
+generateQuizFromNodeScope()
+
+DO NOT add retries to generation yet.
+
+That will be T8.2C.
+
+We want to inspect and approve the quality contract before it can affect production generation.
+
+==================================================
+PART 13 — PROTECTED SYSTEMS
+==================================================
+
+Must remain unchanged:
+
+- Canonical Quiz Target Resolver
+- Cognitive Path acceptance authority
+- isTargetCeiling semantics
+- async quiz-generation architecture
+- job idempotency
+- job lease/recovery
+- atomic quiz persistence
+- nodeId provenance
+- cognitiveLevelId provenance
+- teacher provenance labels
+- learner immediate feedback
+- answer-key secrecy
+- scoring
+- retest
+- continuous quiz session
+- Knowledge Tree
+- AI Teacher
+- mapping
+- assignment
+- lesson data
+- teacher difficulty UI removal
+- LOW/MEDIUM/HIGH internal complexity semantics
+
+==================================================
+REQUIRED FINAL REPORT
+==================================================
+
+Return:
+
+1. Inspection findings before edit
+2. Files changed
+3. Normalized candidate contract
+4. Six-level operational contract implemented
+5. Interaction compatibility contract
+6. Reason-code vocabulary
+7. Deterministic validation rules
+8. Duplicate detection behavior
+9. Semantic-review interface
+10. Authority/fail-closed behavior
+11. Tests added
+12. Existing regressions run
+13. Any discovered limitation
+14. Exact future integration seam for T8.2C
+15. Confirmation that live generation behavior did not change
+
+End with exactly:
+
+QUALITY CONTRACT IMPLEMENTED: YES/NO
+SIX COGNITIVE LEVELS OPERATIONALIZED: YES/NO
+DETERMINISTIC VALIDATOR IMPLEMENTED: YES/NO
+SEMANTIC REVIEW INTERFACE IMPLEMENTED: YES/NO
+LIVE SEMANTIC REVIEW CALLED: YES/NO
+LIVE QUIZ GENERATION BEHAVIOR CHANGED: YES/NO
+CAN QUALITY GATE CHANGE CANONICAL TARGET: YES/NO
+PROVIDER CALLED: YES/NO
+DB MIGRATION CREATED: YES/NO
+LESSON 754 MODIFIED: YES/NO
+READY FOR T8.2C REVIEW: YES/NO
+
+STOP AFTER T8.2B.
