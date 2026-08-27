@@ -1,0 +1,81 @@
+URGENT SMALL FIX ONLY — QUIZ CREATION UI STILL SHOWS CANONICAL_TARGET_INVALID
+
+Do not run broad audits.
+Do not call provider.
+Do not generate a quiz.
+Do not modify Lesson 754 pedagogical data.
+Do not modify Cognitive Paths, targets, confirmations, scoring, Test 2.0 quality gate, retest, Knowledge Tree, or AI Teacher.
+
+CURRENT VERIFIED STATE
+
+Lesson 754 has 5 MicroNodes.
+
+The backend canonical checks already passed:
+
+MN2 FLOOR = UNDERSTAND: YES
+ALL 5 CONFIRMED: YES
+ALL 5 CANONICALLY RESOLVE: YES
+READY FOR 5-QUESTION REAL TEST: YES
+
+However, after a full page refresh and reopening the teacher quiz-creation modal:
+
+- all 5 MicroNodes are selected
+- question count = 5
+- UI still displays:
+
+CANONICAL_TARGET_INVALID
+
+Therefore this is now a concrete UI/read-contract validation mismatch.
+
+TASK
+
+1. Trace exactly where the teacher quiz-creation modal gets or computes
+   CANONICAL_TARGET_INVALID.
+
+2. Compare that validation path with the SAME canonical backend authority
+   that just successfully resolves all 5 Lesson 754 MicroNodes.
+
+3. Identify the exact mismatch.
+
+4. Fix ONLY that mismatch.
+
+IMPORTANT AUTHORITY RULE
+
+Do NOT duplicate Cognitive Target logic in frontend.
+
+The teacher UI must not independently infer whether a target/path is canonical
+using stale Bloom fields, old lesson-node fields, compatibility Bloom values,
+cached mapping data, or a second implementation of canonical rules.
+
+The backend Canonical Quiz Target Resolver remains the authority.
+
+If quiz-creation readiness currently uses a different/stale contract,
+make it consume the canonical backend readiness/result instead.
+
+5. After the fix, perform ONLY these checks:
+
+- reopen Lesson 754 quiz creation
+- select all 5 MicroNodes
+- question count = 5
+- verify CANONICAL_TARGET_INVALID is gone
+- verify Create Quiz button is allowed
+- DO NOT click Create Quiz yet
+- DO NOT call provider
+
+6. Also verify with one focused backend check that all 5 still resolve
+canonically.
+
+STOP after that.
+
+REPORT ONLY:
+
+ROOT CAUSE:
+FILES CHANGED:
+UI USES CANONICAL BACKEND AUTHORITY: YES/NO
+ALL 5 CANONICALLY RESOLVE: YES/NO
+CANONICAL_TARGET_INVALID REMOVED: YES/NO
+CREATE QUIZ BUTTON READY: YES/NO
+QUIZ GENERATED: NO
+PROVIDER CALLED: NO
+LESSON 754 DATA MODIFIED: NO
+READY FOR REAL 5-QUESTION TEST: YES/NO
