@@ -48,6 +48,7 @@
     "test:cognitive-level-crud-db": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/cognitive-level-crud-db.test.ts",
     "test:c2-target-demand": "tsx src/lib/__tests__/c2-target-demand.test.ts",
     "test:c2-approved-readiness": "tsx src/lib/__tests__/c2-approved-readiness.test.ts",
+    "test:canonical-quiz-target": "tsx src/lib/__tests__/canonical-quiz-target-resolver.test.ts",
     "test:c2-foundation": "tsx src/services/__tests__/c2-foundation.test.ts",
     "test:c2-c1-ceiling": "tsx src/services/__tests__/c2-c1-ceiling-constraint.test.ts",
     "test:c1-outcomes": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/canonical-lesson-outcomes.test.ts",

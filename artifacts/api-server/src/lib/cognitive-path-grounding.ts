@@ -222,6 +222,194 @@ export function assessAcceptedCognitivePath(input: {
   return { accepted: true, reason: "ACCEPTED", grounding };
 }
 
+export type CanonicalQuizTargetFailureReason =
+  | "PATH_NOT_CONFIRMED"
+  | "NO_APPLICABLE_LEVELS"
+  | "TARGET_MISSING"
+  | "MULTIPLE_TARGETS"
+  | "TARGET_NOT_APPLICABLE"
+  | "TARGET_NOT_FINAL"
+  | "INVALID_SEQUENCE"
+  | "INVALID_COGNITIVE_ORDER"
+  | "PATH_GROUNDING_FAILED"
+  | "TARGET_BLOOM_COPY_MISMATCH"
+  | "PATH_NOT_ACCEPTED";
+
+export type CanonicalQuizTargetNode = {
+  id: number;
+  cogPathStatus: string | null | undefined;
+  theoryContent: string | null | undefined;
+  learningObjective: string | null | undefined;
+  targetBloomLevel?: number | null;
+};
+
+export type CanonicalQuizTargetLevel = CognitivePathAcceptanceLevel & {
+  id: number;
+  lessonNodeId?: number;
+};
+
+export type CanonicalQuizTarget = {
+  nodeId: number;
+  cognitiveLevelId: number;
+  cognitiveLevel: string;
+  sequence: number;
+  performanceObjective: string | null;
+  successCriterion: string | null;
+  preferredInteractionTypes: string[];
+  minimumIndependentEvidence: number | null;
+  isApplicable: true;
+  isTargetCeiling: true;
+  isCanonicalTarget: true;
+};
+
+export type CanonicalQuizTargetResolution =
+  | {
+      valid: true;
+      target: CanonicalQuizTarget;
+      acceptance: CognitivePathAcceptance;
+      nodeId: number;
+      cognitiveLevelId: number;
+      cognitiveLevel: string;
+      sequence: number;
+      performanceObjective: string | null;
+      successCriterion: string | null;
+      preferredInteractionTypes: string[];
+      minimumIndependentEvidence: number | null;
+      isCanonicalTarget: true;
+    }
+  | {
+      valid: false;
+      nodeId: number;
+      reason: CanonicalQuizTargetFailureReason;
+      reasons: CanonicalQuizTargetFailureReason[];
+      acceptance?: CognitivePathAcceptance;
+      acceptanceReason?: CognitivePathAcceptance["reason"];
+      grounding?: CognitivePathGroundingAudit | null;
+      expectedTargetBloomLevel?: number;
+      actualTargetBloomLevel?: number | null;
+    };
+
+function canonicalQuizTargetFailure(
+  nodeId: number,
+  reason: CanonicalQuizTargetFailureReason,
+  details: Partial<Extract<CanonicalQuizTargetResolution, { valid: false }>> = {},
+): Extract<CanonicalQuizTargetResolution, { valid: false }> {
+  return {
+    valid: false,
+    nodeId,
+    reason,
+    reasons: [reason],
+    ...details,
+  };
+}
+
+/**
+ * Resolve the only Cognitive Level that a normal assessment may test for a
+ * MicroNode. Lower levels remain instructional/remediation steps; they are not
+ * additional normal-quiz targets.
+ *
+ * This is deliberately fail-closed. The resolver does not infer a target from
+ * targetBloomLevel, sequence, Bloom rank, difficulty, or provider output.
+ */
+export function resolveCanonicalQuizTarget(
+  node: CanonicalQuizTargetNode,
+  cognitiveLevels: readonly CanonicalQuizTargetLevel[],
+): CanonicalQuizTargetResolution {
+  if (node.cogPathStatus !== "confirmed") {
+    return canonicalQuizTargetFailure(node.id, "PATH_NOT_CONFIRMED");
+  }
+
+  const applicableLevels = orderCognitivePathLevels(
+    cognitiveLevels.filter((level) => level.isApplicable),
+  );
+  if (applicableLevels.length === 0) {
+    return canonicalQuizTargetFailure(node.id, "NO_APPLICABLE_LEVELS");
+  }
+
+  const targetLevels = cognitiveLevels.filter((level) => level.isTargetCeiling);
+  if (targetLevels.length === 0) {
+    return canonicalQuizTargetFailure(node.id, "TARGET_MISSING");
+  }
+  if (targetLevels.length > 1) {
+    return canonicalQuizTargetFailure(node.id, "MULTIPLE_TARGETS");
+  }
+
+  const target = targetLevels[0];
+  if (!target.isApplicable) {
+    return canonicalQuizTargetFailure(node.id, "TARGET_NOT_APPLICABLE");
+  }
+
+  // Use the existing structural authority. The resolver only translates its
+  // established reasons into the more precise assessment-facing vocabulary.
+  const structuralReason = assessCognitivePathStructure(applicableLevels);
+  if (structuralReason === "LEVEL_ORDER_INVALID") {
+    return canonicalQuizTargetFailure(node.id, "INVALID_SEQUENCE");
+  }
+  if (structuralReason === "COGNITIVE_LEVEL_ORDER_INVALID") {
+    return canonicalQuizTargetFailure(node.id, "INVALID_COGNITIVE_ORDER");
+  }
+  if (structuralReason === "TARGET_CEILING_INVALID") {
+    return canonicalQuizTargetFailure(node.id, "TARGET_NOT_FINAL");
+  }
+
+  const finalLevel = applicableLevels[applicableLevels.length - 1];
+  if (finalLevel.id !== target.id) {
+    return canonicalQuizTargetFailure(node.id, "TARGET_NOT_FINAL");
+  }
+
+  const acceptance = assessAcceptedCognitivePath({
+    cogPathStatus: node.cogPathStatus,
+    theoryContent: node.theoryContent,
+    learningObjective: node.learningObjective,
+    levels: cognitiveLevels,
+  });
+  if (!acceptance.accepted) {
+    return canonicalQuizTargetFailure(node.id,
+      acceptance.reason === "GROUNDING_NOT_ACCEPTED"
+        ? "PATH_GROUNDING_FAILED"
+        : "PATH_NOT_ACCEPTED",
+      {
+        acceptance,
+        acceptanceReason: acceptance.reason,
+        grounding: acceptance.grounding,
+      });
+  }
+
+  const expectedTargetBloomLevel = COGNITIVE_LEVEL_RANK[target.cognitiveLevel];
+  if (node.targetBloomLevel !== undefined
+    && node.targetBloomLevel !== null
+    && node.targetBloomLevel !== expectedTargetBloomLevel) {
+    return canonicalQuizTargetFailure(node.id, "TARGET_BLOOM_COPY_MISMATCH", {
+      acceptance,
+      acceptanceReason: acceptance.reason,
+      grounding: acceptance.grounding,
+      expectedTargetBloomLevel,
+      actualTargetBloomLevel: node.targetBloomLevel,
+    });
+  }
+
+  const preferredInteractionTypes = target.preferredInteractionTypes as string[];
+  const resolvedTarget: CanonicalQuizTarget = {
+    nodeId: node.id,
+    cognitiveLevelId: target.id,
+    cognitiveLevel: target.cognitiveLevel,
+    sequence: target.sequence,
+    performanceObjective: target.performanceObjective,
+    successCriterion: target.successCriterion,
+    preferredInteractionTypes,
+    minimumIndependentEvidence: target.minimumIndependentEvidence ?? null,
+    isApplicable: true,
+    isTargetCeiling: true,
+    isCanonicalTarget: true,
+  };
+  return {
+    valid: true,
+    target: resolvedTarget,
+    acceptance,
+    ...resolvedTarget,
+  };
+}
+
 /**
  * C2 coverage is intentionally limited to approved MicroNodes. Review-state
  * nodes remain visible as excluded; they are never counted as accepted.
