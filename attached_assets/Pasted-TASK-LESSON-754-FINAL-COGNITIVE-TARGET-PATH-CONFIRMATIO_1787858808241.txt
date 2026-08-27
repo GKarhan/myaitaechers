@@ -1,0 +1,323 @@
+TASK — LESSON 754 FINAL COGNITIVE TARGET + PATH CONFIRMATION REVIEW ONLY
+
+This is the final preparation step before creating the real Test 2.0 quiz.
+
+Scope ONLY:
+Lesson 754
+“Նժարավոր կշեռքն ու զանգվածի միավորները”
+
+Do NOT generate a quiz.
+Do NOT call the quiz provider.
+Do NOT modify quiz generation code.
+Do NOT modify source blocks, exercises, MicroNode content, Knowledge Tree,
+AI Teacher, scoring, retest, async jobs, or unrelated lessons.
+
+==================================================
+PART 0 — READ CURRENT STATE FIRST
+==================================================
+
+Read Lesson 754 and its five MicroNodes directly from the current database.
+
+Expected current Cognitive Paths:
+
+MN1:
+Understand → Apply
+current target: Apply
+
+MN2:
+Understand
+current target: none
+
+MN3:
+Apply
+current target: none
+
+MN4:
+Apply
+current target: Apply
+
+MN5:
+Analyze
+current target: none
+
+All paths are currently review-required / unconfirmed.
+
+Verify this before making any change.
+
+If current state differs, STOP and report the difference.
+
+==================================================
+PART 1 — PEDAGOGICAL TARGET REVIEW
+==================================================
+
+For EACH MicroNode compare:
+
+1. MicroNode learning objective
+2. Current Cognitive Path
+3. performanceObjective of each level
+4. successCriterion of each level
+5. preferredInteractionTypes
+6. existing target ceiling, if any
+
+Determine whether the highest/current intended level is pedagogically
+consistent with the MicroNode objective.
+
+Expected target candidates:
+
+MN1 → Apply
+MN2 → Understand
+MN3 → Apply
+MN4 → Apply
+MN5 → Analyze
+
+These are expected candidates, NOT permission to blindly write them.
+
+For each node explicitly report:
+
+MICRONODE:
+PATH:
+OBJECTIVE:
+TARGET CANDIDATE:
+WHY THIS TARGET MATCHES THE OBJECTIVE:
+PERFORMANCE OBJECTIVE MATCH: YES/NO
+SUCCESS CRITERION MATCH: YES/NO
+INTERACTION TYPE COMPATIBLE: YES/NO
+SAFE TO CONFIRM: YES/NO
+
+If any node is pedagogically inconsistent, do NOT confirm it.
+Report the exact issue instead.
+
+==================================================
+PART 2 — IMPORTANT PATH RULE
+==================================================
+
+Do NOT create missing intermediate Bloom levels merely because they are
+lower than the target.
+
+Examples:
+
+Understand-only path may legitimately have:
+Target = Understand
+
+Apply-only path may legitimately have:
+Target = Apply
+
+Analyze-only path may legitimately have:
+Target = Analyze
+
+The curriculum path is authoritative.
+
+Do not invent:
+Remember before Understand
+Understand before Apply
+Apply before Analyze
+
+unless those levels already exist in the mapped path.
+
+==================================================
+PART 3 — TARGET REPAIR
+==================================================
+
+ONLY if Part 1 confirms pedagogical consistency for all five nodes:
+
+Preserve:
+MN1 target = Apply
+MN4 target = Apply
+
+Set missing targets:
+
+MN2:
+Understand → isTargetCeiling = true
+
+MN3:
+Apply → isTargetCeiling = true
+
+MN5:
+Analyze → isTargetCeiling = true
+
+Use the existing canonical Cognitive Path authoring service/API.
+Do not directly invent a parallel DB update path.
+
+Each MicroNode must end with EXACTLY ONE target ceiling.
+
+Do not modify:
+- sequence
+- provenance
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- Cognitive Level IDs
+- Cognitive Level membership
+
+==================================================
+PART 4 — CONFIRM PATHS
+==================================================
+
+After target repair, run the EXISTING canonical confirmation/validation
+authority for each MicroNode.
+
+Do not bypass validation.
+
+Confirm a path ONLY if the existing system accepts it.
+
+Expected final paths:
+
+MN1:
+Understand → [TARGET Apply]
+
+MN2:
+[TARGET Understand]
+
+MN3:
+[TARGET Apply]
+
+MN4:
+[TARGET Apply]
+
+MN5:
+[TARGET Analyze]
+
+All five should become canonically confirmed only if they satisfy the
+existing confirmation contract.
+
+==================================================
+PART 5 — CANONICAL QUIZ TARGET RESOLVER
+==================================================
+
+After confirmation, run the existing Canonical Quiz Target Resolver
+read-only for all five MicroNodes.
+
+Expected:
+
+MN1 → Apply
+MN2 → Understand
+MN3 → Apply
+MN4 → Apply
+MN5 → Analyze
+
+The resolver itself must NOT be modified.
+
+If ANY node fails resolution:
+STOP.
+
+Do not generate a quiz.
+Report the exact resolver reason.
+
+==================================================
+PART 6 — VERIFY QUESTION-GENERATION INPUT READINESS
+==================================================
+
+For every successfully resolved node verify that normal quiz generation
+would receive:
+
+- exact nodeId
+- exact canonical cognitiveLevelId
+- cognitiveLevel
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- source/context required by the existing generator
+
+Do NOT call the provider.
+
+This is only a readiness inspection.
+
+Report any missing field that would make canonical question generation
+unsafe.
+
+==================================================
+PART 7 — REAL BROWSER VERIFICATION
+==================================================
+
+Open Lesson 754 in the teacher mapping UI.
+
+Verify visually:
+
+MN1:
+Հասկանալ → Կիրառել
+🎯 only on Կիրառել
+✓ path confirmed
+
+MN2:
+Հասկանալ
+🎯 on Հասկանալ
+✓ path confirmed
+
+MN3:
+Կիրառել
+🎯 on Կիրառել
+✓ path confirmed
+
+MN4:
+Կիրառել
+🎯 on Կիրառել
+✓ path confirmed
+
+MN5:
+Վերլուծել
+🎯 on Վերլուծել
+✓ path confirmed
+
+Verify provenance badges remain unchanged.
+
+Do not infer confirmation from provenance.
+
+==================================================
+PART 8 — REGRESSION SAFETY
+==================================================
+
+Run provider-free focused regressions for:
+
+- Cognitive Path authoring integrity
+- Bloom normalization
+- Canonical Quiz Target Resolver
+- canonical normal quiz generation contract
+- T8.2B quality contract
+- T8.2C live quality gate
+- async quiz generation
+- retest isolation
+
+No provider calls.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report a table:
+
+MicroNode | Path | Target | Confirmed | Resolver result
+
+Then report:
+
+1. Exact target changes made.
+2. Exact confirmation results.
+3. Whether any Cognitive Levels were added/removed.
+4. Whether any pedagogical fields changed.
+5. Resolver result for all five nodes.
+6. Whether all required generation inputs exist.
+7. Browser verification result.
+8. Regression results.
+
+End with EXACTLY:
+
+MN1 TARGET = APPLY: YES/NO
+MN2 TARGET = UNDERSTAND: YES/NO
+MN3 TARGET = APPLY: YES/NO
+MN4 TARGET = APPLY: YES/NO
+MN5 TARGET = ANALYZE: YES/NO
+
+ALL FIVE PATHS CONFIRMED: YES/NO
+ALL FIVE RESOLVE CANONICALLY: YES/NO
+ALL FIVE HAVE EXACTLY ONE TARGET: YES/NO
+COGNITIVE LEVELS ADDED: NO
+COGNITIVE LEVELS REMOVED: NO
+BLOOM SEQUENCES MODIFIED: NO
+PROVENANCE MODIFIED: NO
+PEDAGOGICAL CONTENT MODIFIED: NO
+QUIZ GENERATED: NO
+PROVIDER CALLED: NO
+READY FOR REAL TEST 2.0 QUIZ: YES/NO
+
+STOP.
+
+Do not create the quiz even if READY = YES.

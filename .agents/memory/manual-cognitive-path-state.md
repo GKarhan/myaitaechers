@@ -14,3 +14,5 @@ Persisted Cognitive Level order is backend-owned revised Bloom order: remember, 
 One-time legacy repairs are allowed only when explicitly authorized, must audit first, target only proven noncanonical nodes, invoke the shared normalizer transactionally, and stop before target or confirmation repair.
 
 Provenance, target role, and path confirmation are independent UI dimensions. Never label `teacher_authored` as “confirmed”; teacher edits intentionally change row provenance, while confirmation never changes provenance.
+
+Canonical confirmation requires grounding status `GROUNDED`; `REVIEW_REQUIRED` may be structurally valid but still fails confirmation as `PATH_GROUNDING_FAILED`. Never repair targets first when an all-path review is gated on confirmability.
