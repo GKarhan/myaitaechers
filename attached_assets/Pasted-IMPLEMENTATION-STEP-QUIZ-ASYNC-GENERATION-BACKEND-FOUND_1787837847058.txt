@@ -1,0 +1,335 @@
+IMPLEMENTATION STEP — QUIZ ASYNC GENERATION BACKEND FOUNDATION ONLY
+
+We completed the design audit.
+
+Implement ONLY the backend foundation for asynchronous quiz generation.
+
+Do NOT modify the frontend in this task.
+Do NOT redesign quiz creation UX.
+Do NOT touch Test 2.0 retest/session logic.
+Do NOT change scoring, Knowledge Tree, mapping, C1, C2, or AI Teacher.
+
+GOAL
+
+Replace the current long-running synchronous POST /api/quizzes behavior with:
+
+POST /api/quizzes
+→ validate/resolve request
+→ create durable generation job
+→ return HTTP 202 immediately with jobId
+→ backend runner generates and persists quiz
+→ polling endpoint exposes job status/result
+
+==================================================
+1. ADD QUIZ GENERATION JOB STORAGE
+==================================================
+
+Add a focused durable table:
+
+quiz_generation_jobs
+
+Minimum required fields:
+
+- id
+- teacherId
+- idempotencyKey
+- requestSnapshot / normalized request payload
+- requestFingerprint
+- status
+- progress
+- quizId nullable
+- errorCode nullable
+- createdAt
+- updatedAt
+
+Statuses:
+
+- pending
+- running
+- completed
+- failed
+
+Add unique constraint:
+
+(teacherId, idempotencyKey)
+
+Do not reuse mapping_jobs table.
+
+Use existing project migration conventions.
+
+==================================================
+2. NORMALIZED REQUEST SNAPSHOT
+==================================================
+
+Persist the authoritative normalized quiz-generation request after request validation.
+
+At minimum preserve the generation inputs required to reproduce the quiz:
+
+- subjectId
+- classId
+- quizType
+- lessonIds
+- nodeIds where applicable
+- questionCount
+- difficultyMode
+- sourceBookId/title only if currently required by canonical generation
+
+Do not persist provider prompts or credentials.
+
+Generate a deterministic request fingerprint from the normalized payload.
+
+==================================================
+3. POST /api/quizzes BECOMES ASYNC
+==================================================
+
+Keep existing request validation and authoritative lesson/node scope resolution.
+
+Then:
+
+A. require/use an Idempotency-Key header
+
+B. if no existing job for:
+teacherId + idempotencyKey
+
+create pending job.
+
+C. if existing job has same request fingerprint:
+return existing job.
+
+D. if same key has different fingerprint:
+return:
+
+409
+IDEMPOTENCY_KEY_REUSED
+
+E. return immediately:
+
+HTTP 202
+
+{
+  "jobId": <id>,
+  "status": "pending"
+}
+
+Do NOT wait for provider generation.
+
+==================================================
+4. BACKGROUND JOB CLAIM
+==================================================
+
+Add a small shared quiz-generation job service.
+
+Runner behavior:
+
+1. claim a pending job atomically
+2. set status = running
+3. load normalized request snapshot
+4. execute the existing canonical quiz-generation service
+5. preserve existing provider parsing/validation behavior
+6. preserve existing quiz/question transactional persistence behavior
+
+Do not duplicate quiz-generation logic.
+
+The job runner must call the same existing quiz-generation services.
+
+==================================================
+5. ATOMIC FINALIZATION
+==================================================
+
+On successful generation:
+
+persist in ONE transaction:
+
+- quiz
+- quiz lesson/node links
+- quiz questions
+- job status = completed
+- job.quizId = created quiz id
+
+The completed job and quiz creation must be atomic.
+
+If finalization loses a concurrent claim/finalization race:
+
+- do not leave a duplicate quiz
+- roll back the competing insert
+
+==================================================
+6. FAILURE HANDLING
+==================================================
+
+On generation/provider/schema/persistence failure:
+
+set job:
+
+status = failed
+errorCode = allowlisted safe code
+
+Do not store raw provider response, prompts, secrets, or arbitrary exception text in durable job result.
+
+Preserve detailed internal logs safely where already allowed.
+
+==================================================
+7. POLLING ENDPOINT
+==================================================
+
+Add:
+
+GET /api/quizzes/generation-jobs/:jobId
+
+Authenticated teacher must own the job.
+
+Response shape:
+
+{
+  "jobId": 123,
+  "status": "pending" | "running" | "completed" | "failed",
+  "progress": "...",
+  "quizId": 266 | null,
+  "errorCode": "..." | null
+}
+
+Do not expose requestSnapshot or sensitive diagnostic internals to the frontend unless already required.
+
+==================================================
+8. CLIENT DISCONNECT SAFETY
+==================================================
+
+The provider generation must no longer depend on the original HTTP request connection.
+
+After POST returns 202:
+
+- browser disconnect
+- request timeout
+- page navigation
+
+must not cancel the background generation.
+
+==================================================
+9. RESTART RECOVERY — MINIMAL VERSION
+==================================================
+
+Implement bounded recovery on API startup:
+
+- pending jobs remain pending and are eligible to run
+- stale running jobs from a previous dead process are safely returned to pending or reclaimed according to one deterministic rule
+
+Use a conservative stale-running threshold if necessary.
+
+Do not build a general distributed worker platform.
+
+Keep this suitable for the current single-service Replit deployment.
+
+==================================================
+10. PROVIDER-FREE / DATABASE REGRESSION TESTS
+==================================================
+
+Add tests for at least:
+
+CASE A
+POST valid request
+→ returns 202 quickly
+→ pending job created
+→ provider not awaited by HTTP response
+
+CASE B
+same teacher + same idempotency key + same request
+→ same job returned
+→ no second job
+
+CASE C
+same key + different request
+→ 409 IDEMPOTENCY_KEY_REUSED
+
+CASE D
+job claim
+pending → running
+
+CASE E
+successful finalization
+→ quiz + questions + completed job + quizId committed atomically
+
+CASE F
+generation failure
+→ failed job
+→ no partial quiz rows
+
+CASE G
+client request lifecycle independent from runner
+→ job remains executable after POST response
+
+CASE H
+teacher cannot read another teacher's job
+
+CASE I
+stale running recovery
+
+CASE J
+competing finalization cannot create duplicate quizzes
+
+==================================================
+11. NON-REGRESSION
+==================================================
+
+Run:
+
+- current quiz creation/generation service tests
+- quiz persistence tests
+- API typecheck
+- API build
+- focused assignment/lesson scope tests if touched transitively
+
+Do not update unrelated legacy fixtures just to make tests green.
+
+==================================================
+12. IMPORTANT — FRONTEND IS OUT OF SCOPE
+==================================================
+
+Do NOT change:
+
+teacher-dashboard.tsx
+quiz-create UI
+React Query polling
+local storage
+navigation
+
+in this task unless a generated API type absolutely requires a compile-only update.
+
+The existing frontend will not yet be considered complete after this task.
+
+This task ends when backend async job foundation is correct.
+
+==================================================
+13. FINAL REPORT
+==================================================
+
+Return:
+
+1. files changed
+2. migration/table added
+3. POST /api/quizzes new behavior
+4. idempotency behavior
+5. background claim behavior
+6. success finalization behavior
+7. failure behavior
+8. polling endpoint
+9. restart recovery behavior
+10. tests/results
+11. typecheck/build results
+
+End with:
+
+POST /api/quizzes RETURNS 202 BEFORE PROVIDER COMPLETES: YES / NO
+
+QUIZ GENERATION JOB IS DURABLE: YES / NO
+
+IDEMPOTENCY PREVENTS DUPLICATES: YES / NO
+
+QUIZ + COMPLETED JOB FINALIZE ATOMICALLY: YES / NO
+
+POLLING ENDPOINT READY: YES / NO
+
+READY FOR FRONTEND POLLING STEP: YES / NO
+
+STOP.
+
+Do not implement frontend polling automatically.
