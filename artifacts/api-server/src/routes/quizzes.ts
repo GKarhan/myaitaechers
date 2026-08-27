@@ -19,6 +19,8 @@ import {
   reviewScheduleTable,
   lessonNodeDependenciesTable,
   lessonExercisesTable,
+  quizGenerationJobsTable,
+  coursesTable,
 } from "@workspace/db";
 import { updateTopicScoring } from "../services/scoring";
 import { eq, and, asc, inArray, desc, sql, count, ne, isNull, isNotNull } from "drizzle-orm";
@@ -33,8 +35,12 @@ import {
   RetestAuthorityError,
 } from "../services/quiz-retest-authority.js";
 import {
-  createQuizFromNodeScope,
-} from "../services/quiz-creation.js";
+  createOrReuseQuizGenerationJob,
+  normalizeQuizGenerationRequest,
+  IdempotencyKeyReusedError,
+  scheduleQuizGenerationJob,
+} from "../services/quiz-generation-jobs.js";
+import { createQuizFromNodeScope } from "../services/quiz-creation.js";
 import {
   getOrCreateActiveAttempt,
   ensureQuizSession,
@@ -385,8 +391,8 @@ async function buildStudentResultAnalysis(
 }
 
 // ── POST /api/quizzes ─────────────────────────────────────────────────────────
-// Create a DRAFT quiz, generate questions from the given lesson nodes, persist,
-// then set status = GENERATED. Returns the full quiz with questions.
+// Validate quiz generation. Idempotency-aware clients enqueue durable work;
+// legacy clients retain the synchronous response until frontend polling lands.
 router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, res) => {
   const {
     subjectId,
@@ -441,11 +447,12 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     res.status(400).json({ error: "No nodes found — provide lessonIds or nodeIds" });
     return;
   }
+  resolvedNodeIds = [...new Set(resolvedNodeIds)];
 
   // Phase 1.9: resolve authoritative lesson IDs for the relationship table.
   // If lessonIds were provided explicitly, use them directly.
   // If only nodeIds were provided (single-lesson node-scoped case), derive lesson.
-  let resolvedLessonIds: number[] = lessonIds ?? [];
+  let resolvedLessonIds: number[] = [...new Set(lessonIds ?? [])];
   if (resolvedLessonIds.length === 0 && resolvedNodeIds.length > 0) {
     const lessonRows = await db
       .selectDistinct({ lessonId: lessonNodesTable.lessonId })
@@ -455,15 +462,52 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
   }
 
   // Validate all lesson IDs exist and belong to this teacher's authorized scope.
+  let hasUnauthorizedLesson = false;
   if (resolvedLessonIds.length > 0) {
     const existingLessons = await db
-      .select({ id: lessonsTable.id })
+      .select({
+        id: lessonsTable.id,
+        teacherId: lessonsTable.teacherId,
+        courseTeacherId: coursesTable.teacherId,
+        subjectId: lessonsTable.subjectId,
+      })
       .from(lessonsTable)
+      .leftJoin(coursesTable, eq(coursesTable.id, lessonsTable.courseId))
       .where(inArray(lessonsTable.id, resolvedLessonIds));
     if (existingLessons.length !== resolvedLessonIds.length) {
       res.status(400).json({ error: "One or more lesson IDs not found" });
       return;
     }
+    hasUnauthorizedLesson =
+      req.userRole !== "admin" &&
+      existingLessons.some((lesson) =>
+        lesson.teacherId !== req.userId && lesson.courseTeacherId !== req.userId
+      );
+    if (existingLessons.some((lesson) => lesson.subjectId !== subjectId)) {
+      res.status(400).json({ error: "One or more lessons do not belong to the selected subject" });
+      return;
+    }
+  }
+
+  // Validate every resolved node independently. This closes the mixed-scope
+  // case where a caller supplies an authorized lessonId with foreign nodeIds.
+  const authoritativeNodes = await db
+    .select({
+      id: lessonNodesTable.id,
+      lessonId: lessonNodesTable.lessonId,
+    })
+    .from(lessonNodesTable)
+    .where(inArray(lessonNodesTable.id, resolvedNodeIds));
+  if (authoritativeNodes.length !== resolvedNodeIds.length) {
+    res.status(400).json({ error: "One or more node IDs not found" });
+    return;
+  }
+  if (
+    resolvedLessonIds.length > 0 &&
+    authoritativeNodes.some((node) => !resolvedLessonIds.includes(node.lessonId))
+  ) {
+    res.status(400).json({ error: "One or more nodeIds do not belong to the selected lesson scope" });
+    return;
   }
 
   // Phase 1.10: type-specific validation (after all lesson/node resolution is done).
@@ -496,6 +540,11 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     }
   }
 
+  if (hasUnauthorizedLesson) {
+    res.status(403).json({ error: "One or more lessons are outside the teacher's scope" });
+    return;
+  }
+
   // Use explicit quizType if provided; otherwise derive from lesson count.
   // Do NOT infer a conflicting type and silently override the teacher's explicit choice.
   const derivedQuizType: string | null =
@@ -505,46 +554,129 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     : null); // no lesson linkage (edge case — book-only or free-form)
 
   const quizTitle = title?.trim() || `Թեստ — ${new Date().toLocaleDateString("hy-AM")}`;
-  try {
-    const created = await createQuizFromNodeScope({
-      teacherId: req.userId!,
-      subjectId,
-      classId,
-      sourceBookId,
-      lessonIds: resolvedLessonIds,
-      nodeIds: resolvedNodeIds,
-      title: quizTitle,
-      questionCount,
-      difficultyMode: difficultyMode as "SIMPLE" | "MEDIUM" | "HARD" | "MIXED",
-      quizType: derivedQuizType,
-      allowEmptyQuestions: true,
-    });
 
-    res.status(201).json({
-      id:             created.quiz.id,
-      title:          quizTitle,
-      subjectId:      created.quiz.subjectId,
-      questionCount:  created.generated.length,
-      difficultyMode: created.quiz.difficultyMode,
-      status:         "GENERATED",
-      questions:      created.questions.map((q) => ({
-        id:                 q.id,
-        nodeId:             q.nodeId,
-        questionText:       q.questionText,
-        options:            q.options,
-        correctOptionIndex: q.correctOptionIndex,
-        difficultyLevel:    q.difficultyLevel,
-        sequence:           q.sequence,
-      })),
+  const rawIdempotencyKey = req.header("Idempotency-Key");
+  const idempotencyKey = Array.isArray(rawIdempotencyKey)
+    ? rawIdempotencyKey[0]?.trim()
+    : rawIdempotencyKey?.trim();
+  if (!idempotencyKey) {
+    // Temporary compatibility path for the existing teacher dashboard. New
+    // clients opt into durable async generation by sending Idempotency-Key.
+    // Remove this branch only when every creation client polls generation jobs.
+    try {
+      const created = await createQuizFromNodeScope({
+        teacherId: req.userId!,
+        subjectId,
+        classId,
+        sourceBookId,
+        lessonIds: resolvedLessonIds,
+        nodeIds: resolvedNodeIds,
+        title: quizTitle,
+        questionCount,
+        difficultyMode: difficultyMode as "SIMPLE" | "MEDIUM" | "HARD" | "MIXED",
+        quizType: derivedQuizType,
+        allowEmptyQuestions: true,
+      });
+
+      res.status(201).json({
+        id: created.quiz.id,
+        title: quizTitle,
+        subjectId: created.quiz.subjectId,
+        questionCount: created.generated.length,
+        difficultyMode: created.quiz.difficultyMode,
+        status: "GENERATED",
+        questions: created.questions.map((question) => ({
+          id: question.id,
+          nodeId: question.nodeId,
+          questionText: question.questionText,
+          options: question.options,
+          correctOptionIndex: question.correctOptionIndex,
+          difficultyLevel: question.difficultyLevel,
+          sequence: question.sequence,
+        })),
+      });
+    } catch (err) {
+      logger.error({ err }, "legacy synchronous quiz generation failed");
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: err instanceof Error ? err.message : "Quiz generation failed, please retry",
+        });
+      }
+    }
+    return;
+  }
+
+  const snapshot = normalizeQuizGenerationRequest({
+    subjectId,
+    classId,
+    sourceBookId,
+    lessonIds: resolvedLessonIds,
+    nodeIds: resolvedNodeIds,
+    title: quizTitle,
+    questionCount,
+    difficultyMode: difficultyMode as "SIMPLE" | "MEDIUM" | "HARD" | "MIXED",
+    quizType: derivedQuizType,
+  });
+
+  try {
+    const result = await createOrReuseQuizGenerationJob({
+      teacherId: req.userId!,
+      idempotencyKey,
+      snapshot,
+    });
+    scheduleQuizGenerationJob(result.job.id);
+    res.status(202).json({
+      jobId: result.job.id,
+      status: result.job.status,
     });
   } catch (err) {
+    if (err instanceof IdempotencyKeyReusedError) {
+      res.status(409).json({ error: err.code });
+      return;
+    }
     logger.error({ err }, "quiz generation failed");
     if (!res.headersSent) {
-      res.status(500).json({
-        error: err instanceof Error ? err.message : "Quiz generation failed, please retry",
-      });
+      res.status(500).json({ error: "Quiz generation job could not be created" });
     }
   }
+}));
+
+// ── GET /api/quizzes/generation-jobs/:jobId ───────────────────────────────────
+// Deliberately returns only the teacher-safe job projection.
+router.get("/quizzes/generation-jobs/:jobId", requireTeacher, asyncHandler(async (req: AuthRequest, res) => {
+  const jobId = Number.parseInt(String(req.params.jobId), 10);
+  if (!Number.isInteger(jobId) || jobId < 1) {
+    res.status(400).json({ error: "Invalid job id" });
+    return;
+  }
+
+  const [job] = await db
+    .select({
+      id: quizGenerationJobsTable.id,
+      status: quizGenerationJobsTable.status,
+      progress: quizGenerationJobsTable.progress,
+      quizId: quizGenerationJobsTable.quizId,
+      errorCode: quizGenerationJobsTable.errorCode,
+    })
+    .from(quizGenerationJobsTable)
+    .where(and(
+      eq(quizGenerationJobsTable.id, jobId),
+      eq(quizGenerationJobsTable.teacherId, req.userId!),
+    ))
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  res.json({
+    jobId: job.id,
+    status: job.status,
+    progress: job.progress ?? null,
+    quizId: job.quizId ?? null,
+    errorCode: job.errorCode ?? null,
+  });
 }));
 
 // ── POST /api/quizzes/retests ──────────────────────────────────────────────────

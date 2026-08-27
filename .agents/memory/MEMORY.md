@@ -74,3 +74,4 @@
 - [Provider diagnostic safety](provider-diagnostic-safety.md) — persisted provider diagnostics must use fixed messages and allowlisted enums; never retain provider-controlled free-form text.
 - [Canonical quiz retest authority](canonical-quiz-retest-authority.md) — use current C5 over attempt-answer node snapshots; never current quiz rows, result fallbacks, or materialized mastery.
 - [Continuous quiz sessions](continuous-quiz-sessions.md) — retests are immutable child attempts of one root assignment; C5 drives two-state scope and completion commits answers/evidence atomically.
+- [Durable job claim leases](durable-job-claim-leases.md) — stale external-provider jobs must rotate a persisted lease; every state transition must match the active lease.

@@ -6,6 +6,7 @@ import {
   quizzesTable,
 } from "@workspace/db";
 import { and, asc, eq } from "drizzle-orm";
+import type { PgTransaction } from "drizzle-orm/pg-core";
 import {
   generateQuizQuestions,
   type GenerateQuizInput,
@@ -52,17 +53,11 @@ export type CreatedQuizResult = {
   assignmentId: number | null;
 };
 
-/**
- * Shared persistence boundary for generated quizzes.
- *
- * Generation runs before the transaction because it is an external provider
- * call. Quiz metadata, lesson links, questions, final status, and an optional
- * learner assignment are committed together, so a failed DB write cannot
- * expose a partially usable retest.
- */
-export async function createQuizFromNodeScope(
+type QuizPersistenceExecutor = typeof db | PgTransaction<any, any, any>;
+
+export async function generateQuizFromNodeScope(
   input: CreateQuizFromNodeScopeInput,
-): Promise<CreatedQuizResult> {
+): Promise<{ nodeIds: number[]; generated: GeneratedQuestion[] }> {
   const nodeIds = [...new Set(input.nodeIds.filter((id) => Number.isInteger(id) && id > 0))];
   if (nodeIds.length === 0) {
     throw new QuizCreationError("QUESTION_SCOPE_INVALID");
@@ -88,83 +83,113 @@ export async function createQuizFromNodeScope(
     throw new QuizCreationError("QUESTION_SCOPE_INVALID");
   }
 
-  return db.transaction(async (tx) => {
-    const [quiz] = await tx
-      .insert(quizzesTable)
-      .values({
-        teacherId: input.teacherId,
-        subjectId: input.subjectId,
-        classId: input.classId ?? null,
-        sourceBookId: input.sourceBookId ?? null,
-        nodeIds,
-        title: input.title,
-        questionCount: input.questionCount,
-        difficultyMode: input.difficultyMode,
-        status: "DRAFT",
-        quizType: input.quizType ?? null,
-        retestSourceAttemptId: input.retestSourceAttemptId ?? null,
-        retestStrategy: input.retestStrategy ?? null,
-      })
-      .returning();
+  return { nodeIds, generated };
+}
 
-    if (input.lessonIds && input.lessonIds.length > 0) {
-      await tx
-        .insert(quizLessonLinksTable)
-        .values([...new Set(input.lessonIds)].map((lessonId) => ({
-          quizId: quiz.id,
-          lessonId,
-        })))
-        .onConflictDoNothing();
-    }
+/**
+ * Persist already-generated questions using the supplied database executor.
+ * Passing a transaction here lets the async job finalizer commit the quiz and
+ * the completed job together.
+ */
+export async function persistGeneratedQuizInTransaction(
+  tx: QuizPersistenceExecutor,
+  input: CreateQuizFromNodeScopeInput,
+  nodeIds: number[],
+  generated: GeneratedQuestion[],
+): Promise<CreatedQuizResult> {
+  const [quiz] = await tx
+    .insert(quizzesTable)
+    .values({
+      teacherId: input.teacherId,
+      subjectId: input.subjectId,
+      classId: input.classId ?? null,
+      sourceBookId: input.sourceBookId ?? null,
+      nodeIds,
+      title: input.title,
+      questionCount: input.questionCount,
+      difficultyMode: input.difficultyMode,
+      status: "DRAFT",
+      quizType: input.quizType ?? null,
+      retestSourceAttemptId: input.retestSourceAttemptId ?? null,
+      retestStrategy: input.retestStrategy ?? null,
+    })
+    .returning();
 
-    if (generated.length > 0) {
-      await tx.insert(quizQuestionsTable).values(
-        generated.map((question, index) => ({
-          quizId: quiz.id,
-          nodeId: question.nodeId,
-          cognitiveLevelId: question.cognitiveLevelId,
-          questionText: question.questionText,
-          options: question.options,
-          correctOptionIndex: question.correctOptionIndex,
-          difficultyLevel: question.difficultyLevel,
-          sequence: index + 1,
-          optionExplanations: question.optionExplanations?.map((slot) => slot ?? "") ?? null,
-          interactionType: "multiple_choice",
-        })),
-      );
-    }
-
-    const finalStatus = input.studentId == null ? "GENERATED" : "ASSIGNED";
+  if (input.lessonIds && input.lessonIds.length > 0) {
     await tx
-      .update(quizzesTable)
-      .set({ status: finalStatus, updatedAt: new Date() })
-      .where(eq(quizzesTable.id, quiz.id));
+      .insert(quizLessonLinksTable)
+      .values([...new Set(input.lessonIds)].map((lessonId) => ({
+        quizId: quiz.id,
+        lessonId,
+      })))
+      .onConflictDoNothing();
+  }
 
-    let assignmentId: number | null = null;
-    if (input.studentId != null) {
-      const [assignment] = await tx
-        .insert(quizAssignmentsTable)
-        .values({
-          quizId: quiz.id,
-          studentId: input.studentId,
-          status: "ASSIGNED",
-        })
-        .returning({ id: quizAssignmentsTable.id });
-      assignmentId = assignment.id;
-    }
+  if (generated.length > 0) {
+    await tx.insert(quizQuestionsTable).values(
+      generated.map((question, index) => ({
+        quizId: quiz.id,
+        nodeId: question.nodeId,
+        cognitiveLevelId: question.cognitiveLevelId,
+        questionText: question.questionText,
+        options: question.options,
+        correctOptionIndex: question.correctOptionIndex,
+        difficultyLevel: question.difficultyLevel,
+        sequence: index + 1,
+        optionExplanations: question.optionExplanations?.map((slot) => slot ?? "") ?? null,
+        interactionType: "multiple_choice",
+      })),
+    );
+  }
 
-    const questions = await tx
-      .select()
-      .from(quizQuestionsTable)
-      .where(eq(quizQuestionsTable.quizId, quiz.id))
-      .orderBy(asc(quizQuestionsTable.sequence));
+  const finalStatus = input.studentId == null ? "GENERATED" : "ASSIGNED";
+  await tx
+    .update(quizzesTable)
+    .set({ status: finalStatus, updatedAt: new Date() })
+    .where(eq(quizzesTable.id, quiz.id));
 
-    return {
-      quiz: { ...quiz, status: finalStatus },
-      questions,
-      generated,
-      assignmentId,
-    };
+  let assignmentId: number | null = null;
+  if (input.studentId != null) {
+    const [assignment] = await tx
+      .insert(quizAssignmentsTable)
+      .values({
+        quizId: quiz.id,
+        studentId: input.studentId,
+        status: "ASSIGNED",
+      })
+      .returning({ id: quizAssignmentsTable.id });
+    assignmentId = assignment.id;
+  }
+
+  const questions = await tx
+    .select()
+    .from(quizQuestionsTable)
+    .where(eq(quizQuestionsTable.quizId, quiz.id))
+    .orderBy(asc(quizQuestionsTable.sequence));
+
+  return {
+    quiz: { ...quiz, status: finalStatus },
+    questions,
+    generated,
+    assignmentId,
+  };
+}
+
+/**
+ * Shared persistence boundary for generated quizzes.
+ *
+ * Generation runs before the transaction because it is an external provider
+ * call. Quiz metadata, lesson links, questions, final status, and an optional
+ * learner assignment are committed together, so a failed DB write cannot
+ * expose a partially usable retest.
+ */
+export async function createQuizFromNodeScope(
+  input: CreateQuizFromNodeScopeInput,
+): Promise<CreatedQuizResult> {
+  const { nodeIds, generated } = await generateQuizFromNodeScope(input);
+
+  return db.transaction(async (tx) => {
+    return persistGeneratedQuizInTransaction(tx, input, nodeIds, generated);
   });
 }
 
