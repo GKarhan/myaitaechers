@@ -1,0 +1,527 @@
+IMPLEMENTATION TASK — COGNITIVE PATH CRUD/UI PARITY
+
+GOAL
+
+Make every Cognitive Path level fully editable and structurally identical
+regardless of how it was created:
+
+- AI-generated
+- teacher-created manually
+- teacher-edited after AI generation
+
+This is a focused CRUD/UI consistency task.
+
+Do NOT redesign Cognitive Path generation logic.
+Do NOT change C2 planning semantics.
+Do NOT change AI Teacher behavior.
+Do NOT change quiz logic.
+Do NOT change mapping semantics.
+
+==================================================
+0. INSPECT FIRST — NO CODE CHANGES YET
+==================================================
+
+Inspect the current Cognitive Path implementation and identify:
+
+1. DB/schema/entity for cognitive levels
+2. API create route
+3. API update route
+4. frontend create form
+5. frontend edit form
+6. fields currently stored for each level
+7. which fields are present for AI-created levels
+8. which fields are missing from manual-create UI
+9. which fields cannot currently be edited after creation
+10. how target-level / source flags are represented
+11. how required evidence count is stored
+12. how preferred interaction/question types are stored
+
+Report the current field contract before editing.
+
+Then implement the smallest systemic change.
+
+==================================================
+1. CANONICAL EDITABLE FIELD CONTRACT
+==================================================
+
+Every Cognitive Path level must support the same editable field set.
+
+At minimum:
+
+- cognitiveLevel / Bloom level
+  - Հիշել
+  - Հասկանալ
+  - Կիրառել
+  - Վերլուծել
+  - Գնահատել
+  - Ստեղծել
+
+- performanceObjective
+  - Կատարողական նպատակ
+
+- successCriterion
+  - Հաջողության չափանիշ
+
+- requiredEvidenceCount
+  - Պահանջվող ապացույցների քանակ
+
+- preferredInteractionTypes / question types
+
+Use the existing canonical interaction type vocabulary already present
+in the system.
+
+Examples already visible in current UI include:
+
+- Բազմակի ընտրություն
+- Ճիշտ / Սխալ
+- Թվային պատասխան
+- Կարճ պատասխան
+- Ընդարձակ պատասխան
+
+and any other existing supported types.
+
+Do not invent a second interaction-type taxonomy.
+
+==================================================
+2. EXISTING LEVEL EDITING
+==================================================
+
+When teacher clicks Edit on ANY existing Cognitive Path level,
+the edit form must allow editing:
+
+1. Bloom/cognitive level
+2. performance objective
+3. success criterion
+4. required evidence count
+5. preferred interaction/question types
+
+Currently Bloom level is not editable in existing levels.
+Fix that.
+
+Currently some manually created levels do not expose interaction types.
+Fix that.
+
+The edit form must be the same regardless of whether the level was:
+
+- AI generated
+- manually created
+- previously teacher-confirmed
+
+==================================================
+3. MANUAL CREATE FORM
+==================================================
+
+The "Ավելացնել ճանաչողական մակարդակ" form must expose the complete
+canonical contract.
+
+Current behavior is incomplete because it mainly allows selecting the Bloom level
+and text fields but does not expose the same question/interaction-type controls
+available on AI-generated levels.
+
+The manual create form must include:
+
+- Bloom level selector
+- performance objective
+- success criterion
+- required evidence count
+- preferred interaction/question types
+
+Use the same components, validation rules, and enums used by the edit form.
+
+Avoid duplicate UI implementations if possible.
+
+Prefer a shared CognitiveLevelForm component/schema.
+
+==================================================
+4. INTERACTION TYPE UI
+==================================================
+
+Preferred interaction/question types must be editable as a multi-select.
+
+Teacher may select one or more supported types.
+
+Example:
+
+☑ Բազմակի ընտրություն
+☑ Ճիշտ / Սխալ
+☐ Թվային պատասխան
+☑ Կարճ պատասխան
+☐ Ընդարձակ պատասխան
+
+Exact visual style should follow current teacher dashboard design.
+
+Rules:
+
+- preserve existing saved selections
+- allow adding/removing selections
+- do not silently erase types during unrelated edits
+- if no interaction type is selected, preserve current validation behavior
+  unless the existing backend requires at least one
+
+Do not weaken backend validation.
+
+==================================================
+5. BLOOM LEVEL EDITING
+==================================================
+
+Existing levels must allow changing the cognitive/Bloom level.
+
+Example:
+
+Վերլուծել
+→ teacher changes to
+Հասկանալ
+
+This must update the persisted level itself.
+
+Do not create a duplicate level merely because Bloom changed.
+
+After refresh, the edited Bloom level must remain persisted.
+
+If cognitive level participates in ordering or target detection,
+inspect and preserve those contracts.
+
+Do not silently change target status unless the existing architecture
+derives target status from level position/metadata.
+
+==================================================
+6. REQUIRED EVIDENCE COUNT
+==================================================
+
+Expose requiredEvidenceCount in both create and edit forms.
+
+Teacher must be able to set a valid positive number within existing system bounds.
+
+Example:
+
+Պահանջվում է: 3
+
+Teacher may change it to:
+
+1
+2
+3
+etc., according to current backend rules.
+
+Use existing validation limits.
+
+Do not introduce arbitrary new limits if a canonical validator already exists.
+
+After save and refresh the value must remain persisted.
+
+==================================================
+7. AI-CREATED VS TEACHER-CREATED PARITY
+==================================================
+
+After this task, these two records must behave identically in CRUD:
+
+AI-created Cognitive Level
+Teacher-created Cognitive Level
+
+The only difference may remain provenance/display metadata such as:
+
+🤖 AI
+✏️ Ուսուցչի կողմից հաստատված
+
+But provenance must NOT control which fields are editable.
+
+Teacher must have the same edit capabilities for both.
+
+==================================================
+8. PROVENANCE / CONFIRMATION
+==================================================
+
+Preserve existing provenance behavior.
+
+If editing an AI-generated level currently marks it as teacher-confirmed,
+preserve the established rule.
+
+Do not erase useful provenance metadata.
+
+Do not introduce a new approval system.
+
+This task is about CRUD completeness, not approval redesign.
+
+==================================================
+9. BACKEND CONTRACT
+==================================================
+
+Inspect the current create/update API contract.
+
+If update currently ignores some fields such as:
+
+- cognitive level
+- preferred interaction types
+- required evidence count
+
+extend the existing shared update contract.
+
+Do NOT add a parallel update endpoint if the current endpoint can be safely extended.
+
+Use one canonical validation schema for create/update where practical.
+
+Server must validate all editable fields.
+
+Frontend-only support is NOT sufficient.
+
+==================================================
+10. PERSISTENCE SAFETY
+==================================================
+
+Verify:
+
+create
+→ refresh
+→ same values
+
+edit
+→ refresh
+→ same values
+
+Specifically test persistence for:
+
+- Bloom level
+- performance objective
+- success criterion
+- required evidence count
+- interaction types
+
+Do not mutate unrelated Cognitive Path levels.
+
+==================================================
+11. ORDERING / TARGET NON-REGRESSION
+==================================================
+
+Changing one level must not corrupt:
+
+- level sequence/order
+- target-level marker
+- other levels in the same MicroNode
+- Cognitive Path summary
+- required/linked evidence counts
+- C2 readiness state
+
+If the teacher changes Bloom level, preserve sequence unless the current
+architecture explicitly requires reordering.
+
+Do not auto-regenerate the Cognitive Path.
+
+==================================================
+12. UI SUMMARY CONSISTENCY
+==================================================
+
+After editing/creating levels, the collapsed Cognitive Path summary must reflect
+the current persisted path.
+
+Example:
+
+Հասկանալ → Կիրառել
+
+or
+
+Կիրառել
+
+or
+
+Վերլուծել
+
+Do not leave stale summary text after save.
+
+Also inspect the current bug where the lesson summary can say:
+
+"2 / 5 ստեղծված"
+
+while more node-level Cognitive Paths visibly exist.
+
+If this count is derived from stale frontend state or an incorrect read projection,
+fix it ONLY if the root cause is inside the same Cognitive Path CRUD/read boundary.
+
+Do not expand into unrelated mapping logic.
+
+Add a regression test if this bug is reproducible.
+
+==================================================
+13. REQUIRED REGRESSION CASES
+==================================================
+
+Add deterministic/provider-free tests.
+
+CASE A
+Create manual level with:
+- Հասկանալ
+- performance objective
+- success criterion
+- evidence count = 2
+- multiple interaction types
+
+Expected:
+all fields persist.
+
+CASE B
+Edit AI-generated level:
+Կիրառել → Հասկանալ
+
+Expected:
+same level updated,
+no duplicate level,
+refresh shows Հասկանալ.
+
+CASE C
+Edit interaction types.
+
+Expected:
+new set persists exactly.
+
+CASE D
+Edit evidence count.
+
+Expected:
+new count persists.
+
+CASE E
+Edit only text.
+
+Expected:
+Bloom, evidence count, and interaction types remain unchanged.
+
+CASE F
+Teacher-created level edit.
+
+Expected:
+same editing capabilities as AI-created level.
+
+CASE G
+Multiple Cognitive Levels in same MicroNode.
+
+Expected:
+editing one does not mutate the others.
+
+CASE H
+Page refresh after edits.
+
+Expected:
+all fields restored from backend state.
+
+CASE I
+Path summary.
+
+Expected:
+summary reflects the persisted levels in correct order.
+
+CASE J
+Invalid Bloom/type/count input.
+
+Expected:
+existing validation rejects safely.
+
+==================================================
+14. PROTECTED SYSTEMS
+==================================================
+
+DO NOT modify:
+
+- Mapping Core
+- MicroNode generation
+- C1 Teaching Content
+- C2 route planner/generator semantics
+- AI Teacher runtime
+- quiz generation
+- Test 2.0
+- Knowledge Tree
+- learner evidence semantics
+- lesson assignment logic
+- lesson source blocks
+
+No provider calls are required.
+
+Do not regenerate any real lesson Cognitive Paths during implementation.
+
+==================================================
+15. NON-REGRESSION
+==================================================
+
+Run:
+
+- Cognitive Path CRUD tests
+- C2 progression/readiness tests
+- teacher dashboard typecheck
+- frontend build
+- API typecheck
+- API build
+
+Also verify existing AI-generated Cognitive Paths still render correctly.
+
+==================================================
+16. INDEPENDENT REVIEW
+==================================================
+
+Request focused independent review.
+
+Reviewer must verify:
+
+1. AI-created and teacher-created levels share the same editable contract.
+2. Bloom level is editable.
+3. interaction types are editable.
+4. evidence count is editable.
+5. edits persist after refresh.
+6. unrelated levels are not mutated.
+7. provenance remains intact.
+8. C2 behavior is not weakened.
+9. no duplicate CRUD architecture was created.
+10. path summary is not stale.
+
+Fix real findings before completion.
+
+==================================================
+17. FINAL REPORT
+==================================================
+
+Return:
+
+A. files changed
+
+B. previous create/edit contract
+
+C. new canonical Cognitive Level field contract
+
+D. Bloom editing behavior
+
+E. interaction-type editing behavior
+
+F. evidence-count editing behavior
+
+G. manual-create behavior
+
+H. AI/manual CRUD parity
+
+I. provenance behavior
+
+J. persistence behavior
+
+K. summary/count behavior
+
+L. tests/results
+
+M. typecheck/build results
+
+N. independent review result
+
+End with:
+
+BLOOM LEVEL EDITABLE FOR EXISTING LEVELS: YES / NO
+
+INTERACTION TYPES EDITABLE FOR ALL LEVELS: YES / NO
+
+REQUIRED EVIDENCE COUNT EDITABLE: YES / NO
+
+MANUAL CREATE USES FULL CONTRACT: YES / NO
+
+AI AND MANUAL LEVELS HAVE CRUD PARITY: YES / NO
+
+PERSISTS AFTER REFRESH: YES / NO
+
+READY FOR MANUAL COGNITIVE PATH TEST: YES / NO
+
+STOP.
+
+Do not proceed to any other feature automatically.

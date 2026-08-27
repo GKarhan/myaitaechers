@@ -72,6 +72,11 @@ import {
   type TeachingPackageProvenance,
 } from "../lib/teaching-package.js";
 import {
+  createTeacherCognitiveLevel,
+  updateTeacherCognitiveLevel,
+  validateCognitiveLevelFields,
+} from "../lib/cognitive-level-crud.js";
+import {
   C6_ENTRY_INTENTS,
   isC6DeliveryBlocked,
   resolveCanonicalC6Decision,
@@ -7486,26 +7491,21 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels", requireAuth, re
     minimumIndependentEvidence?: number;
     preferredInteractionTypes?: string[];
   };
+  const fieldError = validateCognitiveLevelFields(req.body, { requireCognitiveLevel: true });
+  if (fieldError) { res.status(400).json({ error: fieldError }); return; }
   if (!cognitiveLevel) { res.status(400).json({ error: "cognitiveLevel required" }); return; }
 
-  const existing = await db
-    .select({ seq: lessonNodeCognitiveLevelsTable.sequence })
-    .from(lessonNodeCognitiveLevelsTable)
-    .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId));
-  const nextSeq = existing.length > 0 ? Math.max(...existing.map((r) => r.seq)) + 1 : 1;
-
-  const [inserted] = await db.insert(lessonNodeCognitiveLevelsTable).values({
-    lessonNodeId: nodeId,
+  const inserted = await createTeacherCognitiveLevel(nodeId, {
     cognitiveLevel,
-    sequence: nextSeq,
-    isApplicable: true,
-    isTargetCeiling: false,
     performanceObjective: performanceObjective ?? null,
     successCriterion: successCriterion ?? null,
-    provenance: "teacher_authored",
     minimumIndependentEvidence: minimumIndependentEvidence ?? 3,
     preferredInteractionTypes: preferredInteractionTypes ?? [],
-  }).returning();
+  });
+  if (!inserted) {
+    res.status(409).json({ error: "COGNITIVE_LEVEL_ALREADY_EXISTS" });
+    return;
+  }
 
   await invalidateCogPathConfirmation(nodeId);
   await invalidateLessonApproval(lessonId);
@@ -7568,6 +7568,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update",
   if (!level) { res.status(404).json({ error: "Cognitive level not found" }); return; }
 
   const body = req.body as {
+    cognitiveLevel?:      string;
     performanceObjective?:     string;
     successCriterion?:         string;
     minimumIndependentEvidence?: number;
@@ -7576,39 +7577,31 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update",
     isApplicable?:             boolean;
   };
 
-  const updates: Record<string, unknown> = { provenance: "teacher_authored", updatedAt: new Date() };
-  if (body.performanceObjective    !== undefined) updates.performanceObjective    = body.performanceObjective    || null;
-  if (body.successCriterion        !== undefined) updates.successCriterion        = body.successCriterion        || null;
-  if (body.minimumIndependentEvidence !== undefined) updates.minimumIndependentEvidence = Math.max(1, body.minimumIndependentEvidence);
-  if (body.preferredInteractionTypes !== undefined) updates.preferredInteractionTypes = body.preferredInteractionTypes;
-  if (body.isApplicable            !== undefined) updates.isApplicable            = body.isApplicable;
-  if (body.isTargetCeiling === true) {
-    // Clear any existing ceiling first (bypass partial-unique-index constraint)
-    await db
-      .update(lessonNodeCognitiveLevelsTable)
-      .set({ isTargetCeiling: false, updatedAt: new Date() })
-      .where(and(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId), eq(lessonNodeCognitiveLevelsTable.isTargetCeiling, true)));
-    updates.isTargetCeiling = true;
-    // Sync legacy targetBloomLevel
-    const bloomInt = COGNITIVE_LEVEL_TO_BLOOM_INT[level.cognitiveLevel as keyof typeof COGNITIVE_LEVEL_TO_BLOOM_INT];
-    if (bloomInt) await db.update(lessonNodesTable).set({ targetBloomLevel: bloomInt }).where(eq(lessonNodesTable.id, nodeId));
-  } else if (body.isTargetCeiling === false) {
-    updates.isTargetCeiling = false;
+  const fieldError = validateCognitiveLevelFields(req.body, { requireCognitiveLevel: false });
+  if (fieldError) { res.status(400).json({ error: fieldError }); return; }
+
+  if (!Object.keys(body).some((key) => [
+    "cognitiveLevel",
+    "performanceObjective",
+    "successCriterion",
+    "minimumIndependentEvidence",
+    "preferredInteractionTypes",
+    "isApplicable",
+    "isTargetCeiling",
+  ].includes(key))) {
+    res.status(400).json({ error: "No updatable fields provided" });
+    return;
   }
 
-  if (Object.keys(updates).length === 2) { res.status(400).json({ error: "No updatable fields provided" }); return; }
-
-  await db.update(lessonNodeCognitiveLevelsTable).set(updates).where(eq(lessonNodeCognitiveLevelsTable.id, levelId));
+  const updated = await updateTeacherCognitiveLevel(nodeId, level, body);
+  if (!updated) {
+    res.status(409).json({ error: "COGNITIVE_LEVEL_ALREADY_EXISTS" });
+    return;
+  }
 
   // Invalidate confirmation if this node's cog path was confirmed
   await invalidateCogPathConfirmation(nodeId);
   await invalidateLessonApproval(lessonId);
-
-  const [updated] = await db
-    .select()
-    .from(lessonNodeCognitiveLevelsTable)
-    .where(eq(lessonNodeCognitiveLevelsTable.id, levelId))
-    .limit(1);
 
   res.json({ success: true, level: { ...updated, preferredInteractionTypes: (updated.preferredInteractionTypes ?? []) as string[] } });
 });

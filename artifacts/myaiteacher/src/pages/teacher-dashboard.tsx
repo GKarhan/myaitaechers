@@ -35,6 +35,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
 import ManualMappingEditor from "@/components/ManualMappingEditor";
+import CognitiveLevelForm, { type CognitiveLevelFormValue } from "@/components/CognitiveLevelForm";
 import {
   useGetTeacherClasses,
   useGetClassStudents,
@@ -869,11 +870,11 @@ function LessonNodesPanel({
   const [cogPathGenerating, setCogPathGenerating] = useState<Record<number, boolean>>({});
   const [cogPathError,      setCogPathError]      = useState<Record<number, string>>({});
   const [cogLevelEditId,    setCogLevelEditId]    = useState<number | null>(null);
-  const [cogLevelEditForm,  setCogLevelEditForm]  = useState<{ performanceObjective: string; successCriterion: string; minimumIndependentEvidence: number; preferredInteractionTypes: string[] } | null>(null);
+  const [cogLevelEditForm,  setCogLevelEditForm]  = useState<CognitiveLevelFormValue | null>(null);
   const [cogLevelSaving,    setCogLevelSaving]    = useState(false);
   const [cogPathConfirming, setCogPathConfirming] = useState<Record<number, boolean>>({});
   const [addLevelOpen,      setAddLevelOpen]      = useState<Record<number, boolean>>({});
-  const [addLevelForm,      setAddLevelForm]      = useState<Record<number, { cognitiveLevel: string; performanceObjective: string; successCriterion: string }>>({});
+  const [addLevelForm,      setAddLevelForm]      = useState<Record<number, CognitiveLevelFormValue>>({});
   const [addLevelSaving,    setAddLevelSaving]    = useState<Record<number, boolean>>({});
   const [bulkCogPathRunning, setBulkCogPathRunning] = useState(false);
   const [bulkCogPathProgress, setBulkCogPathProgress] = useState<{ current: number; total: number; title: string } | null>(null);
@@ -916,7 +917,7 @@ function LessonNodesPanel({
 
   const startEditCogLevel = (level: CogLevel) => {
     setCogLevelEditId(level.id);
-    setCogLevelEditForm({ performanceObjective: level.performanceObjective ?? '', successCriterion: level.successCriterion ?? '', minimumIndependentEvidence: level.minimumIndependentEvidence, preferredInteractionTypes: [...level.preferredInteractionTypes] });
+    setCogLevelEditForm({ cognitiveLevel: level.cognitiveLevel, performanceObjective: level.performanceObjective ?? '', successCriterion: level.successCriterion ?? '', minimumIndependentEvidence: level.minimumIndependentEvidence, preferredInteractionTypes: [...level.preferredInteractionTypes] });
   };
 
   const saveCogLevel = async (levelId: number, nodeId: number) => {
@@ -925,7 +926,7 @@ function LessonNodesPanel({
     try {
       const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}/update`, {
         method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(cogLevelEditForm),
+        body: JSON.stringify({ ...cogLevelEditForm, performanceObjective: cogLevelEditForm.performanceObjective || null, successCriterion: cogLevelEditForm.successCriterion || null }),
       });
       if (r.ok) { setCogLevelEditId(null); setCogLevelEditForm(null); await loadCogPath(nodeId); }
       else { const d = await r.json() as { error?: string }; setCogPathError((e) => ({ ...e, [nodeId]: d.error ?? 'Save failed' })); }
@@ -990,7 +991,7 @@ function LessonNodesPanel({
     try {
       const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels`, {
         method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cognitiveLevel: form.cognitiveLevel, performanceObjective: form.performanceObjective || null, successCriterion: form.successCriterion || null }),
+        body: JSON.stringify({ ...form, performanceObjective: form.performanceObjective || null, successCriterion: form.successCriterion || null }),
       });
       if (r.ok) {
         setAddLevelOpen((a) => ({ ...a, [nodeId]: false }));
@@ -1633,7 +1634,7 @@ function LessonNodesPanel({
           <div className="flex-1 min-w-0">
             {isEditingNode && editNodeForm ? (
               <div className="space-y-1.5">
-                <p className="text-[9px] text-white/40 mb-0.5">📝 Vanagir</p>
+                <p className="text-[9px] text-white/40 mb-0.5">📝 Վերնագիր</p>
                 <input
                   className={fieldCls}
                   placeholder="Վաղanaken (title)"
@@ -1649,7 +1650,7 @@ function LessonNodesPanel({
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, learningObjective: e.target.value })}
                 />
                 {/* Topic assignment */}
-                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">📌 Thema</p>
+                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">📌 Թեմա</p>
                 <select
                   className={fieldCls + " cursor-pointer"}
                   value={editNodeForm.topicId === null ? "null" : String(editNodeForm.topicId)}
@@ -1660,7 +1661,7 @@ function LessonNodesPanel({
                     <option key={t.id} value={String(t.id)}>{t.sequence}. {t.title}</option>
                   ))}
                 </select>
-                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">📖 Teorakam bovandakutjun</p>
+                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">📖 Տեսական բովանդակություն</p>
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={3}
@@ -1668,16 +1669,16 @@ function LessonNodesPanel({
                   value={editNodeForm.theoryContent}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, theoryContent: e.target.value })}
                 />
-                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">📄 Dasagnirkay mecberoutyun</p>
-                <p className="text-[9px] text-white/25 mb-0.5">Dasagnirkay verbatim bov.</p>
+                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">📄 Դասագրքային մեջբերում</p>
+                <p className="text-[9px] text-white/25 mb-0.5">Դասագրքից մեջբերում</p>
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
-                  placeholder="Դасагрqyan mecберуtюн (verbatimTheoryAnchor)"
+                  placeholder="Դասագրքից մեջբերում (verbatimTheoryAnchor)"
                   value={editNodeForm.verbatimTheoryAnchor}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, verbatimTheoryAnchor: e.target.value })}
                 />
-                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">⚠️ Taragvats skhalt patkeratsuum</p>
+                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">⚠️ Տարածված սխալ պատկերացում</p>
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
@@ -1685,7 +1686,7 @@ function LessonNodesPanel({
                   value={editNodeForm.commonMisconception}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, commonMisconception: e.target.value })}
                 />
-                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">📝 Sovoroghi hasken manali bacatarutyun</p>
+                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">📝 Սովորողին հասկանալի բացատրություն</p>
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={3}
@@ -1693,7 +1694,7 @@ function LessonNodesPanel({
                   value={editNodeForm.childFriendlyExplanation}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, childFriendlyExplanation: e.target.value })}
                 />
-                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">💡 Himunakakan orinakmak</p>
+                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">💡 Հիմնական օրինակներ</p>
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={3}
@@ -1701,7 +1702,7 @@ function LessonNodesPanel({
                   value={editNodeForm.basicExamples}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, basicExamples: e.target.value })}
                 />
-                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">🧩 Haka orinakmak</p>
+                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">🧩 Հակաօրինակ</p>
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
@@ -1709,7 +1710,7 @@ function LessonNodesPanel({
                   value={editNodeForm.nonExamples}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, nonExamples: e.target.value })}
                 />
-                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">🌍 Irakan kyankits orinakmak</p>
+                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">🌍 Իրական կյանքից օրինակ</p>
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
@@ -1720,8 +1721,8 @@ function LessonNodesPanel({
                 {/* Numeric fields — labeled (audit Part 3) */}
                 <div className="grid grid-cols-2 gap-2 mt-1.5">
                   <div>
-                    <p className="text-[9px] text-white/40 mb-0.5">🎯 Bloom macardak (1–6)</p>
-                    <p className="text-[9px] text-white/25 mb-0.5">1=Hishel · 6=Steghcel</p>
+                    <p className="text-[9px] text-white/40 mb-0.5">🎯 Bloom մակարդակ (1–6)</p>
+                    <p className="text-[9px] text-white/25 mb-0.5">1=Հիշել · 6=Ստեղծել</p>
                     <input
                       className={fieldCls}
                       placeholder="1–6"
@@ -1731,7 +1732,7 @@ function LessonNodesPanel({
                     />
                   </div>
                   <div>
-                    <p className="text-[9px] text-white/40 mb-0.5">⏱ Gnahatvats roghe (րոպե)</p>
+                    <p className="text-[9px] text-white/40 mb-0.5">⏱ Գնահատված ժամանակ (րոպե)</p>
                     <input
                       className={fieldCls}
                       placeholder="րոպե"
@@ -2074,44 +2075,12 @@ function LessonNodesPanel({
                     </div>
 
                     {isEditing && cogLevelEditForm ? (
-                      <div className="space-y-1.5">
-                        <div>
-                          <p className="text-[9px] text-indigo-300/60 mb-0.5">Կատարողական նպատակ (Կատարողական նպատակ)</p>
-                          <textarea className={fieldCls + " resize-none text-[10px]"} rows={2}
-                            value={cogLevelEditForm.performanceObjective}
-                            onChange={(e) => setCogLevelEditForm((f) => f && { ...f, performanceObjective: e.target.value })}
-                            placeholder="Sovoroghy kare... (Armenian)"
-                          />
-                        </div>
-                        <div>
-                          <p className="text-[9px] text-indigo-300/60 mb-0.5">հաջողության չաջանիշ</p>
-                          <textarea className={fieldCls + " resize-none text-[10px]"} rows={2}
-                            value={cogLevelEditForm.successCriterion}
-                            onChange={(e) => setCogLevelEditForm((f) => f && { ...f, successCriterion: e.target.value })}
-                            placeholder="Inch e hashvum ancelfeli apacuyc... (Armenian)"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-[9px] text-white/50">Պահանջվող անկախ ապացույցներ</label>
-                          <input type="number" min={1} max={10} className={fieldCls + " w-16 text-[10px]"}
-                            value={cogLevelEditForm.minimumIndependentEvidence}
-                            onChange={(e) => setCogLevelEditForm((f) => f && { ...f, minimumIndependentEvidence: Math.max(1, parseInt(e.target.value) || 1) })}
-                          />
-                        </div>
-                        <div>
-                          <p className="text-[9px] text-white/50 mb-1">Նախընտրելի պատասխանի օրինակներ</p>
-                          <div className="flex flex-wrap gap-1">
-                            {ALL_INTERACTION_TYPES.map((it) => {
-                              const checked = cogLevelEditForm.preferredInteractionTypes.includes(it);
-                              return (
-                                <button key={it} onClick={() => setCogLevelEditForm((f) => f && { ...f, preferredInteractionTypes: checked ? f.preferredInteractionTypes.filter((x) => x !== it) : [...f.preferredInteractionTypes, it] })}
-                                  className={"text-[9px] px-1.5 py-0.5 rounded transition-colors " + (checked ? "bg-indigo-500/40 text-indigo-200" : "bg-white/8 text-white/40 hover:bg-white/15")}>
-                                  {INTERACTION_LABELS[it] ?? it.replace(/_/g, ' ')}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                       <div className="space-y-1.5">
+                         <CognitiveLevelForm
+                           value={cogLevelEditForm}
+                           fieldCls={fieldCls}
+                           onChange={(patch) => setCogLevelEditForm((form) => form ? { ...form, ...patch } : form)}
+                         />
                         <div className="flex gap-1">
                           <button onClick={() => saveCogLevel(level.id, n.id)} disabled={cogLevelSaving} className={btnSm + " bg-indigo-600 text-white text-[10px] disabled:opacity-40"}>{cogLevelSaving ? '...' : 'Պահպանել'}</button>
                           <button onClick={() => { setCogLevelEditId(null); setCogLevelEditForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Չեղարկել</button>
@@ -2187,38 +2156,21 @@ function LessonNodesPanel({
               {!cogPathLoading[n.id] && (
                 !addLevelOpen[n.id] ? (
                   <button
-                    onClick={() => { setAddLevelOpen((a) => ({ ...a, [n.id]: true })); setAddLevelForm((f) => ({ ...f, [n.id]: { cognitiveLevel: '', performanceObjective: '', successCriterion: '' } })); }}
+                   onClick={() => { setAddLevelOpen((a) => ({ ...a, [n.id]: true })); setAddLevelForm((f) => ({ ...f, [n.id]: { cognitiveLevel: '', performanceObjective: '', successCriterion: '', minimumIndependentEvidence: 3, preferredInteractionTypes: [] } })); }}
                     className="text-[10px] text-indigo-400/40 hover:text-indigo-300 transition-colors py-0.5"
                   >+ Ավելացնել ճանաչողական մակարդակ</button>
                 ) : (
                   <div className="rounded-lg border border-indigo-400/20 bg-indigo-500/5 p-2 space-y-1.5">
                     <p className="text-[10px] text-indigo-300/70 font-medium">Նոր ճանաչողական մակարդակ</p>
-                    <select
-                      className={fieldCls + " text-[10px]"}
-                      value={addLevelForm[n.id]?.cognitiveLevel ?? ''}
-                      onChange={(e) => setAddLevelForm((f) => ({ ...f, [n.id]: { ...(f[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '' }), cognitiveLevel: e.target.value } }))}
-                    >
-                      <option value="">-- Ուսումնական մակարդակ --</option>
-                      {CANONICAL_COG_ORDER
-                        .filter((key) => !(cogPathData[n.id]?.levels ?? []).some((l) => l.cognitiveLevel === key))
-                        .map((key) => (
-                          <option key={key} value={key}>{COG_LEVEL_LABELS[key] ?? key}</option>
-                        ))}
-                    </select>
-                    <textarea
-                      className={fieldCls + " resize-none text-[10px]"}
-                      rows={2}
-                      placeholder="Կատարողական նպատակ (Armenian)..."
-                      value={addLevelForm[n.id]?.performanceObjective ?? ''}
-                      onChange={(e) => setAddLevelForm((f) => ({ ...f, [n.id]: { ...(f[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '' }), performanceObjective: e.target.value } }))}
-                    />
-                    <textarea
-                      className={fieldCls + " resize-none text-[10px]"}
-                      rows={2}
-                      placeholder="Հաջողության չափանիշ (Armenian)..."
-                      value={addLevelForm[n.id]?.successCriterion ?? ''}
-                      onChange={(e) => setAddLevelForm((f) => ({ ...f, [n.id]: { ...(f[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '' }), successCriterion: e.target.value } }))}
-                    />
+                     <CognitiveLevelForm
+                       value={addLevelForm[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '', minimumIndependentEvidence: 3, preferredInteractionTypes: [] }}
+                       fieldCls={fieldCls}
+                       excludedLevels={(cogPathData[n.id]?.levels ?? []).map((level) => level.cognitiveLevel)}
+                       onChange={(patch) => setAddLevelForm((forms) => ({
+                         ...forms,
+                         [n.id]: { ...(forms[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '', minimumIndependentEvidence: 3, preferredInteractionTypes: [] }), ...patch },
+                       }))}
+                     />
                     <div className="flex gap-1">
                       <button onClick={() => addCogLevel(n.id)} disabled={!addLevelForm[n.id]?.cognitiveLevel || !!addLevelSaving[n.id]} className={btnSm + " bg-indigo-600 text-white text-[10px] disabled:opacity-40"}>{addLevelSaving[n.id] ? '...' : 'Ավելացնել'}</button>
                       <button onClick={() => { setAddLevelOpen((a) => ({ ...a, [n.id]: false })); setAddLevelForm((f) => { const nf = { ...f }; delete nf[n.id]; return nf; }); }} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Չեղարկել</button>
@@ -2674,7 +2626,7 @@ function LessonNodesPanel({
                                   >✏️</button>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setDeleteTopicId(topic.id); setDeleteTopicOpen(true); }}
-                                    title="Ջnjel thema"
+                                    title="Ջնջել թեման"
                                     className="text-[10px] text-white/20 hover:text-destructive/70 transition-colors shrink-0 px-1"
                                   >🗑️</button>
                                 </>
