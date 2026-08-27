@@ -23,6 +23,7 @@
     "test:m3-2-semantic-contract": "tsx src/lib/__tests__/m3-2-semantic-decision-contract.test.ts",
     "test:verified-source-subset": "tsx src/lib/__tests__/verified-source-subset.test.ts",
     "test:final-approval": "tsx src/lib/__tests__/lesson-final-approval.test.ts",
+    "test:assignment-readiness": "tsx src/lib/__tests__/lesson-assignment-readiness.test.ts && tsx src/lib/__tests__/lesson-mapping-readiness.test.ts",
     "test:phase18-seq": "tsx src/lib/__tests__/sequential-deps-phase18.test.ts",
     "test:phase19-quiz-links": "tsx src/lib/__tests__/quiz-lesson-links-phase19.test.ts",
     "test:phase110-quiz-creation": "tsx src/lib/__tests__/quiz-creation-phase110.test.ts",

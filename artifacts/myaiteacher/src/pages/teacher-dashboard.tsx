@@ -3161,9 +3161,12 @@ type AssignmentReviewIssue = {
 type AssignmentReadiness = "READY" | "CONFIRMATION_REQUIRED" | "BLOCKED";
 
 type AssignmentReadinessResponse = {
+  canAssign: boolean;
   readiness: AssignmentReadiness;
   confirmationRequired: boolean;
   reviewIssues: AssignmentReviewIssue[];
+  warnings: AssignmentReviewIssue[];
+  hardBlockers: AssignmentReviewIssue[];
   errors: AssignmentReviewIssue[];
 };
 
@@ -3213,7 +3216,7 @@ function LessonAssignmentAction({
     await refreshLessons();
   };
 
-  const runAssignmentPreflight = async (confirmReviewIssues = false) => {
+  const runAssignmentPreflight = async (overrideWarnings = false) => {
     if (pending) return;
     setPending(true);
     setError(null);
@@ -3225,12 +3228,14 @@ function LessonAssignmentAction({
       const response = await fetch(`/api/lessons/${lessonId}/final-approve`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
-        body: JSON.stringify(confirmReviewIssues ? { confirmReviewIssues: true } : {}),
+        body: JSON.stringify(overrideWarnings ? { overrideWarnings: true } : {}),
       });
       const data = await response.json().catch(() => ({})) as {
         approved?: boolean;
+        canAssign?: boolean;
         confirmationRequired?: boolean;
         reviewIssues?: AssignmentReviewIssue[];
+        hardBlockers?: AssignmentReviewIssue[];
         overrideable?: AssignmentReviewIssue[];
         warnings?: AssignmentReviewIssue[];
         errors?: AssignmentReviewIssue[];
@@ -3244,7 +3249,7 @@ function LessonAssignmentAction({
         setReviewIssues(data.reviewIssues ?? [...(data.overrideable ?? []), ...(data.warnings ?? [])]);
         return;
       }
-      const issues = data.errors ?? [];
+      const issues = data.hardBlockers ?? data.errors ?? [];
       setError(
         issues.map((issue) => issue.messageArm ?? issue.message).filter(Boolean).join(" ")
         || "Դասը դեռ պատրաստ չէ հանձնարարելու համար։",
@@ -3290,7 +3295,7 @@ function LessonAssignmentAction({
         <AlertDialogContent className="border-amber-400/20 bg-[#0f1117] text-white">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-base text-amber-200">
-              Դասում կան վերանայման ենթակա կետեր
+              Դասում կան չլուծված կամ վերանայման ենթակա խնդիրներ
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm leading-relaxed text-white/70">
               Կարող եք վերադառնալ և վերանայել, կամ մեկ անգամ հաստատել ու հանձնարարել դասը։
@@ -3310,7 +3315,7 @@ function LessonAssignmentAction({
               onClick={() => setReviewIssues(null)}
               className="border-white/15 bg-white/5 text-white hover:bg-white/10"
             >
-              Վերադառնալ և վերանայել
+              Վերադառնալ և խմբագրել
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={pending}
@@ -3320,7 +3325,7 @@ function LessonAssignmentAction({
               }}
               className="bg-amber-500 text-black hover:bg-amber-400"
             >
-              {pending ? "Հանձնարարում է..." : "Հաստատել և հանձնարարել"}
+              {pending ? "Հանձնարարում է..." : "Այնուամենայնիվ հանձնարարել"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

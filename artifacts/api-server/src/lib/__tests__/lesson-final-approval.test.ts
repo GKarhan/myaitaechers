@@ -282,17 +282,17 @@ it("A1: blank LO on approved node → MISSING_LO error", async () => {
   }
 });
 
-it("A2: MISSING_LO blocks POST final-approve → 422", async () => {
+it("A2: one MISSING_LO remains visible but requires confirmation when another usable node exists", async () => {
   const snap = await getNode(NODE.id);
   assert.ok(snap);
   try {
     await db.update(lessonNodesTable).set({ learningObjective: "   " }).where(eq(lessonNodesTable.id, NODE.id));
     const { status, body } = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
-    assert.equal(status, 422, `Expected 422, got ${status}`);
+    assert.equal(status, 409, `Expected 409, got ${status}`);
     assert.equal(body.approved, false);
     assert.ok(
-      (body.errors as Array<{ code: string }>).some((e) => e.code === "MISSING_LO"),
-      "Expected MISSING_LO in errors",
+      (body.warnings as Array<{ code: string }>).some((e) => e.code === "MISSING_LO"),
+      "Expected MISSING_LO in warnings",
     );
   } finally {
     await restoreNode(snap!);
@@ -472,13 +472,13 @@ it("G3: explicit missing-content override persists audit but never fabricates co
   }
 });
 
-it("G4: explicit override cannot bypass a true validation error", async () => {
+it("G4: explicit override cannot bypass a corrupt persisted sequence", async () => {
   const snap = await getNode(NODE.id);
   assert.ok(snap);
   try {
     await db.update(lessonNodesTable).set({
       childFriendlyExplanation: null,
-      learningObjective: "",
+      sequence: 3,
     }).where(eq(lessonNodesTable.id, NODE.id));
     await db.update(lessonsTable)
       .set({ status: "needs_review", everApproved: false } as never)
@@ -488,7 +488,7 @@ it("G4: explicit override cannot bypass a true validation error", async () => {
     });
     assert.equal(status, 422);
     assert.equal(body.approved, false);
-    assert.ok((body.errors as Array<{ code: string }>).some((e) => e.code === "MISSING_LO"));
+    assert.ok((body.errors as Array<{ code: string }>).some((e) => e.code === "INVALID_NODE_SEQUENCE_GAP"));
     assert.ok((body.overrideable as Array<{ code: string }>).some((e) => e.code === "MISSING_PHASE2"));
   } finally {
     await restoreNode(snap!);
@@ -679,7 +679,7 @@ it("Q2: unresolved instructional ownership cannot approve or activate until conf
   }
 });
 
-it("Q3: unreadable or unverified instructional ownership remains non-overridable", async () => {
+it("Q3: strict source diagnostics remain visible but assignment authority permits explicit review acceptance", async () => {
   try {
     await setUnresolvedInstructionalOwnershipFixture();
     await db.insert(lessonSourceMaterialsTable).values({
@@ -700,9 +700,13 @@ it("Q3: unreadable or unverified instructional ownership remains non-overridable
     assert.ok(result.errors.some((issue) => issue.code === "UNRESOLVED_INSTRUCTIONAL_SOURCE"));
     let response = await apiPostJson(
       `/lessons/${LESSON_ID}/final-approve`,
-      { confirmReviewIssues: true },
+      { overrideWarnings: true },
     );
-    assert.equal(response.status, 422);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.canAssign, true);
+    assert.ok((response.body.warnings as Array<{ code: string }>).some(
+      (issue) => issue.code === "UNRESOLVED_INSTRUCTIONAL_SOURCE",
+    ));
 
     await setUnresolvedInstructionalOwnershipFixture({ sourceScopeValid: false });
     result = await validateLessonForFinalApproval(LESSON_ID);
@@ -711,9 +715,13 @@ it("Q3: unreadable or unverified instructional ownership remains non-overridable
     assert.ok(result.overrideable.some((issue) => issue.code === "UNRESOLVED_INSTRUCTIONAL_SOURCE") === false);
     response = await apiPostJson(
       `/lessons/${LESSON_ID}/final-approve`,
-      { confirmReviewIssues: true },
+      { overrideWarnings: true },
     );
-    assert.equal(response.status, 422);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.canAssign, true);
+    assert.ok((response.body.warnings as Array<{ code: string }>).some(
+      (issue) => issue.code === "UNVERIFIED_LESSON_SOURCE_SCOPE",
+    ));
   } finally {
     await resetFinalReadinessFixture();
   }
@@ -780,20 +788,11 @@ it("R2/R10: preflight is read-only and confirmed approval may perform one bounde
     await db.update(lessonsTable).set({ goalOutcomeReviewStatus: "confirmed" } as never)
       .where(eq(lessonsTable.id, LESSON_ID));
 
-    await db.update(lessonsTable).set({
-      mappingMetadata: {
-        ...((BASE_MAPPING_METADATA ?? {}) as Record<string, unknown>),
-        quality: {
-          sourceAudit: {
-            sourceSet: { titleMatch: { valid: true } },
-            sourceScope: { valid: false },
-          },
-        },
-      },
-    } as never).where(eq(lessonsTable.id, LESSON_ID));
+    await db.update(lessonNodesTable).set({ sequence: 3 })
+      .where(eq(lessonNodesTable.id, NODE.id));
     const blockedConfirmation = await apiPostJson(
       `/lessons/${LESSON_ID}/final-approve`,
-      { confirmReviewIssues: true },
+      { overrideWarnings: true },
     );
     assert.equal(blockedConfirmation.status, 422);
     assert.deepEqual(blockedConfirmation.body.repairedAlignmentIds, []);
@@ -806,9 +805,8 @@ it("R2/R10: preflight is read-only and confirmed approval may perform one bounde
       "SUPPORTING",
       "a hard-blocked confirmation must not mutate canonical alignments",
     );
-    await db.update(lessonsTable).set({
-      mappingMetadata: BASE_MAPPING_METADATA,
-    }).where(eq(lessonsTable.id, LESSON_ID));
+    await db.update(lessonNodesTable).set({ sequence: 1 })
+      .where(eq(lessonNodesTable.id, NODE.id));
 
     const first = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
     assert.equal(first.status, 409);

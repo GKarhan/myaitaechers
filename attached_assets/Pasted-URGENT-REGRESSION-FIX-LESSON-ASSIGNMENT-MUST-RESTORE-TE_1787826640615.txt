@@ -1,0 +1,357 @@
+URGENT REGRESSION FIX — LESSON ASSIGNMENT MUST RESTORE TEACHER OVERRIDE
+
+We previously fixed this behavior, but the regression has returned.
+
+CURRENT REAL FAILURE
+
+In the current lesson UI the teacher sees:
+
+«Հանձնարարումը հնարավոր չէ մինչև այս խնդիրների լուծումը»
+
+and assignment is blocked because, among other review issues:
+
+«Ընթեռնելի ուսումնական աղբյուրից 5 հատված MicroNode-ի պատասխանատու չունի»
+
+This is NOT the intended product contract.
+
+DO NOT patch this specific lesson.
+DO NOT change lesson data manually.
+DO NOT weaken mapping/C1/C2 validators.
+DO NOT modify Cognitive Path work currently in progress except where absolutely required to read assignment readiness.
+DO NOT make unrelated changes.
+
+==================================================
+1. FIRST — FORENSICALLY FIND THE REGRESSION
+==================================================
+
+Before editing anything:
+
+A. Find every backend and frontend code path that determines whether a lesson can be assigned.
+
+Search for all relevant concepts/messages, including equivalents of:
+
+- canAssign
+- assignment readiness
+- assignment blocked
+- assignment blockers
+- validation status
+- mapping readiness
+- source coverage
+- unmapped/readable source blocks
+- review required
+- cognitive path review
+- teaching content review
+- "Հանձնարարումը հնարավոր չէ"
+- "Հանձնարարել սովորողին"
+
+B. Inspect git/history/current implementation if available and determine:
+
+1. where the previous teacher-override behavior was implemented;
+2. what later change caused the hard-block behavior to return;
+3. whether frontend and backend currently use different assignment-readiness rules;
+4. whether there are multiple independent assignment gates.
+
+Report the concrete root cause BEFORE editing.
+
+==================================================
+2. RESTORE THE CANONICAL PRODUCT CONTRACT
+==================================================
+
+There must be ONE canonical distinction:
+
+A. HARD BLOCKER
+
+Only conditions that make assignment technically or structurally unsafe/impossible may prevent assignment.
+
+Examples may include, only if actually required by the existing architecture:
+
+- lesson does not exist;
+- lesson has no usable MicroNodes at all;
+- required persisted structure is corrupt/inconsistent;
+- assignment cannot create a valid student-facing assignment;
+- other truly fatal invariant violations.
+
+Do not invent new blockers.
+
+B. REVIEW/WARNING
+
+Quality/review issues must NOT automatically prevent assignment.
+
+Examples include:
+
+- readable source blocks without MicroNode ownership;
+- source review required;
+- MicroNode review required;
+- Cognitive Path missing/review required;
+- teaching content missing/review required;
+- exercises not attached;
+- draft/review statuses;
+- other non-fatal quality warnings.
+
+These must remain visible to the teacher but must not silently become hard blockers.
+
+==================================================
+3. TEACHER OVERRIDE FLOW
+==================================================
+
+When the teacher clicks:
+
+«Հանձնարարել սովորողին»
+
+and non-fatal warnings exist:
+
+DO NOT immediately reject the action.
+
+Show a confirmation dialog/modal.
+
+Example UX:
+
+«Դասում կան չլուծված կամ վերանայման ենթակա խնդիրներ»
+
+Then show the actual warning list returned by the canonical readiness result.
+
+Actions:
+
+[Վերադառնալ և խմբագրել]
+[Այնուամենայնիվ հանձնարարել]
+
+If the teacher selects:
+
+«Վերադառնալ և խմբագրել»
+
+→ close/cancel assignment and preserve everything.
+
+If the teacher selects:
+
+«Այնուամենայնիվ հանձնարարել»
+
+→ assignment MUST proceed unless a true HARD BLOCKER exists.
+
+The backend must support this intentionally.
+Do NOT implement a frontend-only bypass around a backend rejection.
+
+==================================================
+4. SINGLE SOURCE OF TRUTH
+==================================================
+
+This regression must not return again.
+
+Create or restore ONE shared backend-owned assignment-readiness contract.
+
+Conceptually it should distinguish:
+
+{
+  canAssign: boolean,
+  hardBlockers: [...],
+  warnings: [...]
+}
+
+Exact naming may follow the existing architecture.
+
+Frontend must render this result.
+Frontend must NOT independently reinterpret mapping/Cognitive Path/C1 warnings as hard blockers.
+
+The actual assignment mutation must enforce the SAME canonical contract.
+
+If there are currently multiple readiness implementations, consolidate them or route them through the same shared resolver.
+
+Do not duplicate policy in React and API code.
+
+==================================================
+5. OVERRIDE MUST BE EXPLICIT
+==================================================
+
+If the existing API needs an explicit override flag, use a clear bounded contract such as:
+
+overrideWarnings: true
+
+or the project's equivalent.
+
+Important:
+
+override may bypass WARNINGS only.
+
+It must NEVER bypass hardBlockers.
+
+Backend pseudologic:
+
+if hardBlockers.length > 0:
+    reject
+
+if warnings.length > 0 and overrideWarnings !== true:
+    return/raise confirmation-required state
+
+if warnings.length > 0 and overrideWarnings === true:
+    assign
+
+if no blockers/warnings:
+    assign normally
+
+Use existing response/error conventions rather than inventing incompatible API patterns.
+
+==================================================
+6. CURRENT LESSON IS A REGRESSION FIXTURE, NOT A PATCH TARGET
+==================================================
+
+The current lesson has:
+
+- 5 MicroNodes;
+- source-review warnings;
+- readable source fragments without MicroNode ownership;
+- Cognitive Path review/missing states;
+- teaching-content review/missing states.
+
+This lesson should demonstrate:
+
+warnings exist
+→ teacher is informed
+→ teacher may still explicitly assign.
+
+Do NOT change those lesson records just to make assignment pass.
+
+==================================================
+7. REQUIRED PROVIDER-FREE REGRESSION MATRIX
+==================================================
+
+Add deterministic tests around the canonical assignment authority.
+
+At minimum test:
+
+CASE 1
+No warnings + no hard blockers
+→ assignment allowed normally.
+
+CASE 2
+Readable source blocks without MicroNode ownership
+→ warning
+→ NOT hard blocker.
+
+CASE 3
+Cognitive Path missing/review required
+→ warning
+→ NOT hard blocker.
+
+CASE 4
+Teaching content missing/review required
+→ warning
+→ NOT hard blocker.
+
+CASE 5
+Multiple warnings simultaneously
+→ one confirmation flow
+→ teacher override succeeds.
+
+CASE 6
+Warnings exist, override absent
+→ assignment is not silently performed;
+→ confirmation-required behavior is returned.
+
+CASE 7
+Warnings exist + explicit override
+→ assignment succeeds.
+
+CASE 8
+True hard blocker exists + explicit override
+→ assignment still fails.
+
+CASE 9
+Frontend readiness and assignment mutation consume the same canonical policy.
+
+CASE 10 — REGRESSION PROTECTION
+The current type of state:
+5 valid MicroNodes + unmapped readable source blocks + review-required path/content
+→ must NOT become “assignment impossible”.
+→ must be “assignment possible with warnings/teacher confirmation”.
+
+No real AI/provider calls.
+
+==================================================
+8. CHECK ALL ASSIGNMENT ENTRY POINTS
+==================================================
+
+Search the entire application for every way a teacher can assign a lesson.
+
+If assignment can be triggered from more than one UI/API path, all paths must use the same authority.
+
+Do not leave one old hard-blocking path behind.
+
+==================================================
+9. PROTECT EXISTING SYSTEMS
+==================================================
+
+Do not modify:
+
+- mapping generation logic;
+- source placement logic;
+- C1 generation;
+- C2 Cognitive Path generation;
+- quiz system;
+- Knowledge Tree;
+- AI Teacher;
+- lesson content itself;
+- scoring;
+- unrelated UI.
+
+This is an assignment-policy regression fix only.
+
+==================================================
+10. VERIFICATION
+==================================================
+
+After implementation:
+
+1. run focused provider-free tests;
+2. run API typecheck;
+3. run frontend typecheck;
+4. build affected apps;
+5. restart only affected services;
+6. inspect startup/runtime logs;
+7. perform a browser-level test of:
+
+Teacher opens warning-containing lesson
+→ clicks «Հանձնարարել սովորողին»
+→ warning dialog appears
+→ warnings are visible
+→ selects «Այնուամենայնիվ հանձնարարել»
+→ assignment succeeds.
+
+Also verify:
+
+true hard blocker
+→ override cannot assign.
+
+==================================================
+11. FINAL REPORT
+==================================================
+
+Do not only say “fixed”.
+
+Report:
+
+A. ROOT CAUSE
+- why the previously fixed behavior regressed;
+- exact competing/duplicated gate if one existed.
+
+B. FILES CHANGED
+
+C. CANONICAL POLICY
+- what is now hard blocker;
+- what is warning;
+- how teacher override works.
+
+D. REGRESSION PROTECTION
+- tests added;
+- why a later mapping/C1/C2 change cannot silently turn warnings into blockers again.
+
+E. REAL FLOW RESULT
+Confirm whether the warning-containing lesson can now follow:
+
+Հանձնարարել սովորողին
+→ warnings
+→ teacher chooses
+→ Այնուամենայնիվ հանձնարարել
+→ successful assignment.
+
+IMPORTANT:
+Fix the shared systemic boundary, not this lesson.
+The goal is that we do not have to repair this assignment behavior again.

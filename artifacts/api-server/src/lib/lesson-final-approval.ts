@@ -48,6 +48,7 @@ export interface LessonValidationResult {
     phase2CompleteNodes: number;
     missingLONodes: number;
     emptyNodes: number;
+    usableNodes: number;
   };
 }
 
@@ -164,6 +165,9 @@ export async function validateLessonForFinalApproval(
   const draftSourceExercises = sourceExercises.filter((e) => e.status !== "approved");
   const phase2CompleteNodes = approvedNodes.filter(
     (n) => phase2MissingFields(n as any).length === 0
+  );
+  const usableNodes = approvedNodes.filter(
+    (node) => isLOValid(node.learningObjective) && isNodeContentPresent(node),
   );
   const metadata = (lesson.mappingMetadata ?? {}) as Record<string, any>;
   const instructionalCoverage = metadata?.quality?.instructionalCoverage;
@@ -504,6 +508,7 @@ export async function validateLessonForFinalApproval(
       phase2CompleteNodes: phase2CompleteNodes.length,
       missingLONodes: missingLONodes.length,
       emptyNodes: emptyNodes.length,
+      usableNodes: usableNodes.length,
     },
   };
 }

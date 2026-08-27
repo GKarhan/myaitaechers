@@ -21,8 +21,32 @@ assert.equal(
     microNodeCount: 3,
     reviewFindingCount: 4,
   }),
+  "CONFIRMATION_REQUIRED",
+  "Source verification findings remain visible but do not make a usable lesson impossible to assign",
+);
+
+assert.equal(
+  classifyMappingAssignmentReadiness({
+    sourceScopeVerified: true,
+    sourceSetVerified: true,
+    structuralCoverageValid: false,
+    microNodeCount: 5,
+    reviewFindingCount: 5,
+  }),
+  "CONFIRMATION_REQUIRED",
+  "Readable unowned source blocks must require confirmation rather than block assignment",
+);
+
+assert.equal(
+  classifyMappingAssignmentReadiness({
+    sourceScopeVerified: true,
+    sourceSetVerified: true,
+    structuralCoverageValid: false,
+    microNodeCount: 0,
+    reviewFindingCount: 5,
+  }),
   "BLOCKED",
-  "Unverified source scope must remain non-overridable",
+  "A lesson with no MicroNodes remains structurally impossible to assign",
 );
 
 assert.equal(
@@ -37,4 +61,4 @@ assert.equal(
   "A safe map without findings must be directly ready",
 );
 
-console.log("lesson-mapping-readiness: 3 passed, 0 failed");
+console.log("lesson-mapping-readiness: 5 passed, 0 failed");

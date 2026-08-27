@@ -17,6 +17,7 @@ import { getDueReviewTopics } from "../services/review-schedule";
 import { refreshSequentialDependencies } from "../lib/sequential-deps.js";
 import { validateKnowledgeBaseLesson } from "../lib/kb-validator.js";
 import { validateLessonForFinalApproval } from "../lib/lesson-final-approval.js";
+import { resolveLessonAssignmentReadiness } from "../lib/lesson-assignment-readiness.js";
 import { classifyMappingAssignmentReadiness } from "../lib/lesson-mapping-readiness.js";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 import { normalizeSourceExerciseAnswerContract } from "../lib/source-exercise-answer.js";
@@ -4296,11 +4297,14 @@ router.get("/lessons/:lessonId/final-approval-readiness", requireAuth, requireLe
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
   const result = await validateLessonForFinalApproval(lessonId);
+  const assignment = resolveLessonAssignmentReadiness(result);
   res.json({
     lessonId,
     ...result,
-    reviewIssues: [...result.overrideable, ...result.warnings],
-    confirmationRequired: result.readiness === "CONFIRMATION_REQUIRED",
+    ...assignment,
+    errors: assignment.hardBlockers,
+    reviewIssues: assignment.warnings,
+    confirmationRequired: assignment.readiness === "CONFIRMATION_REQUIRED",
   });
 });
 
@@ -4313,13 +4317,14 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
   const confirmReviewIssues = req.body?.confirmReviewIssues === true;
+  const overrideWarnings = req.body?.overrideWarnings === true || confirmReviewIssues;
   // Compatibility for callers of the prior narrow Teaching Content override.
   const confirmMissingTeachingContent = req.body?.confirmMissingTeachingContent === true;
   // Preflight must remain read-only. The bounded normalization is permitted only
   // after the teacher explicitly confirms the review findings and a locked
   // validation proves there are no hard blockers.
   let repairedAlignmentIds: number[] = [];
-  if (confirmReviewIssues || confirmMissingTeachingContent) {
+  if (overrideWarnings || confirmMissingTeachingContent) {
     const preRepair = await db.transaction(async (tx) => {
     // Serialize final approval per lesson. Authoring writes persist their
     // material change first and then use the same parent row when invalidating,
@@ -4327,7 +4332,8 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
     // concurrent change returns a non-sticky override to review.
     await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
     const validation = await validateLessonForFinalApproval(lessonId);
-    if (validation.errors.length > 0) {
+    const assignment = resolveLessonAssignmentReadiness(validation);
+    if (assignment.hardBlockers.length > 0) {
       return { blocked: validation, repairedIds: [] as number[] };
     }
 
@@ -4397,17 +4403,19 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
       return { blocked: null, repairedIds };
     });
     if (preRepair.blocked) {
-      const reviewIssues = [...preRepair.blocked.overrideable, ...preRepair.blocked.warnings];
+      const assignment = resolveLessonAssignmentReadiness(preRepair.blocked);
       res.status(422).json({
         approved: false,
         lessonId,
-        errors: preRepair.blocked.errors,
+        canAssign: false,
+        hardBlockers: assignment.hardBlockers,
+        errors: assignment.hardBlockers,
         overrideable: preRepair.blocked.overrideable,
-        reviewIssues,
+        reviewIssues: assignment.warnings,
         confirmationRequired: false,
-        readiness: preRepair.blocked.readiness,
+        readiness: assignment.readiness,
         repairedAlignmentIds: [],
-        warnings: preRepair.blocked.warnings,
+        warnings: assignment.warnings,
         summary: preRepair.blocked.summary,
       });
       return;
@@ -4420,17 +4428,18 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
     // canonical state rather than an uncommitted transaction snapshot.
     await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
     const result = await validateLessonForFinalApproval(lessonId);
-    const reviewIssues = [...result.overrideable, ...result.warnings];
-    const missingTeachingContent = result.overrideable.filter((issue) => issue.code === "MISSING_PHASE2");
-    if (result.errors.length > 0) {
-      return { kind: "blocked" as const, result, reviewIssues, repairedAlignmentIds };
+    const assignment = resolveLessonAssignmentReadiness(result);
+    const reviewIssues = assignment.warnings;
+    const missingTeachingContent = reviewIssues.filter((issue) => issue.code === "MISSING_PHASE2");
+    if (assignment.hardBlockers.length > 0) {
+      return { kind: "blocked" as const, result, assignment, reviewIssues, repairedAlignmentIds };
     }
     if (
       reviewIssues.length > 0
-      && !confirmReviewIssues
+      && !overrideWarnings
       && !(confirmMissingTeachingContent && reviewIssues.every((issue) => issue.code === "MISSING_PHASE2"))
     ) {
-      return { kind: "confirmation_required" as const, result, reviewIssues, repairedAlignmentIds };
+      return { kind: "confirmation_required" as const, result, assignment, reviewIssues, repairedAlignmentIds };
     }
 
     const [currentLesson] = await tx.select({
@@ -4472,20 +4481,22 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
         },
       } as any)
       .where(eq(lessonsTable.id, lessonId));
-    return { kind: "approved" as const, result, reviewIssues, approvalAudit, repairedAlignmentIds };
+    return { kind: "approved" as const, result, assignment, reviewIssues, approvalAudit, repairedAlignmentIds };
   });
 
   if (finalization.kind === "blocked") {
     res.status(422).json({
       approved: false,
       lessonId,
-      errors: finalization.result.errors,
+      canAssign: false,
+      hardBlockers: finalization.assignment.hardBlockers,
+      errors: finalization.assignment.hardBlockers,
       overrideable: finalization.result.overrideable,
       reviewIssues: finalization.reviewIssues,
       confirmationRequired: false,
-      readiness: finalization.result.readiness,
+      readiness: finalization.assignment.readiness,
       repairedAlignmentIds: finalization.repairedAlignmentIds,
-      warnings: finalization.result.warnings,
+      warnings: finalization.assignment.warnings,
       summary: finalization.result.summary,
     });
     return;
@@ -4494,11 +4505,13 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
     res.status(409).json({
       approved: false,
       lessonId,
+      canAssign: true,
+      hardBlockers: [],
       errors: [],
       overrideable: finalization.result.overrideable,
       reviewIssues: finalization.reviewIssues,
       confirmationRequired: true,
-      readiness: finalization.result.readiness,
+      readiness: finalization.assignment.readiness,
       repairedAlignmentIds: finalization.repairedAlignmentIds,
       missingTeachingContent: {
         nodeCount: new Set(finalization.result.overrideable
@@ -4506,7 +4519,7 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
           .map((issue) => issue.nodeId)
           .filter((nodeId): nodeId is number => typeof nodeId === "number")).size,
       },
-      warnings: finalization.result.warnings,
+      warnings: finalization.assignment.warnings,
       summary: finalization.result.summary,
     });
     return;
@@ -4515,14 +4528,16 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
   res.json({
     approved: true,
     lessonId,
+    canAssign: true,
+    hardBlockers: [],
     errors: [],
     overrideable: finalization.result.overrideable,
     reviewIssues: finalization.reviewIssues,
     confirmationRequired: false,
-    readiness: finalization.result.readiness,
+    readiness: finalization.assignment.readiness,
     repairedAlignmentIds: finalization.repairedAlignmentIds,
     approvalMode: finalization.approvalAudit.mode,
-    warnings: finalization.result.warnings,
+    warnings: finalization.assignment.warnings,
     summary: finalization.result.summary,
   });
 });
