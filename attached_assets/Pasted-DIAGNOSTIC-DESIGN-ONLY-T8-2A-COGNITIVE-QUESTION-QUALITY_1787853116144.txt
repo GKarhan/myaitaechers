@@ -1,0 +1,605 @@
+DIAGNOSTIC / DESIGN ONLY — T8.2A
+COGNITIVE QUESTION QUALITY GATE AUDIT
+
+IMPORTANT:
+DO NOT CHANGE CODE.
+DO NOT CHANGE DATABASE DATA.
+DO NOT CREATE A MIGRATION.
+DO NOT CALL THE AI/PROVIDER.
+DO NOT GENERATE A QUIZ.
+DO NOT MODIFY LESSON 754.
+DO NOT RESTART WORKFLOWS unless absolutely necessary for read-only inspection.
+DO NOT IMPLEMENT A VALIDATOR YET.
+
+This is a READ-ONLY forensic audit.
+
+==================================================
+CONTEXT — ALREADY IMPLEMENTED AND PROTECTED
+==================================================
+
+The Test 2.0 architecture now has these protected behaviors:
+
+1. Normal quizzes assess each selected MicroNode at its canonical mapped target Cognitive Level.
+
+2. The canonical target comes from the accepted Cognitive Path and is backend-owned.
+
+3. The Canonical Quiz Target Resolver fails closed when the Cognitive Path is not sufficiently confirmed or is inconsistent.
+
+4. Normal quiz generation persists provenance:
+   - nodeId
+   - cognitiveLevelId
+
+5. Teacher quiz review displays:
+   - MicroNode title
+   - Cognitive Level Armenian label
+
+6. Learner immediate feedback is already implemented.
+
+7. Teacher-facing EASY / MEDIUM / HARD / MIXED selection has been removed.
+
+8. Internal LOW / MEDIUM / HIGH complexity infrastructure remains and MUST NOT be confused with Bloom/Cognitive Level.
+
+9. Async quiz generation infrastructure is already implemented and protected.
+
+10. Retest, scoring, Knowledge Tree, AI Teacher, assignment, mapping, and Cognitive Path CRUD are OUT OF SCOPE.
+
+DO NOT regress or redesign any of the above.
+
+==================================================
+CORE PROBLEM TO AUDIT
+==================================================
+
+Persisting:
+
+cognitiveLevelId = Apply
+
+does NOT by itself prove that the generated question actually requires Apply-level cognition.
+
+Example:
+
+MicroNode:
+"Զանգվածի միավորները և դրանց փոխակերպումը"
+
+Target:
+Apply
+
+A valid Apply question might require the learner to actually perform a conversion in a new concrete case.
+
+But a weak generated question such as:
+
+"1 կգ-ը քանի՞ գրամ է"
+
+may mostly test recall even if the database says:
+
+cognitiveLevel = apply
+
+Therefore we now need to determine whether the current system has a REAL semantic quality gate between:
+
+MAPPED TARGET
+        ↓
+GENERATION CONTRACT
+        ↓
+GENERATED QUESTION
+        ↓
+QUESTION ACCEPTANCE/PERSISTENCE
+
+We need evidence that the generated question actually measures the intended cognitive performance.
+
+==================================================
+T8.2A OBJECTIVE
+==================================================
+
+Audit the CURRENT implementation and answer:
+
+Does the system currently VERIFY that a generated question semantically matches:
+
+1. the intended MicroNode,
+2. the canonical target Cognitive Level,
+3. performanceObjective,
+4. successCriterion,
+5. preferredInteractionTypes,
+
+or does it mainly trust provider output and persist the declared provenance?
+
+DO NOT IMPLEMENT ANYTHING.
+
+==================================================
+PART A — TRACE THE COMPLETE GENERATION PIPELINE
+==================================================
+
+Trace one normal generated question from:
+
+teacher Create Quiz
+→ async job
+→ canonical target resolver
+→ MicroNode/context loading
+→ provider prompt
+→ provider response
+→ parsing/schema validation
+→ persistence
+
+For each boundary report:
+
+- exact file
+- exact function
+- input
+- output
+- validation performed
+- whether semantic cognitive validation occurs
+
+Give the final pipeline as:
+
+MicroNode
+→ Cognitive Path
+→ Canonical Target
+→ Generation Contract
+→ Provider
+→ Parser
+→ Quality Validation?
+→ Persistence
+
+==================================================
+PART B — INVENTORY THE GENERATION INPUT
+==================================================
+
+Determine exactly what information is currently passed to the provider PER MICRONODE / PER QUESTION.
+
+Check specifically for:
+
+- nodeId
+- MicroNode title
+- learningObjective
+- theory/content
+- source context
+- sourceQuote
+- canonical Cognitive Level
+- cognitiveLevelId
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- misconceptions
+- knowledge boundaries
+- textbook exercises/examples
+- internal complexity/difficulty
+- expected question count
+
+For each field classify:
+
+A. available and passed
+B. available but NOT passed
+C. unavailable
+D. passed only indirectly
+
+Do not assume. Trace actual code.
+
+==================================================
+PART C — CURRENT PROVIDER INSTRUCTIONS
+==================================================
+
+Find the exact prompt/instruction logic that tells the provider what Cognitive Level to assess.
+
+Report how the provider is instructed for:
+
+- Remember
+- Understand
+- Apply
+- Analyze
+- Evaluate
+- Create
+
+Determine whether these are:
+
+1. only labels,
+2. short generic definitions,
+3. operational requirements,
+4. level-specific question construction rules.
+
+Example distinction:
+
+WEAK:
+"Bloom level: Apply"
+
+STRONGER:
+"The learner must use the mapped rule in a concrete case; a question answerable only by recalling a stated fact is invalid."
+
+We need to know which type the current implementation actually uses.
+
+Also determine whether the prompt explicitly prevents lower-level substitution.
+
+Example:
+
+Target = Apply
+
+Does the prompt prohibit a question that merely asks the learner to recall a formula/fact?
+
+Target = Analyze
+
+Does it require comparison, decomposition, relationship analysis, evidence interpretation, etc.?
+
+Report exact current behavior.
+
+==================================================
+PART D — CURRENT OUTPUT SCHEMA
+==================================================
+
+Inspect the provider response schema.
+
+For every generated question, what fields does the AI return?
+
+Especially inspect whether there is anything equivalent to:
+
+- questionText
+- options
+- correct answer
+- explanation
+- nodeId
+- cognitiveLevel
+- cognitiveLevelId
+- interactionType
+- rationale
+- whyThisMeasuresTarget
+- evidenceRequirement
+- objective alignment
+- success criterion alignment
+
+Identify which values come FROM AI and which are attached authoritatively by backend code.
+
+This distinction is critical.
+
+==================================================
+PART E — CURRENT VALIDATION LAYERS
+==================================================
+
+Inventory EVERY validation that occurs after provider output and before persistence.
+
+Separate:
+
+1. JSON/schema validation
+2. structural validation
+3. answer/options validation
+4. node ownership validation
+5. Cognitive Level provenance validation
+6. interaction-type validation
+7. semantic MicroNode alignment
+8. semantic Cognitive Level alignment
+9. performanceObjective alignment
+10. successCriterion alignment
+11. duplicate/near-duplicate detection
+12. source grounding validation
+
+For each one answer:
+
+EXISTS / DOES NOT EXIST
+
+and give the exact function/file if it exists.
+
+==================================================
+PART F — MOST IMPORTANT QUESTION
+==================================================
+
+Can this currently happen?
+
+Canonical target:
+Apply
+
+Generated question:
+"1 կգ-ը քանի՞ գրամ է"
+
+Persisted:
+nodeId = correct MicroNode
+cognitiveLevelId = Apply level
+
+If YES, explain exactly why the current validation permits it.
+
+If NO, identify the exact deterministic or AI validation that prevents it.
+
+Then test the same conceptual issue for:
+
+Understand target receiving a Remember question.
+
+Analyze target receiving an Apply question.
+
+Evaluate target receiving an Analyze question.
+
+Create target receiving an Evaluate question.
+
+DO NOT call the provider.
+
+Answer from code contracts only.
+
+==================================================
+PART G — BLOOM LEVEL OPERATIONAL CONTRACT
+==================================================
+
+Based on the CURRENT architecture and our mapped Cognitive Path model, propose — DESIGN ONLY — a minimal operational assessment contract for each level.
+
+We need a contract suitable for automated question generation and later validation.
+
+For each:
+
+REMEMBER
+UNDERSTAND
+APPLY
+ANALYZE
+EVALUATE
+CREATE
+
+Give:
+
+1. What learner performance must the question elicit?
+2. What kinds of questions are valid?
+3. What lower-level substitute must be rejected?
+4. Which existing fields can support validation?
+5. Which preferredInteractionTypes are naturally compatible?
+
+Keep this aligned with our existing Cognitive Path fields:
+
+- cognitiveLevel
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+
+Do NOT invent a second curriculum taxonomy.
+
+==================================================
+PART H — INTERACTION TYPE COMPATIBILITY
+==================================================
+
+Audit whether preferredInteractionTypes are currently enforced during generation.
+
+Current canonical vocabulary includes:
+
+- multiple_choice
+- multi_select
+- true_false
+- matching
+- classification
+- ordering
+- numeric_answer
+- short_answer
+- constructed_response
+- problem_solving
+
+Determine:
+
+1. Are they actually passed to generation?
+2. Does generation respect them?
+3. Does parser support all of them?
+4. Does learner quiz UI support all of them?
+5. Does scoring support all of them?
+6. Could the generator currently produce an interaction type that the learner UI cannot correctly render/score?
+
+This is diagnostic only.
+
+DO NOT expand interaction types now.
+
+==================================================
+PART I — COMPLEXITY VS COGNITIVE LEVEL
+==================================================
+
+Confirm that current internal:
+
+LOW / MEDIUM / HIGH
+
+difficulty/complexity is independent from:
+
+Remember / Understand / Apply / Analyze / Evaluate / Create.
+
+Audit whether any current code accidentally uses difficulty as a proxy for Bloom.
+
+We already removed teacher difficulty selection.
+
+We MUST preserve the useful idea that, for example:
+
+Apply + LOW complexity
+Apply + MEDIUM complexity
+Apply + HIGH complexity
+
+can all exist.
+
+But complexity must never decide the Cognitive Level.
+
+Report any remaining coupling.
+
+==================================================
+PART J — WHAT SHOULD THE QUALITY GATE VALIDATE?
+==================================================
+
+DESIGN ONLY.
+
+Propose the smallest reliable post-generation quality gate.
+
+Do NOT implement it.
+
+Compare these options:
+
+OPTION 1
+Prompt-only enforcement.
+
+OPTION 2
+Deterministic validation only.
+
+OPTION 3
+Second AI semantic review only.
+
+OPTION 4
+Hybrid:
+deterministic invariants
++
+structured AI self-evidence / semantic review
++
+fail-closed acceptance.
+
+For our architecture, recommend ONE.
+
+The recommendation must account for:
+
+- reliability
+- provider cost
+- latency
+- async job architecture
+- false acceptance
+- false rejection
+- testability
+- deterministic provenance
+- future scaling
+
+==================================================
+PART K — SELF-EVIDENCE CONTRACT
+==================================================
+
+Evaluate whether generation should return structured evidence such as:
+
+{
+  "questionText": "...",
+  "targetCognitiveLevel": "apply",
+  "performanceDemand": "...",
+  "alignmentRationale": "...",
+  "successCriterionEvidence": "..."
+}
+
+IMPORTANT:
+
+The AI declaring "this is Apply" is NOT sufficient validation.
+
+Explain what such self-evidence could safely be used for and what still requires independent validation.
+
+==================================================
+PART L — FAILURE POLICY
+==================================================
+
+DESIGN ONLY.
+
+If a generated question fails Cognitive Quality validation, what should happen?
+
+Compare:
+
+A. Persist it with warning
+B. Silently downgrade/modify its cognitive label
+C. Retry generation for that question
+D. Reject the entire quiz
+E. Regenerate only the failed question(s)
+
+Recommend the safest minimal policy.
+
+Our architectural principle is:
+
+NEVER fabricate or silently change the mapped target Cognitive Level merely to make a generated question fit.
+
+==================================================
+PART M — EXISTING DATA / MIGRATION IMPACT
+==================================================
+
+Determine whether implementing the future quality gate would require:
+
+- DB migration
+- new quiz_questions fields
+- new job fields
+- only generation-time transient validation
+- optional audit metadata
+
+Do not create any migration.
+
+Recommend the minimum necessary persistence, if any.
+
+==================================================
+PART N — TEST STRATEGY
+==================================================
+
+Design provider-free regression cases for the future implementation.
+
+At minimum include:
+
+1. Remember target + valid Remember question → PASS
+2. Understand target + valid Understand question → PASS
+3. Understand target + pure recall question → FAIL
+4. Apply target + real application question → PASS
+5. Apply target + pure recall question → FAIL
+6. Analyze target + real analysis question → PASS
+7. Analyze target + simple application question → FAIL
+8. Evaluate target + justified judgment → PASS
+9. Evaluate target + simple comparison only → FAIL
+10. Create target + genuine production/design task → PASS
+11. Create target + selection among supplied answers only → FAIL
+12. Correct node but wrong Cognitive Level → FAIL
+13. Correct Cognitive Level but wrong MicroNode content → FAIL
+14. Question violates successCriterion → FAIL
+15. Unsupported preferredInteractionType → FAIL CLOSED or explicit compatibility error
+16. Internal HIGH difficulty + Understand target must remain Understand
+17. Internal LOW difficulty + Apply target must remain Apply
+
+Explain which can be deterministic unit tests and which require mocked semantic-review results.
+
+==================================================
+PART O — PROTECTED NON-REGRESSION BOUNDARY
+==================================================
+
+Future T8.2 implementation MUST NOT change:
+
+- Canonical Quiz Target Resolver
+- Cognitive Path acceptance authority
+- isTargetCeiling semantics
+- async quiz-generation job architecture
+- idempotency
+- nodeId provenance
+- cognitiveLevelId provenance
+- teacher provenance labels
+- learner immediate feedback
+- existing answer-key secrecy
+- scoring
+- retest
+- continuous quiz session
+- Knowledge Tree
+- AI Teacher
+- mapping
+- assignment
+- lesson data
+- teacher difficulty UI removal
+
+Confirm whether a Cognitive Quality Gate can be added narrowly at:
+
+Provider output
+→ parse
+→ QUALITY GATE
+→ persistence
+
+without redesigning those systems.
+
+==================================================
+REQUIRED FINAL REPORT
+==================================================
+
+Return exactly these sections:
+
+1. Current generation pipeline
+2. Current provider input inventory
+3. Current Cognitive Level prompt contract
+4. Current provider output schema
+5. Existing validation matrix
+6. Can declared Apply currently contain a recall-only question?
+7. Current interaction-type support
+8. Difficulty vs Cognitive Level audit
+9. Proposed six-level operational assessment contract
+10. Recommended Cognitive Question Quality Gate architecture
+11. Recommended failure/retry policy
+12. Persistence/migration impact
+13. Provider-free regression test plan
+14. Smallest next implementation step
+15. Files/functions that future implementation would touch
+16. Protected systems that must remain unchanged
+
+End with exactly:
+
+CURRENT SEMANTIC COGNITIVE VALIDATION EXISTS: YES/NO
+PROVIDER OUTPUT CURRENTLY TRUSTED FOR QUESTION SEMANTICS: YES/NO
+DECLARED TARGET CAN CURRENTLY DIFFER FROM ACTUAL QUESTION DEMAND: YES/NO
+PREFERRED INTERACTION TYPES FULLY ENFORCED: YES/NO
+DIFFICULTY USED AS BLOOM AUTHORITY: YES/NO
+POST-GENERATION QUALITY GATE RECOMMENDED: YES/NO
+DB MIGRATION REQUIRED FOR MINIMAL VERSION: YES/NO
+SAFE NARROW INSERTION POINT IDENTIFIED: YES/NO
+READY FOR T8.2B IMPLEMENTATION DESIGN: YES/NO
+
+STOP AFTER THE AUDIT.
+
+DO NOT IMPLEMENT T8.2B.
