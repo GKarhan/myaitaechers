@@ -1,0 +1,310 @@
+SMALL TARGETED TASK — MANUAL COGNITIVE PATH CHANGES MUST REFRESH CANONICAL STATUS / SUMMARY
+
+We are preparing to run the real Test 2.0 acceptance test, but the lesson UI appears to retain stale preliminary Cognitive Path status after the teacher manually adds/edits/confirms Cognitive Levels.
+
+IMPORTANT:
+Do NOT start quiz generation work.
+Do NOT modify Test 2.0 / T5 / T7 / T8.1 / T8.2B / T8.2C.
+Do NOT modify quiz generation, scoring, retest, Knowledge Tree, AI Teacher, source mapping, exercises, or Teaching Content.
+Do NOT regenerate Cognitive Paths with AI.
+Do NOT modify Lesson 754 data manually as a workaround.
+Do NOT add lesson-specific code.
+
+This task is only about making the existing Cognitive Path state and its lesson/MicroNode summaries correctly reflect teacher-authored changes.
+
+==================================================
+PHASE 1 — DIAGNOSE FIRST, NO CODE CHANGES
+==================================================
+
+Use Lesson 754 as READ-ONLY diagnostic evidence.
+
+Current observed UI state:
+
+Lesson:
+Նժարավոր կշեռքն ու զանգվածի միավորները
+
+The lesson-level Cognitive Path summary still says approximately:
+
+3 / 5 ստեղծված
+2-ը դեռ չի ստեղծվել
+⚠ 3-ը պահանջում է վերանայում
+
+However, the teacher has manually added/edited Cognitive Levels.
+
+Examples from the current UI:
+
+MN1
+«Զանգվածի միավորները և դրանց փոխակերպումը»
+
+Path displayed:
+Հասկանալ → Կիրառել
+
+Understand:
+Ուսուցչի կողմից հաստատված
+
+Apply:
+🎯 Թիրախային
+AI
+
+Yet the MicroNode still says:
+«Ճանաչողական ուղու հիմնավորումը պետք է վերանայվի»
+
+--------------------------------------------------
+
+MN2
+«Նժարավոր կշեռքի աշխատանքի սկզբունքը»
+
+Path displayed:
+Հասկանալ
+
+Level:
+Հասկանալ
+Ուսուցչի կողմից հաստատված
+
+Yet the MicroNode still says:
+«Ճանաչողական ուղին պետք է հաստատվի»
+
+--------------------------------------------------
+
+MN3
+«Նժարավոր կշեռքի հավասարակշռության պահպանումը»
+
+Path:
+Կիրառել
+
+Level:
+Կիրառել
+Ուսուցչի կողմից հաստատված
+
+--------------------------------------------------
+
+MN4
+«Անհայտ զանգվածի որոշումը նժարավոր կշեռքով»
+
+Path:
+Կիրառել
+
+Level:
+Կիրառել
+🎯 Թիրախային
+Ուսուցչի կողմից հաստատված
+
+Yet the MicroNode still says:
+«Ճանաչողական ուղին պետք է հաստատվի»
+
+--------------------------------------------------
+
+MN5
+«Նժարավոր կշեռքով կշռման խնդիրների լուծում»
+
+Path:
+Վերլուծել
+
+Level:
+Վերլուծել
+Ուսուցչի կողմից հաստատված
+
+==================================================
+QUESTION TO ANSWER FIRST
+==================================================
+
+Determine whether these visible inconsistencies are:
+
+A. stale persisted status fields,
+B. stale derived/read-model calculations,
+C. frontend cache/query invalidation problems,
+D. different legitimate status concepts being displayed unclearly,
+E. or a combination.
+
+Trace the COMPLETE authority chain:
+
+teacher manually creates/edits/deletes/confirms Cognitive Level
+→ mutation endpoint
+→ persisted Cognitive Path rows
+→ path acceptance / confirmation authority
+→ MicroNode review status
+→ lesson-level "X / Y created / missing / review" summary
+→ final approval/readiness
+→ Canonical Quiz Target Resolver.
+
+For every displayed status/count, identify EXACTLY where it comes from.
+
+Do not assume the UI text is authoritative.
+
+==================================================
+CRITICAL ARCHITECTURE RULE
+==================================================
+
+Teacher-authored Cognitive Path changes must become the current canonical state.
+
+A stale preliminary AI/mapping status must NOT remain authoritative after the teacher has legitimately corrected the path.
+
+However:
+
+DO NOT blindly mark a path confirmed merely because one Cognitive Level row exists.
+
+The existing Cognitive Path acceptance contract remains authoritative.
+
+A path should be considered confirmed/usable only if it satisfies the canonical acceptance requirements, including the existing target-ceiling and integrity rules.
+
+Teacher edits must trigger/recompute the SAME canonical authority — not create a second parallel definition of "confirmed".
+
+The Canonical Quiz Target Resolver must continue to fail closed if the resulting path genuinely does not satisfy that contract.
+
+==================================================
+PHASE 1 OUTPUT — BEFORE EDITING
+==================================================
+
+Report:
+
+1. Exact persisted Cognitive Path rows for all 5 Lesson 754 MicroNodes.
+2. Which rows are teacher-authored vs AI-authored, if the schema tracks this.
+3. Exact `isTargetCeiling` state for each path.
+4. Exact acceptance/confirmation state for each path.
+5. Why lesson summary still reports 3/5 created and 2 missing.
+6. Why MN2 and MN4 still display “path must be confirmed”.
+7. Why MN1 still displays “path rationale must be reviewed”.
+8. Whether those messages are currently correct or stale.
+9. Whether manual mutations recompute/invalidate the relevant state.
+10. Whether frontend query invalidation is also missing.
+11. What the Canonical Quiz Target Resolver currently returns for each of the five nodes.
+12. ONE smallest systemic fix.
+
+STOP and reason from evidence before implementing.
+
+==================================================
+PHASE 2 — IMPLEMENT ONLY IF ROOT CAUSE IS PROVEN
+==================================================
+
+After identifying the root cause, implement the smallest systemic fix.
+
+Preferred invariant:
+
+After any teacher mutation that can change Cognitive Path validity:
+
+CREATE Cognitive Level
+EDIT Cognitive Level
+DELETE Cognitive Level
+SET/CHANGE target ceiling
+CONFIRM/ACCEPT path
+
+the system must derive/recompute the canonical path state from the CURRENT persisted Cognitive Path rows.
+
+Do not preserve stale mapping-time status as the final authority.
+
+If the UI uses derived status:
+make it derive from canonical current state.
+
+If persisted review fields must be updated:
+update them transactionally with the mutation.
+
+If React Query/cache invalidation is missing:
+invalidate/refetch only the necessary lesson/path/readiness queries after successful mutation.
+
+Do not introduce duplicate status authorities.
+
+==================================================
+IMPORTANT DISTINCTION
+==================================================
+
+"Path exists" and "Path is canonically confirmed" are NOT the same thing.
+
+The lesson summary should distinguish correctly between at least:
+
+- Missing path
+- Path exists but requires review/confirmation
+- Canonically confirmed path
+
+Therefore:
+
+A manually added path that is incomplete must remain review-required.
+
+A manually corrected path that satisfies the canonical acceptance contract must stop appearing as missing/stale review merely because its original mapping result was preliminary.
+
+==================================================
+REGRESSION TESTS REQUIRED
+==================================================
+
+Add focused provider-free tests for at least:
+
+A. Missing path → counted as missing.
+
+B. Teacher creates a valid complete path → no longer counted as missing.
+
+C. Teacher confirms a valid path → summary becomes confirmed/ready.
+
+D. Teacher edits an existing preliminary AI path into a valid canonical path → stale preliminary status does not survive.
+
+E. Teacher changes target ceiling → canonical target resolver immediately returns the new valid target.
+
+F. Teacher deletes the target level → path becomes invalid/review-required and resolver fails closed.
+
+G. Invalid manually created path is NOT automatically treated as confirmed.
+
+H. Lesson summary counts equal the actual current canonical states of its MicroNodes.
+
+I. Refresh/read-after-write returns the same status as immediately after mutation.
+
+J. Existing T5 Canonical Quiz Target Resolver tests remain green.
+
+==================================================
+PROTECTED SYSTEMS
+==================================================
+
+Must remain unchanged:
+
+- T5 Canonical Quiz Target Resolver semantics
+- T7.1 canonical generation
+- T7.2 teacher question provenance
+- T7.3 learner feedback
+- T8.1 teacher assessment UI
+- T8.2B quality contract
+- T8.2C live quality gate
+- async quiz-generation jobs
+- retest semantics
+- scoring
+- Knowledge Tree
+- AI Teacher
+- lesson exercises
+- source mapping
+- Teaching Content
+
+No provider calls.
+
+Do not generate a quiz.
+
+Do not mutate Lesson 754 during automated tests.
+
+Use isolated fixtures for mutation tests.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report:
+
+1. Root cause.
+2. Files changed.
+3. Previous authority chain.
+4. Corrected authority chain.
+5. Whether manual CREATE is reflected immediately.
+6. Whether manual EDIT is reflected immediately.
+7. Whether manual DELETE is reflected immediately.
+8. Whether target-ceiling changes are reflected immediately.
+9. Whether lesson-level counts are now derived from current canonical state.
+10. Whether stale mapping-time review state can still override valid teacher-authored state.
+11. Canonical Quiz Target Resolver regression result.
+12. All tests run/results.
+13. Confirmation that Lesson 754 was not manually repaired.
+
+End with exactly:
+
+MANUAL PATH CHANGES REFLECTED: YES/NO
+LESSON SUMMARY USES CURRENT PATH STATE: YES/NO
+STALE PRELIMINARY STATUS REMAINS AUTHORITATIVE: YES/NO
+INVALID MANUAL PATH FAILS CLOSED: YES/NO
+CANONICAL QUIZ TARGET RESOLVER PRESERVED: YES/NO
+QUIZ GENERATION MODIFIED: NO
+PROVIDER CALLED: NO
+LESSON 754 MANUALLY MODIFIED: NO
+READY FOR LESSON 754 TEST 2.0 ACCEPTANCE: YES/NO

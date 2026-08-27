@@ -2022,7 +2022,7 @@ function LessonNodesPanel({
                 </span>
               ) : null}
               {cogPathData[n.id]?.cogPathStatus === 'needs_review' && (
-                <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">⏳ Gashmvum e</span>
+                <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">⏳ Ստուգվում է</span>
               )}
             </span>
             <span className="text-[10px]">{cogPathOpen[n.id] ? '▲' : '▼'}</span>
