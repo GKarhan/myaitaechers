@@ -1,0 +1,141 @@
+DIAGNOSTIC ONLY — DO NOT CHANGE CODE
+
+We just tested the real lesson:
+
+Մաթեմատիկա 5
+«Նժարավոր կշեռքն ու զանգվածի միավորները»
+§3.6 · էջ 90–94
+
+The UI still shows:
+
+«Հանձնարարումը հնարավոր չէ մինչև այս խնդիրների լուծումը»
+
+The lesson currently has 5 MicroNodes.
+
+There is also a visible message similar to:
+
+«Tema ardyunabanutyan kargin mas bacakayum e»
+
+I DO NOT want another broad fix yet.
+
+Do not edit code.
+Do not change DB data.
+Do not change this lesson.
+Do not run mapping.
+Do not generate C1/C2.
+Do not make provider calls.
+Do not create a project task unless required merely for read-only inspection.
+
+==================================================
+1. FIND THE EXACT LIVE ASSIGNMENT RESPONSE
+==================================================
+
+Trace the REAL current lesson assignment/readiness flow.
+
+Identify:
+
+A. the exact lesson ID
+
+B. the exact readiness endpoint called by the teacher page
+
+C. the exact assignment endpoint called when clicking
+«Հանձնարարել սովորողին»
+
+D. the exact current backend response for this lesson, including ONLY safe structured fields such as:
+
+- readiness
+- canAssign
+- hardBlockers
+- warnings
+- codes
+- counts
+
+Do not print source-text contents or credentials.
+
+==================================================
+2. IDENTIFY THE EXACT HARD BLOCKER
+==================================================
+
+For every current hardBlocker return:
+
+- blocker code
+- human-readable meaning
+- function/file that creates it
+- exact condition that evaluates true
+- whether it comes from:
+  1. shared lesson-assignment-readiness resolver
+  2. mapping readiness
+  3. final approval
+  4. activation
+  5. frontend-only logic
+  6. another path
+
+I specifically need to know what the visible text:
+
+«Tema ardyunabanutyan kargin mas bacakayum e»
+
+maps to internally.
+
+Do not guess from the text.
+Trace the actual code/value.
+
+==================================================
+3. VERIFY THE PREVIOUS FIX IS ACTUALLY ON THE LIVE PATH
+==================================================
+
+Verify whether the current running API process is using the previously added shared assignment resolver.
+
+Show:
+
+- exact resolver function name
+- exact readiness route calling it
+- exact mutation route calling it
+- whether the frontend is calling those routes
+- whether any OLD readiness path is still used
+
+If there is a stale/parallel gate, identify it.
+
+Do not fix it yet.
+
+==================================================
+4. CLASSIFY THE REAL PROBLEM
+==================================================
+
+At the end choose exactly ONE primary diagnosis:
+
+A. PREVIOUS FIX NOT DEPLOYED / STALE SERVICE
+
+B. FRONTEND STILL USING OLD READINESS PATH
+
+C. ASSIGNMENT MUTATION STILL USING OLD PATH
+
+D. A DIFFERENT REAL HARD BLOCKER EXISTS
+
+E. WARNING IS STILL MISCLASSIFIED AS HARD BLOCKER
+
+F. DATA/STRUCTURAL INVARIANT IS ACTUALLY BROKEN
+
+G. OTHER — explain exactly
+
+==================================================
+5. STOP
+==================================================
+
+Return only:
+
+1. lesson ID
+2. live readiness response
+3. live hardBlocker codes
+4. live warning codes
+5. exact blocker-producing function/file
+6. exact meaning of the transliterated blocker message
+7. whether previous shared resolver is on the live path
+8. primary diagnosis A–G
+9. ONE recommended smallest next code change, but DO NOT implement it
+
+STOP.
+
+NO CODE CHANGES.
+NO DB CHANGES.
+NO TEST FIXTURES.
+NO RESTARTS UNLESS ABSOLUTELY NECESSARY TO READ THE CURRENT RUNNING STATE.
