@@ -79,6 +79,15 @@ import {
 
 const router = Router();
 
+const COGNITIVE_LEVEL_LABELS: Record<string, string> = {
+  remember: "Հիշել",
+  understand: "Հասկանալ",
+  apply: "Կիրառել",
+  analyze: "Վերլուծել",
+  evaluate: "Գնահատել",
+  create: "Ստեղծել",
+};
+
 // ── Shared helper: build per-question + node breakdown + recommendations ──────
 // Used by both /my-result (student) and /results/:studentId (teacher view).
 // Fetches lesson_nodes for explanation fallback and knowledge_nodes for current
@@ -1199,8 +1208,24 @@ router.get("/quizzes/:id", requireTeacher, async (req: AuthRequest, res) => {
   if (!quiz) { res.status(404).json({ error: "Quiz not found" }); return; }
 
   const questions = await db
-    .select()
+    .select({
+      id:                 quizQuestionsTable.id,
+      nodeId:             quizQuestionsTable.nodeId,
+      nodeTitle:          lessonNodesTable.title,
+      questionText:       quizQuestionsTable.questionText,
+      options:             quizQuestionsTable.options,
+      correctOptionIndex: quizQuestionsTable.correctOptionIndex,
+      difficultyLevel:    quizQuestionsTable.difficultyLevel,
+      sequence:           quizQuestionsTable.sequence,
+      cognitiveLevelId:   quizQuestionsTable.cognitiveLevelId,
+      cognitiveLevel:     lessonNodeCognitiveLevelsTable.cognitiveLevel,
+    })
     .from(quizQuestionsTable)
+    .leftJoin(lessonNodesTable, eq(lessonNodesTable.id, quizQuestionsTable.nodeId))
+    .leftJoin(
+      lessonNodeCognitiveLevelsTable,
+      eq(lessonNodeCognitiveLevelsTable.id, quizQuestionsTable.cognitiveLevelId),
+    )
     .where(eq(quizQuestionsTable.quizId, quizId))
     .orderBy(asc(quizQuestionsTable.sequence));
 
@@ -1226,11 +1251,17 @@ router.get("/quizzes/:id", requireTeacher, async (req: AuthRequest, res) => {
     questions:      questions.map((q) => ({
       id:                 q.id,
       nodeId:             q.nodeId,
+       nodeTitle:          q.nodeTitle ?? null,
       questionText:       q.questionText,
       options:            q.options,
       correctOptionIndex: q.correctOptionIndex,
       difficultyLevel:    q.difficultyLevel,
       sequence:           q.sequence,
+       cognitiveLevelId:   q.cognitiveLevelId ?? null,
+       cognitiveLevel:     q.cognitiveLevel ?? null,
+       cognitiveLevelLabel: q.cognitiveLevel
+         ? COGNITIVE_LEVEL_LABELS[q.cognitiveLevel] ?? null
+         : null,
     })),
   });
 });

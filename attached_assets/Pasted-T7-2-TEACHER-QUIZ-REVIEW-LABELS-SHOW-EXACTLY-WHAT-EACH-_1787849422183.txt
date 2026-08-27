@@ -1,0 +1,309 @@
+T7.2 — TEACHER QUIZ REVIEW LABELS
+SHOW EXACTLY WHAT EACH QUESTION ASSESSES
+
+IMPORTANT:
+T7.1 is complete and verified.
+
+Do NOT redesign quiz generation.
+Do NOT change canonical target resolution.
+Do NOT change scoring, retest, Knowledge Tree, AI Teacher, mapping, Cognitive Path authoring, async generation jobs, or learner behavior.
+
+This is a SMALL UI/read-contract step only.
+
+==================================================
+GOAL
+==================================================
+
+For every generated quiz question shown to the TEACHER during quiz review/editing, display:
+
+1. The MicroNode / Knowledge Node that the question assesses.
+2. The canonical Cognitive Level that the question assesses.
+
+Example:
+
+🧩 Գիտելիքի հանգույց՝ Անհայտ զանգվածի որոշումը նժարավոր կշեռքով
+🧠 Ճանաչողական մակարդակ՝ Կիրառել
+
+These labels MUST come from persisted authoritative provenance:
+
+quiz_question.relatedNodeId / nodeId
+→ lesson_nodes
+
+quiz_question.cognitiveLevelId
+→ lesson_node_cognitive_levels
+
+Do NOT infer either label from question text.
+Do NOT ask the AI/provider to generate these labels.
+Do NOT infer Bloom from difficultyMode.
+
+==================================================
+STEP 0 — INSPECT FIRST, NO CODE CHANGES
+==================================================
+
+Before editing anything, report:
+
+1. Exact teacher quiz review/edit page/component.
+2. Exact API endpoint used to load the quiz/questions.
+3. Current question response shape.
+4. Whether nodeId/relatedNodeId is already returned.
+5. Whether cognitiveLevelId is already returned.
+6. Whether the API already returns:
+   - MicroNode title
+   - Cognitive Level name/code
+7. Exact DB tables/relations that contain these values.
+8. Smallest files that need modification.
+
+Then implement only the smallest required change.
+
+==================================================
+CANONICAL DISPLAY RULE
+==================================================
+
+For each normal generated quiz question:
+
+QUESTION
+→ persisted MicroNode ID
+→ MicroNode title
+
+QUESTION
+→ persisted cognitiveLevelId
+→ Cognitive Path level
+→ Armenian Bloom label
+
+Canonical Armenian labels:
+
+remember    → Հիշել
+understand  → Հասկանալ
+apply       → Կիրառել
+analyze     → Վերլուծել
+evaluate    → Գնահատել
+create      → Ստեղծել
+
+Do not derive these from difficulty.
+
+==================================================
+TEACHER UI
+==================================================
+
+In the teacher quiz review/edit interface, each question should visibly show a compact metadata block.
+
+Example:
+
+Հարց 4
+
+[question text...]
+
+🧩 Գիտելիքի հանգույց՝
+Անհայտ զանգվածի որոշումը նժարավոր կշեռքով
+
+🧠 Ճանաչողական մակարդակ՝
+Կիրառել
+
+[answers / correct answer / edit controls...]
+
+Keep it visually compact.
+
+Do NOT create a new page.
+Do NOT redesign the question card.
+Add the metadata to the existing question card.
+
+==================================================
+IMPORTANT — IDENTITY, NOT DECORATION
+==================================================
+
+These labels are evidence provenance.
+
+Therefore:
+
+- MicroNode label MUST correspond to the persisted question node ID.
+- Cognitive label MUST correspond to persisted cognitiveLevelId.
+- Never regenerate these values with AI.
+- Never infer them from text.
+- Never infer them from difficulty.
+- Never silently substitute another Cognitive Level.
+
+If an old/legacy question does not have one of these IDs:
+
+Display a neutral warning such as:
+
+⚠ Գիտելիքի հանգույցը նշված չէ
+
+or
+
+⚠ Ճանաչողական մակարդակը նշված չէ
+
+Do NOT fabricate a value.
+
+==================================================
+NORMAL QUIZ VS RETEST
+==================================================
+
+T7.1 deliberately preserved separate retest semantics.
+
+Do not alter retest generation in this task.
+
+If retest questions already contain valid persisted provenance, the same UI may display it.
+
+If they do not, show the neutral missing-provenance state.
+
+Do NOT change retest backend semantics just to populate the label.
+
+==================================================
+NO DIFFICULTY LABEL AS COGNITIVE LABEL
+==================================================
+
+The existing difficulty field may still exist.
+
+Do NOT display:
+
+Պարզ = Հիշել
+Միջին = Հասկանալ
+Բարդ = Կիրառել
+
+or any equivalent mapping.
+
+Difficulty and Cognitive Level are independent.
+
+==================================================
+API / READ MODEL
+==================================================
+
+Prefer enriching the existing teacher quiz-read response rather than making the frontend issue one request per question.
+
+If the current response only contains IDs, add read-only display fields such as:
+
+{
+  ...
+  relatedNodeId: 2492,
+  relatedNodeTitle: "...",
+  cognitiveLevelId: 123,
+  cognitiveLevel: "apply",
+  cognitiveLevelLabel: "Կիրառել"
+}
+
+Exact naming should follow existing project conventions.
+
+The persisted IDs remain authoritative.
+
+Display fields are projections only.
+
+Avoid N+1 database queries.
+
+==================================================
+DO NOT CHANGE PERSISTENCE
+==================================================
+
+T7.1 already established authoritative persistence.
+
+Do NOT change how normal questions are generated or persisted unless inspection proves a read-contract bug.
+
+Do not add duplicate provenance columns.
+
+Do not create a new migration unless absolutely required.
+
+Expected result: probably no schema migration.
+
+==================================================
+TESTS
+==================================================
+
+Add focused provider-free regression coverage.
+
+At minimum:
+
+A. Question with Node + Apply level
+→ API returns correct node title
+→ API returns Apply
+→ UI/read model can display «Կիրառել»
+
+B. Question with Understand level
+→ displays «Հասկանալ»
+
+C. Multi-node quiz
+→ each question gets its OWN persisted node title and Cognitive Level
+
+D. Difficulty independence
+→ HARD question whose persisted target is Understand
+→ label remains «Հասկանալ»
+
+E. Missing node provenance
+→ no fabricated node
+→ neutral missing state
+
+F. Missing cognitive provenance
+→ no inferred Bloom
+→ neutral missing state
+
+G. Provider-returned question wording containing another Bloom term
+→ persisted cognitiveLevelId still controls the displayed label
+
+H. Existing T7.1 normal quiz generation tests remain green.
+
+I. Existing async generation tests remain green.
+
+J. Existing retest tests remain green.
+
+==================================================
+LESSON 754
+==================================================
+
+Do NOT modify Lesson 754.
+
+If useful, perform READ-ONLY inspection only.
+
+Its current unconfirmed Cognitive Paths are expected to fail T5/T7.1 normal generation.
+
+Do not repair or confirm them in this task.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+Do NOT implement yet:
+
+- learner immediate answer feedback
+- explanation/solution after answering
+- Knowledge Tree updates
+- test session redesign
+- Easy/Medium/Hard removal
+- frontend async polling
+- AI Teacher changes
+- scoring changes
+- retest authority changes
+- mapping changes
+- Cognitive Path authoring changes
+
+Those are separate steps.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Inspection findings.
+2. Files changed.
+3. Exact API/read-model change.
+4. Exact teacher UI change.
+5. How node identity is resolved.
+6. How Cognitive Level identity is resolved.
+7. Legacy/missing provenance behavior.
+8. Tests added and results.
+9. Existing regression results.
+10. Confirmation that no provider call was needed.
+11. Confirmation Lesson 754 was not modified.
+
+Finish with exactly:
+
+TEACHER QUESTION SHOWS MICRONODE LABEL: YES/NO
+TEACHER QUESTION SHOWS COGNITIVE LEVEL LABEL: YES/NO
+LABELS COME FROM PERSISTED PROVENANCE: YES/NO
+DIFFICULTY USED TO INFER BLOOM: YES/NO
+MISSING PROVENANCE FAILS WITHOUT FABRICATION: YES/NO
+QUIZ GENERATION SEMANTICS CHANGED: YES/NO
+RETEST SEMANTICS CHANGED: YES/NO
+LESSON 754 MODIFIED: YES/NO
+READY FOR NEXT TEST 2.0 STEP: YES/NO
+
+STOP after T7.2.
+Do not begin the next task.

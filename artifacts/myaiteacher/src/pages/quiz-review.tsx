@@ -5,11 +5,15 @@ import { useAuth } from "@/lib/auth";
 interface QuizQuestion {
   id: number;
   nodeId: number | null;
+  nodeTitle: string | null;
   questionText: string;
   options: string[];
   correctOptionIndex: number;
   difficultyLevel: string;
   sequence: number;
+  cognitiveLevelId: number | null;
+  cognitiveLevel: string | null;
+  cognitiveLevelLabel: string | null;
 }
 
 interface QuizDetail {
@@ -110,6 +114,31 @@ export default function QuizReview() {
     setEditOptions([...q.options]);
     setEditCorrect(q.correctOptionIndex);
     setEditDifficulty(q.difficultyLevel);
+  }
+
+  function QuestionProvenance({ question }: { question: QuizQuestion }) {
+    return (
+      <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
+        <span className="inline-flex items-start gap-1.5">
+          <span aria-hidden="true">🧩</span>
+          <span>
+            <span className="text-muted-foreground/75">Գիտելիքի հանգույց՝ </span>
+            {question.nodeId !== null && question.nodeTitle
+              ? question.nodeTitle
+              : <span className="text-amber-300">⚠ Գիտելիքի հանգույցը նշված չէ</span>}
+          </span>
+        </span>
+        <span className="inline-flex items-start gap-1.5">
+          <span aria-hidden="true">🧠</span>
+          <span>
+            <span className="text-muted-foreground/75">Ճանաչողական մակարդակ՝ </span>
+            {question.cognitiveLevelId !== null && question.cognitiveLevelLabel
+              ? question.cognitiveLevelLabel
+              : <span className="text-amber-300">⚠ Ճանաչողական մակարդակը նշված չէ</span>}
+          </span>
+        </span>
+      </div>
+    );
   }
 
   function cancelEdit() {
@@ -255,6 +284,7 @@ export default function QuizReview() {
             {editingId === q.id ? (
               /* ── Edit mode ── */
               <div className="space-y-4">
+                <QuestionProvenance question={q} />
                 <label className="block text-xs text-muted-foreground mb-1">Հարց</label>
                 <textarea
                   value={editText}
@@ -341,6 +371,7 @@ export default function QuizReview() {
                     </button>
                   </div>
                 </div>
+                <QuestionProvenance question={q} />
                 <div className="ml-9 space-y-1.5">
                   {q.options.map((opt, i) => (
                     <div
