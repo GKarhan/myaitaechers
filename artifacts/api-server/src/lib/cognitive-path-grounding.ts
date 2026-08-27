@@ -68,11 +68,15 @@ export function getHighConfidenceLearningObjectiveFloor(
   if (!objective) return null;
   const createVerb = /(?:^|\s)(?:create|design|compose|develop|construct|ստեղծ\p{L}*|նախագծ\p{L}*|կազմ\p{L}*|մշակ\p{L}*)(?:\s|$)/iu;
   const evaluateVerb = /(?:^|\s)(?:evaluate|justify|critique|assess|գնահատ\p{L}*|հիմնավոր\p{L}*|քննադատ\p{L}*)(?:\s|$)/iu;
-  const analyzeVerb = /(?:^|\s)(?:analyze|compare|differentiate|classify|վերլուծ\p{L}*|համեմատ\p{L}*|տարբերակ\p{L}*|դասակարգ\p{L}*)(?:\s|$)/iu;
+  const explicitAnalyzeVerb = /(?:^|\s)(?:analyze|differentiate|classify|վերլուծ\p{L}*|տարբերակ\p{L}*|դասակարգ\p{L}*)(?:\s|$)/iu;
+  // Comparison wording is not analytical by itself. Require an observable
+  // analytical object or basis (parts, alternatives, evidence, relationships,
+  // causes, errors, or structure) before it establishes an Analyze floor.
+  const analyticalComparison = /(?:^|\s)(?:compare|համեմատ\p{L}*)(?:\s+\p{L}+){0,6}\s+(?:alternative\p{L}*|part\p{L}*|evidence|relationship\p{L}*|cause\p{L}*|error\p{L}*|structure\p{L}*|այլընտր\p{L}*|մաս\p{L}*|ապացույց\p{L}*|կապ\p{L}*|պատճառ\p{L}*|սխալ\p{L}*|կառուցվածք\p{L}*|հիմնավոր\p{L}*)(?:\s|$)/iu;
   const applyVerb = /(?:^|\s)(?:calculate|use|apply|solve|հաշվ\p{L}*|օգտագործ\p{L}*|կիրառ\p{L}*|լուծ\p{L}*)(?:\s|$)/iu;
   if (createVerb.test(objective)) return "create";
   if (evaluateVerb.test(objective)) return "evaluate";
-  if (analyzeVerb.test(objective)) return "analyze";
+  if (explicitAnalyzeVerb.test(objective) || analyticalComparison.test(objective)) return "analyze";
   return applyVerb.test(objective) ? "apply" : null;
 }
 

@@ -16,3 +16,5 @@ One-time legacy repairs are allowed only when explicitly authorized, must audit 
 Provenance, target role, and path confirmation are independent UI dimensions. Never label `teacher_authored` as “confirmed”; teacher edits intentionally change row provenance, while confirmation never changes provenance.
 
 Canonical confirmation requires grounding status `GROUNDED`; `REVIEW_REQUIRED` may be structurally valid but still fails confirmation as `PATH_GROUNDING_FAILED`. Never repair targets first when an all-path review is gated on confirmability.
+
+Learning-objective floor detection treats comparison wording as Analyze only when paired with an analytical object or basis; a comparison noun or generic comparison mention alone does not raise the floor.
