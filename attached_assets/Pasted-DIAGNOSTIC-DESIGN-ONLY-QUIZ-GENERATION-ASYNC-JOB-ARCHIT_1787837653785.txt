@@ -1,0 +1,143 @@
+DIAGNOSTIC / DESIGN ONLY — QUIZ GENERATION ASYNC JOB ARCHITECTURE
+
+Do NOT change code yet.
+
+We have proven the current quiz-generation failure:
+
+- POST /api/quizzes is synchronous
+- frontend/proxy request lifetime is ~120 seconds
+- provider generation can exceed that
+- client times out
+- backend continues and may still persist the quiz
+- user sees failure although quiz was actually created
+
+This is a real consistency problem.
+
+GOAL OF THIS STEP
+
+Determine the smallest reusable async-job architecture for quiz generation.
+
+No implementation yet.
+
+==================================================
+1. INSPECT EXISTING JOB INFRASTRUCTURE
+==================================================
+
+Search the project for existing background/async job patterns, especially:
+
+- mapping_jobs
+- generation jobs
+- polling endpoints
+- job status enums
+- result/error persistence
+- progress reporting
+- frontend polling helpers
+- cancellation/retry behavior
+
+Report whether any existing job infrastructure can be reused safely for quiz generation.
+
+==================================================
+2. TRACE CURRENT QUIZ GENERATION BOUNDARY
+==================================================
+
+Identify:
+
+- POST /api/quizzes route
+- exact function that calls the provider
+- exact point before provider work begins
+- exact point where quiz/questions are persisted
+- whether persistence is transactional
+- whether partial quiz/question rows can exist after failure
+- whether a quiz ID exists before provider generation starts
+
+==================================================
+3. PROPOSE THE SMALLEST ASYNC CONTRACT
+==================================================
+
+Recommend ONE smallest design only.
+
+Conceptually prefer:
+
+POST /api/quizzes
+→ 202
+→ { jobId }
+
+GET /api/quizzes/generation-jobs/:jobId
+→ {
+  status,
+  progress?,
+  quizId?,
+  errorCode?
+}
+
+But reuse existing project conventions if available.
+
+Do not invent a large generic worker platform if existing job storage/polling is sufficient.
+
+==================================================
+4. DUPLICATE / IDEMPOTENCY SAFETY
+==================================================
+
+Determine the minimum mechanism needed so:
+
+- user double-clicks Create
+- frontend retries after network error
+- browser refreshes while generation is running
+
+do not create duplicate quizzes unintentionally.
+
+Report whether the current request has any idempotency key/session identifier that can be reused.
+
+==================================================
+5. FAILURE SEMANTICS
+==================================================
+
+Define what should happen for:
+
+A. provider succeeds
+B. provider fails
+C. provider times out internally
+D. app restarts while job is running
+E. client disconnects
+F. frontend refreshes
+
+The browser/request lifetime must no longer control whether generation completes.
+
+==================================================
+6. FRONTEND UX CONTRACT
+==================================================
+
+Propose the smallest UI behavior:
+
+Teacher clicks Create
+
+→ button disabled / loading
+→ "Թեստը ստեղծվում է…"
+→ frontend polls job
+→ success: open/show created quiz
+→ failure: show JSON error
+→ refresh: resume polling if job is still known
+
+Do not redesign the quiz UI.
+
+==================================================
+7. STOP
+==================================================
+
+Return only:
+
+1. existing reusable job infrastructure
+2. exact current quiz generation/persistence boundary
+3. recommended async architecture
+4. whether a new DB table is needed
+5. proposed job status values
+6. proposed endpoints
+7. idempotency strategy
+8. frontend polling strategy
+9. crash/restart behavior
+10. ONE next smallest implementation step
+
+NO CODE CHANGES.
+NO DB CHANGES.
+NO PROVIDER CALLS.
+STOP.
