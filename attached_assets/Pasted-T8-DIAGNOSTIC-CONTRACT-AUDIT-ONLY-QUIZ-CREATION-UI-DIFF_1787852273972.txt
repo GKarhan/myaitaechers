@@ -1,0 +1,542 @@
+T8 — DIAGNOSTIC / CONTRACT AUDIT ONLY
+QUIZ CREATION UI + DIFFICULTY MODE VS CANONICAL COGNITIVE TARGET
+
+IMPORTANT:
+DO NOT CHANGE CODE.
+DO NOT CHANGE DATABASE DATA.
+DO NOT RUN AI/PROVIDER GENERATION.
+DO NOT CREATE A QUIZ.
+DO NOT MODIFY LESSON 754.
+DO NOT RESTART WORKFLOWS UNLESS ABSOLUTELY REQUIRED FOR READ-ONLY INSPECTION.
+
+This is a forensic architecture audit only.
+
+==================================================
+CONTEXT — ALREADY APPROVED TEST 2.0 RULE
+==================================================
+
+The canonical educational rule is now:
+
+1. Mapping defines the MicroNode and its Cognitive Path.
+
+2. A normal quiz assesses ONLY the canonical target Cognitive Level
+   of each selected MicroNode.
+
+Examples:
+
+Understand
+→ quiz assesses Understand
+
+Understand → Apply
+→ quiz assesses Apply
+
+Remember → Understand → Apply
+→ quiz assesses Apply
+
+Apply → Analyze
+→ quiz assesses Analyze
+
+3. The backend, NOT the AI provider, determines the target level.
+
+4. AI Teacher is different:
+   it may teach/check the mapped Cognitive Path level-by-level.
+
+5. Normal quiz generation must NOT use
+   EASY / MEDIUM / HARD / MIXED
+   to decide what Bloom/Cognitive Level is being assessed.
+
+6. Difficulty may potentially survive later only as a SECONDARY
+   complexity modifier inside the SAME Cognitive Level.
+
+Example:
+
+Apply + simpler numerical conditions
+Apply + more complex numerical conditions
+
+Both are still Apply.
+
+But this secondary difficulty concept is NOT approved for implementation yet.
+
+==================================================
+ALREADY IMPLEMENTED — PROTECT THESE
+==================================================
+
+Do not modify these systems.
+
+T5:
+Canonical Quiz Target Resolver exists and uses the accepted
+Cognitive Path / isTargetCeiling authority.
+
+It fails closed when the Cognitive Path is not confirmed or inconsistent.
+
+T7.1:
+Canonical quiz generation uses persisted target-level provenance.
+
+A generated question can carry at least:
+
+- nodeId
+- cognitiveLevelId
+
+and generation semantics are based on the canonical target.
+
+T7.2:
+Teacher quiz review displays:
+
+- MicroNode title
+- Armenian Cognitive Level label
+
+from persisted provenance.
+
+Difficulty/question wording must NOT infer Bloom.
+
+T7.3:
+Learner immediate feedback exists:
+
+- correct / incorrect
+- learner answer
+- correct answer
+- persisted explanation
+- finalized answer locking
+- reload reconstruction
+- pre-answer secrecy
+
+Do not change any of this.
+
+Async quiz generation backend also exists.
+
+Retest / continuous quiz behavior must remain unchanged.
+
+Knowledge Tree, scoring, AI Teacher, mapping, Cognitive Path CRUD,
+lesson assignment, and student evidence are OUT OF SCOPE.
+
+==================================================
+PROBLEM TO AUDIT
+==================================================
+
+The teacher quiz-creation UI still has the old choices such as:
+
+- Easy
+- Medium
+- Hard
+- Mixed
+
+But our educational architecture has changed.
+
+The real assessment authority should now be:
+
+MicroNode
+→ confirmed Cognitive Path
+→ canonical target Cognitive Level
+→ performanceObjective
+→ successCriterion
+→ preferredInteractionTypes
+→ source/context
+→ generated assessment question
+
+Therefore we need to determine exactly what the legacy
+difficultyMode / difficultyLevel system still does today.
+
+We must NOT remove or change it until we know every dependency.
+
+==================================================
+PART A — FRONTEND TRACE
+==================================================
+
+Inspect the teacher quiz-creation flow.
+
+Report:
+
+1. Exact frontend file/component responsible for quiz creation.
+
+2. Every current UI control related to:
+
+   EASY
+   MEDIUM
+   HARD
+   MIXED
+
+3. Exact values sent to the backend.
+
+4. Whether difficulty is required by the frontend.
+
+5. Whether a default is automatically selected.
+
+6. Whether question count, lesson selection, node selection,
+   or any other behavior depends on difficulty.
+
+7. Whether async generation uses the same field.
+
+8. Whether retest creation uses it.
+
+Do not infer. Trace actual code.
+
+==================================================
+PART B — BACKEND TRACE
+==================================================
+
+Trace difficulty from HTTP request to final persistence.
+
+Start from the current quiz creation endpoint.
+
+Find every place where any of these appear:
+
+difficultyMode
+difficultyLevel
+EASY
+MEDIUM
+HARD
+MIXED
+
+Report the complete chain:
+
+Frontend
+→ API request
+→ validation
+→ quiz creation service
+→ canonical target resolver
+→ generation service
+→ provider prompt
+→ parser/validator
+→ persistence
+→ quiz read APIs
+→ scoring/retest/evidence if applicable
+
+For every occurrence classify it as:
+
+A. Cognitive-target decision
+B. Question-complexity modifier
+C. Presentation/UI metadata
+D. Persistence-only legacy metadata
+E. Validation-only
+F. Retest dependency
+G. Scoring/evidence dependency
+H. Dead/unused legacy behavior
+I. Other
+
+==================================================
+PART C — CRITICAL SEMANTIC CHECK
+==================================================
+
+This is the most important part.
+
+Determine whether, AFTER T7.1, difficulty can still alter or override
+the canonical Cognitive Level.
+
+For example, if the canonical target is:
+
+Understand
+
+could HARD cause the generated question to become Analyze?
+
+If canonical target is:
+
+Apply
+
+could EASY cause the generated question to become Remember?
+
+We require the answer to eventually be NO.
+
+But do not assume it.
+
+Prove the current behavior from code.
+
+Inspect:
+
+- prompt construction
+- generation instructions
+- validation
+- post-generation checks
+- persisted cognitiveLevelId
+
+Report whether canonical target and difficulty can currently conflict.
+
+==================================================
+PART D — PROVIDER PROMPT AUDIT
+==================================================
+
+Inspect the exact current generation prompt/contract.
+
+Report what the provider receives for each question target.
+
+Specifically identify whether it receives:
+
+- MicroNode title
+- learning objective
+- target Cognitive Level
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- source/theory/context
+- textbook exercises
+- difficultyMode
+- difficultyLevel
+
+For difficulty, quote only the smallest necessary code/prompt fragment.
+
+Explain what the provider is instructed to DO differently for:
+
+Easy
+Medium
+Hard
+Mixed
+
+Do NOT call the provider.
+
+==================================================
+PART E — DATABASE CONTRACT
+==================================================
+
+Inspect current schema and persistence.
+
+Report:
+
+QUIZ LEVEL:
+
+- Is difficultyMode stored?
+- Is it nullable?
+- Is there a default?
+- What code reads it later?
+
+QUESTION LEVEL:
+
+- Is difficultyLevel stored?
+- Is it nullable?
+- What values are allowed?
+- What code reads it later?
+
+Also confirm the current provenance fields:
+
+- nodeId
+- cognitiveLevelId
+
+Determine whether removing difficulty from the teacher-facing
+educational decision would require a migration.
+
+Do NOT create a migration.
+
+==================================================
+PART F — RETEST / CONTINUOUS QUIZ SAFETY
+==================================================
+
+Trace current retest behavior.
+
+Determine:
+
+1. Does retest inherit difficultyMode?
+
+2. Does it reconstruct question difficulty?
+
+3. Does any retest authority use difficulty to decide which
+   MicroNodes should be tested?
+
+4. Could removing teacher difficulty selection break retest creation?
+
+5. Does canonical retest authority depend only on MicroNode/evidence,
+   or also difficulty?
+
+No changes.
+
+==================================================
+PART G — SCORING / KNOWLEDGE TREE SAFETY
+==================================================
+
+Read only.
+
+Determine whether:
+
+- correctness scoring
+- attempt score
+- mastery calculation
+- evidence creation
+- Knowledge Tree movement
+
+currently depend on difficultyMode or difficultyLevel.
+
+We are NOT changing these systems in T8.
+
+We only need to know whether difficulty removal would have
+downstream semantic consequences.
+
+==================================================
+PART H — ASYNC GENERATION SAFETY
+==================================================
+
+Inspect the new async generation job request snapshot.
+
+Report:
+
+- whether difficultyMode is part of the normalized request
+- whether it participates in the request fingerprint
+- whether it participates in idempotency comparison
+- whether removing/changing it later affects job compatibility
+
+Do NOT modify async infrastructure.
+
+==================================================
+PART I — DESIRED FUTURE UI CONTRACT
+==================================================
+
+Based ONLY on the audit, evaluate this proposed future teacher UI:
+
+Instead of:
+
+Difficulty:
+○ Easy
+○ Medium
+○ Hard
+○ Mixed
+
+normal quiz creation would show something equivalent to:
+
+Assessment mode:
+✓ Ստուգել քարտեզագրված թիրախային ճանաչողական մակարդակները
+
+Teacher selects:
+
+- lesson(s)
+- MicroNode(s), when applicable
+- question count
+
+The backend then determines each MicroNode's target Cognitive Level.
+
+Teacher does NOT manually choose Bloom here.
+
+For example:
+
+MN1 — Կիրառել
+MN2 — Հասկանալ
+MN3 — Վերլուծել
+MN4 — Կիրառել
+
+The generated quiz must assess exactly those mapped targets.
+
+Do not implement this UI.
+
+Evaluate whether the current backend is ready for it.
+
+==================================================
+PART J — SECONDARY DIFFICULTY DECISION
+==================================================
+
+We have NOT yet decided whether difficulty should disappear completely.
+
+Audit whether the architecture could later support:
+
+Cognitive Level = WHAT cognitive performance is measured.
+
+Difficulty = HOW complex the item is inside that SAME level.
+
+Example:
+
+Apply / lower complexity
+Apply / standard complexity
+Apply / higher complexity
+
+But difficulty must NEVER change Apply into Remember or Analyze.
+
+Answer:
+
+1. Is the current difficulty implementation already behaving this way?
+
+2. If not, what would have to change?
+
+3. Should we:
+
+OPTION A
+Remove difficulty completely.
+
+OPTION B
+Keep it internally but remove it from teacher UI.
+
+OPTION C
+Redefine it explicitly as within-level item complexity.
+
+Recommend ONE option, with technical and pedagogical reasoning.
+
+Do NOT implement it.
+
+==================================================
+PART K — REAL DATA READ-ONLY CHECK
+==================================================
+
+If safely possible without modifying anything, inspect existing
+generated quiz/question rows that already have:
+
+- nodeId
+- cognitiveLevelId
+- difficultyLevel
+
+Use existing data only.
+
+Check several examples and report whether combinations exist such as:
+
+Understand + HARD
+Apply + EASY
+Analyze + MEDIUM
+
+These combinations are NOT automatically errors.
+
+The purpose is to prove that difficulty and Cognitive Level are
+currently independent dimensions or identify where they are coupled.
+
+READ ONLY.
+
+Do not repair anything.
+
+==================================================
+REQUIRED FINAL REPORT
+==================================================
+
+Return exactly these sections:
+
+1. Current frontend difficulty contract
+
+2. Current backend difficulty contract
+
+3. Exact provider-prompt role of difficulty
+
+4. Canonical Cognitive Target vs difficulty:
+   can difficulty override Bloom? YES / NO / PARTIALLY
+
+5. Database fields and dependencies
+
+6. Retest dependencies
+
+7. Scoring / evidence / Knowledge Tree dependencies
+
+8. Async-job dependencies
+
+9. Existing-data examples
+
+10. Is the backend ready for:
+   "Assess mapped target Cognitive Levels"
+   YES / NO / PARTIALLY
+
+11. Recommended future difficulty policy:
+   REMOVE / INTERNAL ONLY / WITHIN-LEVEL COMPLEXITY
+
+12. Exact smallest next implementation step
+
+13. Files that would need modification in that next step
+
+14. Explicit non-regression list
+
+Finish with this exact checklist:
+
+CODE CHANGED: NO
+DATABASE CHANGED: NO
+PROVIDER CALLED: NO
+QUIZ CREATED: NO
+LESSON 754 MODIFIED: NO
+
+CANONICAL TARGET STILL BACKEND-OWNED: YES/NO
+DIFFICULTY CAN CURRENTLY OVERRIDE TARGET BLOOM: YES/NO/PARTIALLY
+RETEST DEPENDS ON DIFFICULTY: YES/NO
+SCORING DEPENDS ON DIFFICULTY: YES/NO
+KNOWLEDGE TREE DEPENDS ON DIFFICULTY: YES/NO
+ASYNC JOB CONTRACT CONTAINS DIFFICULTY: YES/NO
+
+RECOMMENDED NEXT STEP: <one sentence>
+
+STOP AFTER THE AUDIT.
+DO NOT IMPLEMENT T8 CHANGES.
