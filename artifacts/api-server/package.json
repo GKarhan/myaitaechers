@@ -24,6 +24,7 @@
     "test:verified-source-subset": "tsx src/lib/__tests__/verified-source-subset.test.ts",
     "test:final-approval": "tsx src/lib/__tests__/lesson-final-approval.test.ts",
     "test:assignment-readiness": "tsx src/lib/__tests__/lesson-assignment-readiness.test.ts && tsx src/lib/__tests__/lesson-mapping-readiness.test.ts",
+    "test:topic-delete-resequence": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/topic-delete-resequence.test.ts",
     "test:phase18-seq": "tsx src/lib/__tests__/sequential-deps-phase18.test.ts",
     "test:phase19-quiz-links": "tsx src/lib/__tests__/quiz-lesson-links-phase19.test.ts",
     "test:phase110-quiz-creation": "tsx src/lib/__tests__/quiz-creation-phase110.test.ts",

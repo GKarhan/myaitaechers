@@ -1,0 +1,163 @@
+SMALL TARGETED FIX — NORMALIZE TOPIC SEQUENCE AFTER DELETE
+
+We have completed the diagnostic.
+
+Do NOT perform another broad audit.
+
+Root cause is proven:
+
+Lesson 754 has one remaining topic with persisted sequence = 2.
+
+Final approval correctly returns:
+
+INVALID_TOPIC_SEQUENCE_GAP
+
+because topic sequences must be contiguous starting from 1.
+
+The bug is in the topic delete mutation:
+
+POST /lessons/:lessonId/topics/:topicId/delete
+
+Deleting a topic does not normalize the remaining topic sequences.
+
+GOAL
+
+Fix only this systemic sequencing bug.
+
+==================================================
+1. IMPLEMENT TRANSACTIONAL RESEQUENCING
+==================================================
+
+In the existing topic delete flow:
+
+1. delete the requested topic
+2. fetch all remaining topics for that lesson
+3. order them by current sequence, then stable ID as tie-breaker
+4. rewrite their sequence values to:
+
+1, 2, 3, ... N
+
+Perform deletion + resequencing in ONE database transaction.
+
+Do not leave an intermediate persisted gap.
+
+==================================================
+2. DO NOT SPECIAL-CASE LESSON 754
+==================================================
+
+No lesson-specific code.
+
+No direct data edit to Lesson 754 during implementation.
+
+This must work for any lesson.
+
+Examples:
+
+[1,2,3] delete 2
+→ [1,2]
+
+[1,2,3] delete 1
+→ [1,2]
+
+[2] caused by legacy state
+→ normalization helper should produce [1] when explicitly invoked in test.
+
+==================================================
+3. SHARED NORMALIZATION
+==================================================
+
+Before writing new logic, inspect whether the project already has a canonical
+topic sequence normalization helper.
+
+If yes:
+reuse it.
+
+If not:
+create one small shared helper for topic sequence normalization.
+
+Do not duplicate sequencing logic across routes.
+
+==================================================
+4. REQUIRED TESTS
+==================================================
+
+Add provider-free/database-backed tests:
+
+CASE A
+topics [1,2,3], delete middle
+Expected [1,2]
+
+CASE B
+topics [1,2,3], delete first
+Expected [1,2]
+
+CASE C
+topics [1,2,3], delete last
+Expected [1,2]
+
+CASE D
+single remaining topic originally sequence 2
+normalize
+Expected [1]
+
+CASE E
+after delete/resequence
+final approval must NOT produce INVALID_TOPIC_SEQUENCE_GAP
+
+CASE F
+other topics retain deterministic relative order
+
+==================================================
+5. PROTECTED SYSTEMS
+==================================================
+
+Do NOT change:
+
+- assignment readiness policy
+- hard blocker classification
+- mapping
+- C1
+- C2
+- quizzes
+- Knowledge Tree
+- AI Teacher
+- lesson 754 records during implementation
+
+INVALID_TOPIC_SEQUENCE_GAP must remain a hard blocker when a real gap exists.
+
+==================================================
+6. VERIFICATION
+==================================================
+
+Run:
+
+- focused topic CRUD tests
+- final approval sequence tests
+- API typecheck/build
+
+Then restart only the API if required.
+
+After implementation, STOP.
+
+Do NOT modify Lesson 754 automatically.
+
+==================================================
+7. FINAL REPORT
+==================================================
+
+Return:
+
+- files changed
+- exact delete/resequence behavior
+- transaction behavior
+- tests/results
+- confirmation that INVALID_TOPIC_SEQUENCE_GAP remains a hard blocker
+- confirmation that Lesson 754 was not edited
+
+End with:
+
+TOPIC DELETE NORMALIZES REMAINING SEQUENCE TO 1..N: YES / NO
+
+READY FOR MANUAL LESSON 754 RETEST: YES / NO
+
+STOP.

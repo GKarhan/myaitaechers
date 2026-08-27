@@ -27,6 +27,7 @@ description: Topic CRUD + reorder (drag-and-drop), MicroNode reorder (▲▼ but
 ## Key architecture facts
 - `lesson_nodes.sequence` is lesson-wide (not topic-scoped); node reorder sends ALL node IDs
 - `lesson_topics.sequence` is separate per-lesson
+- Topic deletion must atomically resequence remaining topics by current sequence, then ID as a stable tie-breaker, to preserve the contiguous `1..N` invariant
 - `refreshSequentialDependencies` called after node reorder — rebuilds SEQUENTIAL edges, preserves REQUIRED/other
 - Topic delete: `lesson_nodes.topic_id` FK is ON DELETE SET NULL — nodes become standalone safely
 - `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` installed in myaiteacher

@@ -19,6 +19,7 @@ import { validateKnowledgeBaseLesson } from "../lib/kb-validator.js";
 import { validateLessonForFinalApproval } from "../lib/lesson-final-approval.js";
 import { resolveLessonAssignmentReadiness } from "../lib/lesson-assignment-readiness.js";
 import { classifyMappingAssignmentReadiness } from "../lib/lesson-mapping-readiness.js";
+import { normalizeTopicSequences } from "../lib/topic-sequence.js";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 import { normalizeSourceExerciseAnswerContract } from "../lib/source-exercise-answer.js";
 import { validateRequiredLessonPageRange } from "../lib/lesson-page-range.js";
@@ -3541,7 +3542,13 @@ router.post("/lessons/:lessonId/topics/:topicId/delete", requireAuth, requireLes
     .limit(1);
   if (!existing) { res.status(404).json({ error: "Topic not found" }); return; }
 
-  await db.delete(lessonTopicsTable).where(eq(lessonTopicsTable.id, topicId));
+  await db.transaction(async (tx) => {
+    await tx.delete(lessonTopicsTable).where(and(
+      eq(lessonTopicsTable.id, topicId),
+      eq(lessonTopicsTable.lessonId, lessonId),
+    ));
+    await normalizeTopicSequences(lessonId, tx as unknown as typeof db);
+  });
   await invalidateLessonApproval(lessonId);
   res.json({ message: "Topic deleted", id: topicId });
 });
@@ -3578,9 +3585,7 @@ router.post("/lessons/:lessonId/topics/reorder", requireAuth, requireLessonAutho
 
   // Transactional normalized update
   await db.transaction(async (tx) => {
-    for (let i = 0; i < orderedTopicIds.length; i++) {
-      await tx.update(lessonTopicsTable).set({ sequence: i + 1 }).where(eq(lessonTopicsTable.id, orderedTopicIds[i]));
-    }
+    await normalizeTopicSequences(lessonId, tx as unknown as typeof db, orderedTopicIds);
   });
 
   const updated = await db
