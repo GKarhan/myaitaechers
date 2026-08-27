@@ -362,7 +362,7 @@ export function hasDuplicateQuestionText(
   );
 }
 
-function validatePreferredInteractions(
+function validateDeliveryInteraction(
   context: QuestionQualityContext,
   reasonCodes: QualityReasonCode[],
 ): void {
@@ -379,15 +379,6 @@ function validatePreferredInteractions(
     addReason(reasonCodes, "TARGET_INTERACTION_INCOMPATIBLE");
   }
 
-  for (const preferred of context.preferredInteractionTypes) {
-    if (!isInteractionType(preferred)) {
-      addReason(reasonCodes, "UNSUPPORTED_INTERACTION_TYPE");
-      continue;
-    }
-    if (!CURRENT_GENERATED_INTERACTION_TYPES.includes(preferred)) {
-      addReason(reasonCodes, "PREFERRED_INTERACTION_UNAVAILABLE");
-    }
-  }
 }
 
 /**
@@ -454,7 +445,7 @@ export function validateGeneratedQuestionCandidate(
     addReason(reasonCodes, "INVALID_DIFFICULTY_LEVEL");
   }
 
-  validatePreferredInteractions(context, reasonCodes);
+  validateDeliveryInteraction(context, reasonCodes);
 
   if (
     isUsableText(candidate.questionText)

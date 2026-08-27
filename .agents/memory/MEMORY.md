@@ -78,3 +78,4 @@
 - [Continuous quiz sessions](continuous-quiz-sessions.md) — retests are immutable child attempts of one root assignment; C5 drives two-state scope and completion commits answers/evidence atomically.
 - [Durable job claim leases](durable-job-claim-leases.md) — stale external-provider jobs must rotate a persisted lease; every state transition must match the active lease.
 - [Manual Cognitive Path state](manual-cognitive-path-state.md) — row existence defines state; backend canonicalizes existing levels by Bloom rank, while only canonical confirmation may confirm.
+- [Quiz interaction preferences](quiz-interaction-preferences.md) — authored preferred formats are advisory; actual delivery support and target-format compatibility remain hard quality gates.

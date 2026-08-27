@@ -1,0 +1,90 @@
+MINIMAL FIX ONLY — PREFERRED INTERACTION MUST NOT ACT AS REQUIRED FORMAT
+
+Do not change Lesson 754 data.
+Do not change Cognitive Paths or targets.
+Do not weaken the Cognitive Level quality gate.
+Do not add new learner response UIs.
+Do not generate a quiz during this task.
+
+Current failure:
+
+MN1
+Target = Apply
+preferredInteractionTypes = ["short_answer"]
+
+Current quiz delivery supports multiple_choice.
+
+The deterministic quality gate rejects all candidates with:
+PREFERRED_INTERACTION_UNAVAILABLE
+
+This is wrong if preferredInteractionTypes means preference rather than hard requirement.
+
+TASK:
+
+1. Inspect the existing Cognitive Path contract and T8.2B quality contract.
+2. Confirm whether preferredInteractionTypes is semantically:
+   - preference, or
+   - required allowlist.
+
+3. If it is a preference, make the smallest fix so:
+
+preferredInteractionTypes does NOT by itself reject a supported current delivery format.
+
+The candidate may proceed when:
+- current delivery format is platform-supported;
+- the format is cognitively compatible with the canonical target;
+- the question still passes deterministic + semantic quality review.
+
+Keep the existing independent target-format compatibility rule.
+
+Examples:
+
+Apply target
+preferred = short_answer
+current format = multiple_choice
+→ MAY proceed if the actual MC question genuinely measures Apply.
+
+Create target
+preferred = constructed_response
+current format = multiple_choice
+→ MUST still fail if the existing target-format compatibility contract says MC cannot validly assess Create.
+
+So:
+
+PREFERRED_INTERACTION_UNAVAILABLE must not be used as a hard failure merely because a preferred format is unavailable.
+
+Do NOT change preferredInteractionTypes stored data.
+
+Add focused provider-free tests:
+
+A. Apply + preferred short_answer + MC delivery
+→ not rejected solely for preference mismatch.
+
+B. Understand + no preferences + MC
+→ allowed.
+
+C. Analyze + preferred short_answer + cognitively valid MC
+→ allowed if existing target-format contract allows it.
+
+D. Create + preferred constructed_response + MC
+→ still fails through TARGET_FORMAT_MISMATCH / existing hard compatibility rule.
+
+E. Preferred type does not override canonical target.
+
+F. Existing T8.2B/T8.2C tests remain green.
+
+Then run only focused tests/typecheck.
+
+Do not call provider.
+Do not generate quiz.
+
+Final only:
+
+preferredInteractionTypes IS HARD REQUIREMENT: YES/NO
+PREFERENCE MISMATCH BLOCKS VALID MC: YES/NO
+TARGET-FORMAT COMPATIBILITY PRESERVED: YES/NO
+CREATE/UNSUPPORTED HARD CASE STILL FAILS: YES/NO
+QUALITY GATE WEAKENED: NO
+LESSON 754 MODIFIED: NO
+PROVIDER CALLED: NO
+READY TO RETRY 5-QUESTION TEST: YES/NO

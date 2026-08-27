@@ -214,15 +214,45 @@ test("O: LOW difficulty does not change Apply target", () => {
   assert.equal(applyContext.cognitiveLevel, "apply");
 });
 
-test("P: unsupported preferred interaction is reported explicitly", () => {
+test("P: Apply plus preferred short answer allows supported MC delivery", () => {
   const result = validateGeneratedQuestionCandidate(
     candidate(),
-    { ...context, preferredInteractionTypes: ["numeric_answer"] },
+    {
+      ...context,
+      cognitiveLevel: "apply",
+      preferredInteractionTypes: ["short_answer"],
+      deliveryInteractionType: "multiple_choice",
+    },
   );
-  assertFailsWith(result, "PREFERRED_INTERACTION_UNAVAILABLE");
+  assertPass(result);
 });
 
-test("P2: Create target rejects current MC even without authored preferences", () => {
+test("P2: Understand plus no preferences allows supported MC delivery", () => {
+  const result = validateGeneratedQuestionCandidate(
+    candidate(),
+    {
+      ...context,
+      preferredInteractionTypes: [],
+      deliveryInteractionType: "multiple_choice",
+    },
+  );
+  assertPass(result);
+});
+
+test("P3: Analyze plus preferred short answer allows cognitively compatible MC", () => {
+  const result = validateGeneratedQuestionCandidate(
+    candidate(),
+    {
+      ...context,
+      cognitiveLevel: "analyze",
+      preferredInteractionTypes: ["short_answer"],
+      deliveryInteractionType: "multiple_choice",
+    },
+  );
+  assertPass(result);
+});
+
+test("P4: Create target rejects current MC through hard target-format compatibility", () => {
   const result = validateGeneratedQuestionCandidate(
     candidate(),
     {
@@ -235,7 +265,19 @@ test("P2: Create target rejects current MC even without authored preferences", (
   assert.equal(result.reasonCodes.includes("PREFERRED_INTERACTION_UNAVAILABLE"), false);
 });
 
-test("P3: Evaluate target rejects current MC independently of preferences", () => {
+test("P5: Preferred interaction does not override the canonical Apply target", () => {
+  const applyContext = {
+    ...context,
+    cognitiveLevel: "apply" as const,
+    preferredInteractionTypes: ["constructed_response"],
+    deliveryInteractionType: "multiple_choice" as const,
+  };
+  const result = validateGeneratedQuestionCandidate(candidate(), applyContext);
+  assertPass(result);
+  assert.equal(applyContext.cognitiveLevel, "apply");
+});
+
+test("P6: Evaluate target rejects current MC independently of preferences", () => {
   const result = validateGeneratedQuestionCandidate(
     candidate(),
     {
@@ -245,7 +287,7 @@ test("P3: Evaluate target rejects current MC independently of preferences", () =
     },
   );
   assertFailsWith(result, "TARGET_INTERACTION_INCOMPATIBLE");
-  assertFailsWith(result, "PREFERRED_INTERACTION_UNAVAILABLE");
+  assert.equal(result.reasonCodes.includes("PREFERRED_INTERACTION_UNAVAILABLE"), false);
 });
 
 test("Q: all six Cognitive Levels have an operational contract", () => {
