@@ -1,0 +1,271 @@
+SMALL TARGETED REPAIR ONLY — LESSON 754 LEGACY COGNITIVE PATH NORMALIZATION
+
+We have already implemented the shared backend Cognitive Path Bloom-order normalizer.
+
+Current canonical Bloom order is:
+
+remember
+→ understand
+→ apply
+→ analyze
+→ evaluate
+→ create
+
+The normalizer is already the backend authority for new/manual/AI Cognitive Path mutations.
+
+Now perform ONLY a one-time guarded repair of the already-existing legacy Cognitive Path sequence data for Lesson 754.
+
+DO NOT implement new architecture.
+DO NOT change quiz generation.
+DO NOT call any AI/provider.
+DO NOT regenerate Cognitive Paths.
+DO NOT change pedagogical content.
+DO NOT create missing Cognitive Levels.
+DO NOT invent target ceilings.
+DO NOT confirm Cognitive Paths.
+DO NOT change lesson status or assignment state.
+
+══════════════════════════════════════
+STEP 1 — READ-ONLY PRE-REPAIR AUDIT
+══════════════════════════════════════
+
+First inspect Lesson 754 and report the current persisted Cognitive Levels for every MicroNode, including:
+
+- nodeId
+- MicroNode title
+- cognitive level row ID
+- cognitive level code
+- persisted sequence
+- isTargetCeiling
+- current Cognitive Path status / confirmation state
+
+Expected known legacy cases from the previous audit:
+
+MN1:
+persisted:
+apply:1 → understand:2
+
+canonical:
+understand:1 → apply:2
+
+MN2:
+persisted:
+understand:2
+
+canonical:
+understand:1
+
+MN3:
+apply:1
+
+MN4:
+apply:1
+
+MN5:
+analyze:1
+
+Do not assume these values are still current.
+Verify them from the database first.
+
+══════════════════════════════════════
+STEP 2 — GUARDED ONE-TIME NORMALIZATION
+══════════════════════════════════════
+
+Only if the current data confirms that the lesson contains legacy noncanonical sequence values:
+
+Run the EXISTING shared backend normalization authority for the affected MicroNodes.
+
+Prefer using the already implemented:
+
+normalizeCognitivePathSequences(...)
+
+or the exact canonical shared normalization path currently used by Cognitive Path authoring.
+
+DO NOT write a second normalization algorithm.
+
+The repair must occur transactionally.
+
+The repair may change ONLY:
+
+lesson_node_cognitive_levels.sequence
+
+It must NOT change:
+
+- cognitive level row IDs
+- cognitive level codes
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- source grounding
+- applicability
+- isTargetCeiling
+- target identity
+- provenance
+- pedagogical content
+- MicroNode content
+- lesson content
+- exercises
+- quiz data
+- lesson status
+- assignment state
+
+Do not create any missing intermediate Cognitive Levels.
+
+Examples:
+
+apply + understand
+must become:
+understand:1 → apply:2
+
+single understand with sequence 2
+must become:
+understand:1
+
+single apply with sequence 1
+must remain unchanged.
+
+══════════════════════════════════════
+STEP 3 — POST-REPAIR VERIFICATION
+══════════════════════════════════════
+
+After the transaction, perform a read-only audit again.
+
+For every MicroNode in Lesson 754 report:
+
+nodeId
+title
+Cognitive Path in persisted sequence order
+target ceiling
+confirmation/review state
+
+Explicitly verify:
+
+1. MN1 is now:
+   understand:1 → apply:2
+
+2. MN2 is now:
+   understand:1
+
+3. MN3 remains:
+   apply:1
+
+4. MN4 remains:
+   apply:1
+
+5. MN5 remains:
+   analyze:1
+
+6. Existing target ceilings are unchanged.
+
+7. No Cognitive Level was added or removed.
+
+8. No pedagogical fields changed.
+
+9. No path was automatically confirmed.
+
+══════════════════════════════════════
+STEP 4 — CANONICAL RESOLVER AUDIT
+══════════════════════════════════════
+
+After normalization, run the existing Canonical Quiz Target Resolver READ-ONLY for all 5 MicroNodes.
+
+Do NOT repair target ceilings in this step.
+
+For each MicroNode report exactly:
+
+- nodeId
+- title
+- path
+- target ceiling if present
+- resolver result
+- resolver failure code if it fails closed
+
+We specifically need to know which nodes are now structurally ordered but still cannot become canonical quiz targets because of missing target ceiling or confirmation/review state.
+
+This is diagnostic only.
+
+══════════════════════════════════════
+STEP 5 — LESSON SUMMARY
+══════════════════════════════════════
+
+Return the current Lesson 754 Cognitive Path summary:
+
+- total MicroNodes
+- paths existing
+- paths missing
+- canonical-order paths
+- review-required paths
+- confirmed paths
+- nodes with target ceiling
+- nodes missing target ceiling
+- nodes accepted by Canonical Quiz Target Resolver
+- nodes rejected by resolver, grouped by exact reason code
+
+DO NOT confirm or repair anything beyond sequence normalization.
+
+══════════════════════════════════════
+REQUIRED SAFETY / NON-REGRESSION RULES
+══════════════════════════════════════
+
+This is NOT a new feature implementation.
+
+Do not modify source code unless you discover that the existing shared normalizer cannot safely be invoked for this repair.
+
+If code modification appears necessary:
+STOP and report why.
+Do not implement it.
+
+Do not modify:
+
+- quiz generation
+- T8.2B quality contract
+- T8.2C live quality gate
+- async quiz jobs
+- scoring
+- learner feedback
+- retest logic
+- Knowledge Tree
+- AI Teacher
+- mapping
+- source blocks
+- exercises
+- final approval semantics
+- assignment semantics
+
+No provider calls.
+
+Do not restart workflows unless strictly required for the existing normalization operation. A direct safe database/service invocation is preferred.
+
+══════════════════════════════════════
+FINAL REPORT
+══════════════════════════════════════
+
+Return:
+
+1. Pre-repair state
+2. Exact rows/sequences changed
+3. Post-repair state
+4. Target ceilings before/after
+5. Confirmation/review state before/after
+6. Canonical Quiz Target Resolver result for each node
+7. Lesson-level summary
+8. Any unexpected condition
+
+End with:
+
+LESSON 754 LEGACY SEQUENCE NORMALIZED: YES/NO
+MN1 ORDER IS understand → apply: YES/NO
+MN2 SEQUENCE IS understand:1: YES/NO
+MN3 UNCHANGED: YES/NO
+MN4 UNCHANGED: YES/NO
+MN5 UNCHANGED: YES/NO
+COGNITIVE LEVELS ADDED: YES/NO
+COGNITIVE LEVELS REMOVED: YES/NO
+TARGET CEILINGS CHANGED: YES/NO
+PEDAGOGICAL CONTENT CHANGED: YES/NO
+PATHS AUTO-CONFIRMED: YES/NO
+PROVIDER CALLED: YES/NO
+READY FOR TARGET/CONFIRMATION REVIEW: YES/NO
+
+STOP after this task.
+Do not proceed to target repair, confirmation, or quiz generation.

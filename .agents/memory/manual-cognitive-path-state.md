@@ -10,3 +10,5 @@ Persisted Cognitive Level order is backend-owned revised Bloom order: remember, 
 **Why:** Nullable legacy status can lag behind real teacher-authored rows, causing existing paths to be counted as missing. Creation-order persistence also allowed equivalent paths to carry different or structurally invalid sequences.
 
 **How to apply:** Derive read-model existence from current rows plus canonical confirmation. Normalize sequences transactionally after mutations, refresh all affected UI, and display backend-returned order without independent frontend sorting.
+
+One-time legacy repairs are allowed only when explicitly authorized, must audit first, target only proven noncanonical nodes, invoke the shared normalizer transactionally, and stop before target or confirmation repair.
