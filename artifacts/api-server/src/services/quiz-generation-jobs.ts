@@ -14,6 +14,10 @@ import {
 } from "./quiz-creation.js";
 import type { GeneratedQuestion } from "./quiz-generation.js";
 import { logger } from "../lib/logger.js";
+import {
+  QuizQuestionQualityError,
+  type QualityReasonCode,
+} from "./quiz-question-quality.js";
 
 export const QUIZ_GENERATION_JOB_STATUSES = [
   "pending",
@@ -28,6 +32,7 @@ export const QUIZ_GENERATION_ERROR_CODES = [
   "QUESTION_SCOPE_INVALID",
   "CANONICAL_TARGET_INVALID",
   "CANONICAL_TARGET_CHANGED",
+  "QUIZ_QUESTION_QUALITY_FAILED",
   "EMPTY_GENERATION",
   "GENERATION_FAILED",
   "PERSISTENCE_FAILED",
@@ -38,6 +43,7 @@ export type QuizGenerationErrorDetails = {
   resolverReason?: string;
   generatedCognitiveLevelId?: number;
   currentCognitiveLevelId?: number;
+  reasonCodes?: QualityReasonCode[];
 };
 
 export type QuizGenerationRequestSnapshot = {
@@ -411,6 +417,9 @@ function errorCodeForGenerationFailure(error: unknown): QuizGenerationErrorCode 
   if (error instanceof QuizCanonicalTargetChangedError) {
     return "CANONICAL_TARGET_CHANGED";
   }
+  if (error instanceof QuizQuestionQualityError) {
+    return "QUIZ_QUESTION_QUALITY_FAILED";
+  }
   if (
     error &&
     typeof error === "object" &&
@@ -444,6 +453,12 @@ function errorDetailsForGenerationFailure(
       nodeId: error.nodeId,
       generatedCognitiveLevelId: error.generatedCognitiveLevelId,
       currentCognitiveLevelId: error.currentCognitiveLevelId,
+    };
+  }
+  if (error instanceof QuizQuestionQualityError) {
+    return {
+      nodeId: error.nodeId,
+      reasonCodes: error.reasonCodes,
     };
   }
   return null;

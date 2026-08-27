@@ -45,6 +45,7 @@ import {
   QuizCanonicalTargetChangedError,
   QuizCanonicalTargetError,
 } from "../services/quiz-creation.js";
+import { QuizQuestionQualityError } from "../services/quiz-question-quality.js";
 import {
   getOrCreateActiveAttempt,
   ensureQuizSession,
@@ -625,6 +626,14 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
             nodeId: err.nodeId,
             generatedCognitiveLevelId: err.generatedCognitiveLevelId,
             currentCognitiveLevelId: err.currentCognitiveLevelId,
+          });
+          return;
+        }
+        if (err instanceof QuizQuestionQualityError) {
+          res.status(422).json({
+            error: err.code,
+            nodeId: err.nodeId,
+            reasonCodes: err.reasonCodes,
           });
           return;
         }

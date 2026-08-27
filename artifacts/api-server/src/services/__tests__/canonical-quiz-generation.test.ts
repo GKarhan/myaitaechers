@@ -26,6 +26,8 @@ import {
   normalizeQuizGenerationRequest,
   runQuizGenerationJob,
 } from "../quiz-generation-jobs.js";
+import type { SemanticQuestionReviewInput } from "../quiz-question-quality.js";
+import { QuizQuestionQualityError } from "../quiz-question-quality.js";
 
 assertTestDb();
 
@@ -164,6 +166,7 @@ await setPath(
 function generatedQuestion(
   nodeId: number,
   cognitiveLevelId: number | null,
+  difficultyLevel: GeneratedQuestion["difficultyLevel"] = "MEDIUM",
 ): GeneratedQuestion {
   return {
     nodeId,
@@ -171,8 +174,21 @@ function generatedQuestion(
     questionText: "Ինչպե՞ս է ջուրը նպաստում բույսերի աճին։",
     options: ["Աճին նպաստում է", "Աճը դադարեցնում է", "Կապ չունի", "Միայն գույնն է փոխում"],
     correctOptionIndex: 0,
-    difficultyLevel: "MEDIUM",
+    difficultyLevel,
     optionExplanations: null,
+  };
+}
+
+async function passQualityReview(input: SemanticQuestionReviewInput) {
+  return {
+    verdict: "PASS" as const,
+    reasonCodes: [],
+    measuredCognitiveLevel: input.context.cognitiveLevel,
+    nodeAligned: true,
+    objectiveAligned: true,
+    criterionAligned: true,
+    interactionCompatible: true,
+    sourceGrounded: true,
   };
 }
 
@@ -192,8 +208,17 @@ async function captureGeneration(
     allowEmptyQuestions: true,
     generateQuestions: async (input) => {
       captured.push(input);
-      return [];
+      const target = input.canonicalTargets?.[0];
+      const difficulty = input.difficultyMode === "SIMPLE"
+        ? "LOW"
+        : input.difficultyMode === "HARD"
+          ? "HIGH"
+          : "MEDIUM";
+      return target
+        ? [generatedQuestion(target.nodeId, target.cognitiveLevelId, difficulty)]
+        : [];
     },
+    qualityReview: passQualityReview,
   });
   if (captured.length === 0) throw new Error("generator scope was not captured");
   return captured;
@@ -258,6 +283,7 @@ try {
           calls++;
           return [];
         },
+        qualityReview: passQualityReview,
       }),
       (error: unknown) =>
         error instanceof QuizCanonicalTargetError
@@ -281,6 +307,7 @@ try {
           calls++;
           return [];
         },
+        qualityReview: passQualityReview,
       }),
       (error: unknown) =>
         error instanceof QuizCanonicalTargetError
@@ -317,16 +344,16 @@ try {
             : understandNode.id;
           return [generatedQuestion(swappedNodeId, null)];
         },
+        qualityReview: passQualityReview,
       }),
       (error: unknown) =>
-        error instanceof Error
-        && "code" in error
-        && error.code === "QUESTION_SCOPE_INVALID",
+        error instanceof QuizQuestionQualityError
+        && error.reasonCodes.includes("NODE_ID_MISMATCH"),
     );
-    assert.equal(calls, 1);
+    assert.equal(calls, 3);
   });
 
-  await test("L/M: persistence forces canonical node and Cognitive Level provenance", async () => {
+  await test("L/M: persistence preserves validated canonical node and Cognitive Level provenance", async () => {
     const created = await createQuizFromNodeScope({
       teacherId: teacher.userId,
       subjectId: subject.id,
@@ -336,8 +363,9 @@ try {
       questionCount: 1,
       difficultyMode: "SIMPLE",
       generateQuestions: async () => [
-        generatedQuestion(applyNode.id, understandLevels[0]!.id),
+        generatedQuestion(applyNode.id, applyLevels[2]!.id, "LOW"),
       ],
+      qualityReview: passQualityReview,
     });
     assert.equal(created.questions.length, 1);
     assert.equal(created.questions[0]!.nodeId, applyNode.id);
@@ -369,8 +397,13 @@ try {
         generateQuestions: async (input) => {
           providerCalls++;
           capturedTarget = input.canonicalTargets?.[0]?.cognitiveLevel ?? null;
-          return [generatedQuestion(analyzeNode.id, null)];
+          return [generatedQuestion(
+            analyzeNode.id,
+            input.canonicalTargets?.[0]?.cognitiveLevelId ?? null,
+            "HIGH",
+          )];
         },
+        qualityReview: passQualityReview,
       }),
     });
     assert.equal(completed?.status, "completed");
@@ -428,6 +461,7 @@ try {
           providerCalls++;
           return [];
         },
+        qualityReview: passQualityReview,
       }),
     });
     assert.equal(failedJob?.status, "failed");
@@ -477,6 +511,7 @@ try {
           );
           return [generatedQuestion(mutableNode.id, initialLevels[0]!.id)];
         },
+        qualityReview: passQualityReview,
       }),
       (error: unknown) =>
         error instanceof QuizCanonicalTargetChangedError

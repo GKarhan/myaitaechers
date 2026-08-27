@@ -8,6 +8,18 @@ import { asc, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
 import type { CanonicalQuizTarget } from "../lib/cognitive-path-grounding.js";
+import {
+  COGNITIVE_LEVEL_OPERATIONAL_CONTRACTS,
+  evaluateSemanticReviewResult,
+  QuizQuestionQualityError,
+  validateGeneratedQuestionCandidate,
+  type NormalizedQuestionCandidate,
+  type QualityReasonCode,
+  type QuestionQualityContext,
+  type SemanticQuestionReviewInput,
+  type SemanticQuestionReviewResult,
+} from "./quiz-question-quality.js";
+import { reviewGeneratedQuestion } from "./quiz-semantic-review.js";
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
 
@@ -29,6 +41,18 @@ export interface GenerateQuizInput {
   questionCount: number;
   difficultyMode: "SIMPLE" | "MEDIUM" | "HARD" | "MIXED";
   canonicalTargets?: CanonicalQuizTarget[];
+  qualityReview?: (
+    input: SemanticQuestionReviewInput,
+  ) => Promise<SemanticQuestionReviewResult>;
+  qualityRetryReasonCodes?: QualityReasonCode[];
+  questionProvider?: (input: {
+    nodeIds: number[];
+    questionCount: number;
+    difficultyMode: GenerateQuizInput["difficultyMode"];
+    canonicalTargets?: CanonicalQuizTarget[];
+    qualityRetryReasonCodes: readonly QualityReasonCode[];
+    requiredDifficultyLevels: readonly GeneratedQuestion["difficultyLevel"][];
+  }) => Promise<GeneratedQuestion[]>;
 }
 
 /**
@@ -165,8 +189,6 @@ export async function generateQuizQuestions(
     }
   }
 
-  const split = computeSplit(input.questionCount, input.difficultyMode);
-
   const nodeBlocks = nodes.map((n) =>
     [
       `--- NODE id=${n.id}: ${n.title} ---`,
@@ -199,16 +221,6 @@ export async function generateQuizQuestions(
       .filter(Boolean)
       .join("\n")
   ).join("\n\n");
-
-  const userPrompt = [
-    `Generate exactly ${input.questionCount} questions with the following difficulty counts:`,
-    `  LOW: ${split.LOW}`,
-    `  MEDIUM: ${split.MEDIUM}`,
-    `  HIGH: ${split.HIGH}`,
-    ``,
-    `NODE CONTENT (use ONLY this material — never invent outside it):`,
-    nodeBlocks,
-  ].join("\n");
 
   // ── Helper: normalise a raw option explanations value from the model ────────
   function normaliseOptionExplanations(
@@ -246,46 +258,34 @@ export async function generateQuizQuestions(
     return null;
   }
 
-  // ── First attempt ──────────────────────────────────────────────────────────
-  const firstResp = await openrouter.chat.completions.create({
-    model: MODEL,
-    max_tokens: 6000,
-    temperature: 0.3,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user",   content: userPrompt },
-    ],
-  });
-
-  const firstRaw = firstResp.choices[0]?.message?.content ?? "";
-  let questions = extractQuestions(firstRaw);
-
-  // ── Retry once if parse failed ─────────────────────────────────────────────
-  if (!questions) {
-    logger.warn({ raw: firstRaw.slice(0, 200) }, "quiz-generation: first attempt not valid JSON — retrying");
-    const retryResp = await openrouter.chat.completions.create({
-      model: MODEL,
-      max_tokens: 6000,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system",    content: SYSTEM_PROMPT },
-        { role: "user",      content: userPrompt },
-        { role: "assistant", content: firstRaw },
-        { role: "user",      content: 'Return ONLY valid JSON: { "questions": [ ... ] }. No other text.' },
-      ],
+  const qualityContextByNode = new Map<number, QuestionQualityContext>();
+  for (const target of input.canonicalTargets ?? []) {
+    const node = nodes.find((candidate) => candidate.id === target.nodeId);
+    if (!node) continue;
+    const instructionalContent = [
+      node.theoryContent ? `THEORY: ${node.theoryContent}` : "",
+      node.childFriendlyExplanation ? `EXPLANATION: ${node.childFriendlyExplanation}` : "",
+      Array.isArray(node.basicExamples) && node.basicExamples.length > 0
+        ? `EXAMPLES: ${node.basicExamples.join(" | ")}`
+        : "",
+    ].filter(Boolean).join("\n");
+    qualityContextByNode.set(target.nodeId, {
+      canonicalNodeId: target.nodeId,
+      canonicalCognitiveLevelId: target.cognitiveLevelId,
+      cognitiveLevel: target.cognitiveLevel as QuestionQualityContext["cognitiveLevel"],
+      microNodeTitle: node.title,
+      instructionalContent,
+      performanceObjective: target.performanceObjective,
+      successCriterion: target.successCriterion,
+      preferredInteractionTypes: target.preferredInteractionTypes,
+      deliveryInteractionType: "multiple_choice",
     });
-    const retryRaw = retryResp.choices[0]?.message?.content ?? "";
-    questions = extractQuestions(retryRaw);
-    if (!questions) {
-      logger.error({ raw: retryRaw.slice(0, 300) }, "quiz-generation: failed to parse JSON after retry");
-      throw new Error("Quiz generation failed to produce valid JSON after retry");
-    }
   }
 
-  // ── Defensive normalisation ────────────────────────────────────────────────
-  return questions.slice(0, input.questionCount).map((q, i): GeneratedQuestion => {
+  function normalizeQuestions(
+    questions: GeneratedQuestion[],
+  ): GeneratedQuestion[] {
+    return questions.slice(0, input.questionCount).map((q, i): GeneratedQuestion => {
     const opts: [string, string, string, string] =
       Array.isArray(q.options) && q.options.length === 4
         ? (q.options as [string, string, string, string])
@@ -295,7 +295,9 @@ export async function generateQuizQuestions(
       nodeId: typeof q.nodeId === "number" ? q.nodeId : null,
       cognitiveLevelId:
         typeof q.nodeId === "number" && canonicalTargetByNode.has(q.nodeId)
-          ? canonicalTargetByNode.get(q.nodeId)!.cognitiveLevelId
+          ? typeof q.cognitiveLevelId === "number"
+            ? q.cognitiveLevelId
+            : null
           : typeof q.nodeId === "number" &&
             typeof q.cognitiveLevelId === "number" &&
             allowedLevelIdsByNode.get(q.nodeId)?.has(q.cognitiveLevelId)
@@ -304,17 +306,230 @@ export async function generateQuizQuestions(
       questionText: typeof q.questionText === "string" ? q.questionText : `Հarц ${i + 1}`,
       options: opts,
       correctOptionIndex:
-        typeof q.correctOptionIndex === "number" &&
-        q.correctOptionIndex >= 0 &&
-        q.correctOptionIndex <= 3
+        typeof q.correctOptionIndex === "number"
           ? q.correctOptionIndex
-          : 0,
-      difficultyLevel: (["LOW", "MEDIUM", "HIGH"].includes(q.difficultyLevel)
+          : -1,
+      difficultyLevel: (typeof q.difficultyLevel === "string"
         ? q.difficultyLevel
-        : "MEDIUM") as "LOW" | "MEDIUM" | "HIGH",
+        : "") as "LOW" | "MEDIUM" | "HIGH",
       // Validate and normalise option explanations.
       // Length must exactly match options count; bad arrays are dropped (never shifted).
       optionExplanations: normaliseOptionExplanations(q.optionExplanations, opts.length),
     };
-  });
+    });
+  }
+
+  async function requestQuestions(
+    questionCount: number,
+    retryReasonCodes: readonly QualityReasonCode[] = [],
+    requiredDifficultyLevels?: readonly GeneratedQuestion["difficultyLevel"][],
+  ): Promise<GeneratedQuestion[]> {
+    const difficultyCounts = requiredDifficultyLevels
+      ? requiredDifficultyLevels.reduce(
+        (counts, difficulty) => {
+          counts[difficulty]++;
+          return counts;
+        },
+        { LOW: 0, MEDIUM: 0, HIGH: 0 },
+      )
+      : computeSplit(questionCount, input.difficultyMode);
+    if (input.questionProvider) {
+      const provided = await input.questionProvider({
+        nodeIds: input.nodeIds,
+        questionCount,
+        difficultyMode: input.difficultyMode,
+        canonicalTargets: input.canonicalTargets,
+        qualityRetryReasonCodes: retryReasonCodes,
+        requiredDifficultyLevels: requiredDifficultyLevels ?? [
+          ...Array(difficultyCounts.LOW).fill("LOW"),
+          ...Array(difficultyCounts.MEDIUM).fill("MEDIUM"),
+          ...Array(difficultyCounts.HIGH).fill("HIGH"),
+        ],
+      });
+      return normalizeQuestions(provided);
+    }
+
+    const retryInstruction = retryReasonCodes.length > 0
+      ? [
+        "",
+        "REPLACEMENT REQUEST: Some earlier slots failed a private quality gate.",
+        `Regenerate exactly ${questionCount} replacement question(s).`,
+        `Private failure categories to correct: ${[...new Set(retryReasonCodes)].join(", ")}.`,
+        "Do not repeat any accepted question pattern. Keep the same node and canonical target.",
+      ].join("\n")
+      : "";
+    const userPrompt = [
+      `Generate exactly ${questionCount} questions with the following difficulty counts:`,
+      `  LOW: ${difficultyCounts.LOW}`,
+      `  MEDIUM: ${difficultyCounts.MEDIUM}`,
+      `  HIGH: ${difficultyCounts.HIGH}`,
+      "",
+      "NODE CONTENT (use ONLY this material — never invent outside it):",
+      nodeBlocks,
+      retryInstruction,
+    ].join("\n");
+
+    const firstResp = await openrouter.chat.completions.create({
+      model: MODEL,
+      max_tokens: 8192,
+      temperature: retryReasonCodes.length > 0 ? 0.1 : 0.3,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+    });
+    const firstRaw = firstResp.choices[0]?.message?.content ?? "";
+    let questions = extractQuestions(firstRaw);
+    if (!questions) {
+      logger.warn(
+        { raw: firstRaw.slice(0, 200) },
+        "quiz-generation: provider output was not valid JSON — retrying",
+      );
+      const retryResp = await openrouter.chat.completions.create({
+        model: MODEL,
+        max_tokens: 8192,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+          { role: "assistant", content: firstRaw },
+          { role: "user", content: 'Return ONLY valid JSON: { "questions": [ ... ] }. No other text.' },
+        ],
+      });
+      const retryRaw = retryResp.choices[0]?.message?.content ?? "";
+      questions = extractQuestions(retryRaw);
+      if (!questions) {
+        logger.error("quiz-generation: failed to parse JSON after provider retry");
+        throw new Error("Quiz generation failed to produce valid JSON after retry");
+      }
+    }
+    return normalizeQuestions(questions);
+  }
+
+  const requiredSplit = computeSplit(input.questionCount, input.difficultyMode);
+  const requiredDifficultyBySlot: GeneratedQuestion["difficultyLevel"][] = [
+    ...Array(requiredSplit.LOW).fill("LOW"),
+    ...Array(requiredSplit.MEDIUM).fill("MEDIUM"),
+    ...Array(requiredSplit.HIGH).fill("HIGH"),
+  ];
+  const initialQuestions = await requestQuestions(
+    input.questionCount,
+    input.qualityRetryReasonCodes,
+    requiredDifficultyBySlot,
+  );
+  if (!input.canonicalTargets || input.canonicalTargets.length === 0) {
+    return initialQuestions;
+  }
+
+  const fallbackContext = input.canonicalTargets.length === 1
+    ? qualityContextByNode.get(input.canonicalTargets[0]!.nodeId)
+    : undefined;
+  if (!fallbackContext && qualityContextByNode.size === 0) {
+    throw new QuizQuestionQualityError(input.canonicalTargets[0]!.nodeId, [
+      "SEMANTIC_REVIEW_ERROR",
+    ]);
+  }
+
+  const MAX_REPLACEMENT_ATTEMPTS_PER_SLOT = 2;
+  const questionsBySlot: Array<GeneratedQuestion | null> =
+    Array.from({ length: input.questionCount }, () => null);
+  const attemptsBySlot = Array.from({ length: input.questionCount }, () => 0);
+  let lastReasonCodes: QualityReasonCode[] = [];
+
+  function candidateForQuality(question: GeneratedQuestion): NormalizedQuestionCandidate {
+    return question as NormalizedQuestionCandidate;
+  }
+
+  async function evaluateSlot(
+    slot: number,
+    question: GeneratedQuestion,
+  ): Promise<QualityReasonCode[]> {
+    const candidate = candidateForQuality(question);
+    const context = qualityContextByNode.get(candidate.nodeId ?? -1) ?? fallbackContext;
+    if (!context) return ["NODE_ID_MISMATCH"];
+    const structural = validateGeneratedQuestionCandidate(
+      candidate,
+      context,
+      questionsBySlot
+        .filter((value): value is GeneratedQuestion => value !== null)
+        .map(candidateForQuality),
+    );
+    if (!structural.passed) return structural.reasonCodes;
+    if (candidate.difficultyLevel !== requiredDifficultyBySlot[slot]) {
+      return ["DIFFICULTY_DISTRIBUTION_MISMATCH"];
+    }
+
+    const reviewer = input.qualityReview ?? reviewGeneratedQuestion;
+    const reviewInput = {
+      candidate,
+      context,
+      operationalContract: COGNITIVE_LEVEL_OPERATIONAL_CONTRACTS[context.cognitiveLevel],
+    };
+    let review = await reviewer(reviewInput);
+    let semantic = evaluateSemanticReviewResult(review, context);
+    if (semantic.reasonCodes.includes("SEMANTIC_REVIEW_ERROR")) {
+      review = await reviewer(reviewInput);
+      semantic = evaluateSemanticReviewResult(review, context);
+    }
+    if (semantic.passed) {
+      questionsBySlot[slot] = question;
+      return [];
+    }
+    return semantic.reasonCodes;
+  }
+
+  const initialFailures: Array<{ slot: number; reasons: QualityReasonCode[] }> = [];
+  for (let slot = 0; slot < input.questionCount; slot++) {
+    const question = initialQuestions[slot];
+    if (!question) {
+      initialFailures.push({ slot, reasons: ["SEMANTIC_REVIEW_ERROR"] });
+      continue;
+    }
+    const reasons = await evaluateSlot(slot, question);
+    if (reasons.length > 0) {
+      questionsBySlot[slot] = null;
+      initialFailures.push({ slot, reasons });
+      lastReasonCodes = reasons;
+    }
+  }
+
+  let failures = initialFailures;
+  while (failures.length > 0) {
+    const retryable = failures.filter(({ slot }) =>
+      attemptsBySlot[slot]! < MAX_REPLACEMENT_ATTEMPTS_PER_SLOT,
+    );
+    if (retryable.length === 0) {
+      const nodeId = input.canonicalTargets[0]!.nodeId;
+      throw new QuizQuestionQualityError(nodeId, lastReasonCodes);
+    }
+
+    for (const { slot } of retryable) attemptsBySlot[slot]!++;
+    const replacementQuestions = await requestQuestions(
+      retryable.length,
+      failures.flatMap(({ reasons }) => reasons),
+      retryable.map(({ slot }) => requiredDifficultyBySlot[slot]!),
+    );
+    const nextFailures: Array<{ slot: number; reasons: QualityReasonCode[] }> = [];
+    for (let index = 0; index < retryable.length; index++) {
+      const slot = retryable[index]!.slot;
+      const replacement = replacementQuestions[index];
+      if (!replacement) {
+        const reasons: QualityReasonCode[] = ["SEMANTIC_REVIEW_ERROR"];
+        nextFailures.push({ slot, reasons });
+        lastReasonCodes = reasons;
+        continue;
+      }
+      const reasons = await evaluateSlot(slot, replacement);
+      if (reasons.length > 0) {
+        questionsBySlot[slot] = null;
+        nextFailures.push({ slot, reasons });
+        lastReasonCodes = reasons;
+      }
+    }
+    failures = nextFailures;
+  }
+
+  return questionsBySlot.filter((question): question is GeneratedQuestion => question !== null);
 }

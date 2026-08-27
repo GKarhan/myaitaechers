@@ -86,6 +86,8 @@ export type CreateQuizFromNodeScopeInput = {
   requireGeneratedNodeScope?: boolean;
   generationPurpose?: "normal" | "retest";
   generateQuestions?: (input: GenerateQuizInput) => Promise<GeneratedQuestion[]>;
+  questionProvider?: GenerateQuizInput["questionProvider"];
+  qualityReview?: GenerateQuizInput["qualityReview"];
 };
 
 export type CreatedQuizResult = {
@@ -192,7 +194,6 @@ export async function generateQuizFromNodeScope(
   const canonicalTargets = input.generationPurpose === "retest"
     ? []
     : await resolveNormalQuizCanonicalTargets(nodeIds);
-  const generate = input.generateQuestions ?? generateQuizQuestions;
   let generated: GeneratedQuestion[];
   if (canonicalTargets.length > 0) {
     const allocation = allocateQuestionsByNode(nodeIds, input.questionCount);
@@ -200,23 +201,39 @@ export async function generateQuizFromNodeScope(
     for (const target of canonicalTargets) {
       const nodeQuestionCount = allocation.get(target.nodeId) ?? 0;
       if (nodeQuestionCount === 0) continue;
-      const nodeBatch = await generate({
+      const injectedProvider = input.questionProvider
+        ?? (input.generateQuestions
+          ? async (request: Parameters<NonNullable<GenerateQuizInput["questionProvider"]>>[0]) =>
+            input.generateQuestions!({
+              nodeIds: request.nodeIds,
+              questionCount: request.questionCount,
+              difficultyMode: request.difficultyMode,
+              canonicalTargets: request.canonicalTargets,
+              qualityRetryReasonCodes: [...request.qualityRetryReasonCodes],
+            })
+          : undefined);
+      const nodeBatch = await generateQuizQuestions({
         nodeIds: [target.nodeId],
         questionCount: nodeQuestionCount,
         difficultyMode: input.difficultyMode,
         canonicalTargets: [target],
+        questionProvider: injectedProvider,
+        qualityReview: input.qualityReview,
       });
-      if (nodeBatch.some((question) => question.nodeId !== target.nodeId)) {
+      if (
+        nodeBatch.length !== nodeQuestionCount
+        || nodeBatch.some((question) =>
+          question.nodeId !== target.nodeId
+          || question.cognitiveLevelId !== target.cognitiveLevelId
+        )
+      ) {
         throw new QuizCreationError("QUESTION_SCOPE_INVALID");
       }
-      batches.push(...nodeBatch.slice(0, nodeQuestionCount).map((question) => ({
-        ...question,
-        nodeId: target.nodeId,
-        cognitiveLevelId: target.cognitiveLevelId,
-      })));
+      batches.push(...nodeBatch);
     }
     generated = batches;
   } else {
+    const generate = input.generateQuestions ?? generateQuizQuestions;
     generated = await generate({
       nodeIds,
       questionCount: input.questionCount,
@@ -254,6 +271,19 @@ export async function persistGeneratedQuizInTransaction(
   canonicalTargets?: CanonicalQuizTarget[],
 ): Promise<CreatedQuizResult> {
   if (input.generationPurpose !== "retest" && canonicalTargets) {
+    if (generated.length !== input.questionCount) {
+      throw new QuizCreationError("QUESTION_SCOPE_INVALID");
+    }
+    const targetByNode = new Map(
+      canonicalTargets.map((target) => [target.nodeId, target]),
+    );
+    if (generated.some((question) => {
+      if (question.nodeId === null) return true;
+      const target = targetByNode.get(question.nodeId);
+      return !target || question.cognitiveLevelId !== target.cognitiveLevelId;
+    })) {
+      throw new QuizCreationError("QUESTION_SCOPE_INVALID");
+    }
     await tx.execute(sql`
       SELECT id
       FROM lesson_nodes

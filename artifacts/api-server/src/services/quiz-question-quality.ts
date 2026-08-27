@@ -2,8 +2,9 @@
  * T8.2B — Cognitive Question Quality Contract Foundation
  *
  * This module is intentionally pure. It owns the quality contract and
- * deterministic checks for a generated question candidate, but is not wired
- * into live generation or persistence yet.
+ * deterministic checks for a generated question candidate. Provider-backed
+ * review and retry orchestration live in the generation service; this module
+ * stays safe to use from tests and other non-provider code.
  */
 
 export const COGNITIVE_LEVELS = [
@@ -221,6 +222,7 @@ export const QUALITY_REASON_CODES = [
   "INVALID_CORRECT_OPTION",
   "INVALID_OPTION_EXPLANATIONS",
   "INVALID_DIFFICULTY_LEVEL",
+  "DIFFICULTY_DISTRIBUTION_MISMATCH",
   "NODE_ID_MISMATCH",
   "COGNITIVE_LEVEL_ID_MISMATCH",
   "UNSUPPORTED_INTERACTION_TYPE",
@@ -242,6 +244,21 @@ export type QuestionQualityResult = {
   passed: boolean;
   reasonCodes: QualityReasonCode[];
 };
+
+export class QuizQuestionQualityError extends Error {
+  readonly code = "QUIZ_QUESTION_QUALITY_FAILED" as const;
+  readonly nodeId: number;
+  readonly reasonCodes: QualityReasonCode[];
+
+  constructor(nodeId: number, reasonCodes: readonly QualityReasonCode[]) {
+    super("QUIZ_QUESTION_QUALITY_FAILED");
+    this.name = "QuizQuestionQualityError";
+    this.nodeId = nodeId;
+    this.reasonCodes = [...new Set(reasonCodes)].filter((reasonCode) =>
+      QUALITY_REASON_CODES.includes(reasonCode),
+    );
+  }
+}
 
 export type SemanticQuestionReviewInput = {
   candidate: NormalizedQuestionCandidate;
