@@ -1,0 +1,415 @@
+DIAGNOSTIC / ARCHITECTURE AUDIT ONLY — DO NOT CHANGE CODE
+
+TASK: T4 — COGNITIVE QUIZ CONTRACT AUDIT
+
+Context
+
+The async quiz-generation backend task (#212) is complete.
+
+Before making any further quiz-generation changes, we need to redesign the
+SEMANTIC basis of quiz generation.
+
+IMPORTANT:
+This task is READ-ONLY / DIAGNOSTIC ONLY.
+
+DO NOT:
+- edit code
+- edit schema
+- create migrations
+- modify database data
+- generate a quiz
+- call any AI/provider
+- restart workflows unless absolutely required for read-only inspection
+- change frontend
+- change async job infrastructure
+- change retest/continuous-quiz behavior
+- change Knowledge Tree
+- change AI Teacher
+
+We need evidence first.
+
+==================================================
+CANONICAL PRODUCT DECISION TO AUDIT AGAINST
+==================================================
+
+The quiz system must eventually test the knowledge structure produced by
+lesson mapping.
+
+For each MicroNode, the normal quiz should test ONLY that MicroNode's
+highest / target mapped cognitive level.
+
+Examples:
+
+Understand
+→ quiz tests Understand
+
+Apply
+→ quiz tests Apply
+
+Understand → Apply
+→ quiz tests Apply
+
+Remember → Understand → Apply
+→ quiz tests Apply
+
+Understand → Apply → Analyze
+→ quiz tests Analyze
+
+The quiz should NOT automatically generate separate questions for all lower
+Bloom levels.
+
+Lower/path levels belong primarily to AI Teacher instruction:
+
+MicroNode Cognitive Path
+→ teach level
+→ local micro-check
+→ next mapped level
+→ ...
+→ target level
+
+Therefore:
+
+QUIZ =
+"Has the learner demonstrated the MicroNode's target cognitive performance?"
+
+AI TEACHER =
+"Teach and locally verify the mapped path needed to reach that target."
+
+IMPORTANT:
+Do NOT implement this decision in this task.
+Audit whether the current system can support it.
+
+==================================================
+KEY PRINCIPLE
+==================================================
+
+Bloom/cognitive level is NOT the same thing as generic question difficulty.
+
+We currently expose:
+
+EASY
+MEDIUM
+HARD
+MIXED
+
+But the platform's canonical instructional structure already contains
+MicroNodes and Cognitive Paths.
+
+We need to determine exactly what EASY/MEDIUM/HARD/MIXED currently means
+in code and whether it has any deterministic relationship to mapped
+knowledge.
+
+Do not assume. Trace it.
+
+==================================================
+PART 1 — TRACE CURRENT QUIZ GENERATION END TO END
+==================================================
+
+Trace the current path from:
+
+Teacher quiz creation UI
+→ request payload
+→ POST /api/quizzes
+→ legacy synchronous path AND new async job path
+→ quiz generation service
+→ provider prompt
+→ parsing/validation
+→ quiz persistence
+→ quiz_questions persistence
+→ quiz lesson/node links
+→ evidence/scoring/retest consumers.
+
+Report exact files/functions.
+
+Specifically identify where these fields enter and how they are used:
+
+- lessonIds
+- nodeIds
+- questionCount
+- difficultyMode
+- quizType
+- subjectId
+- classId
+
+Also identify any other fields that affect question generation.
+
+==================================================
+PART 2 — AUDIT EASY / MEDIUM / HARD / MIXED
+==================================================
+
+For each current mode:
+
+EASY
+MEDIUM
+HARD
+MIXED
+
+report:
+
+1. Where is it defined?
+2. Where is it validated?
+3. What exact provider instruction does it cause?
+4. Does backend code deterministically select different MicroNodes,
+   exercises, Bloom levels, or cognitive tasks based on it?
+5. Or is it merely a natural-language instruction to the provider?
+6. Does MIXED have an actual algorithmic distribution?
+7. Is difficulty persisted on the quiz?
+8. Is difficulty persisted per question?
+9. Does scoring/evidence/Knowledge Tree use difficulty in any meaningful way?
+
+Do not infer semantics from names.
+Report only actual implementation evidence.
+
+==================================================
+PART 3 — INVENTORY CURRENT MICRONODE DATA
+==================================================
+
+Trace the actual persisted/current read contract for a MicroNode.
+
+For each of the following, report:
+
+- field/table
+- persisted or derived
+- current API projection
+- whether quiz generation currently receives it
+
+Audit at minimum:
+
+MicroNode:
+- id
+- title
+- learningObjective
+- theory / theoretical content
+- source context / source quote
+- Bloom field currently shown on MicroNode
+- status/provenance if relevant
+
+Cognitive Path levels:
+- level id
+- cognitiveLevel
+- sequence
+- isApplicable
+- isTargetCeiling
+- performanceObjective
+- successCriterion
+- minimumIndependentEvidence
+- preferredInteractionTypes
+- provenance
+
+Exercises:
+- exercise id
+- node association
+- cognitiveLevel if present
+- exercise type / interaction type
+- verbatim/source text
+- answer / expected answer / solution data if present
+- approval/review state
+
+==================================================
+PART 4 — DETERMINE THE CANONICAL TARGET LEVEL
+==================================================
+
+We need to know whether the current data can deterministically answer:
+
+"What is the target cognitive level that a normal quiz should test for
+MicroNode X?"
+
+Inspect real schema and code.
+
+Determine whether target should currently come from:
+
+A. isTargetCeiling
+B. highest sequence Cognitive Path level
+C. MicroNode Bloom field
+D. another existing field
+E. data is currently inconsistent / ambiguous
+
+IMPORTANT:
+Do NOT decide by preference.
+
+Check whether existing mapping/Cognitive Path logic guarantees:
+
+- exactly one target ceiling per MicroNode
+- target belongs to an applicable level
+- target is the highest intended mapped level
+- sequence is deterministic
+- single-level paths work correctly
+- multi-level paths work correctly
+
+Also inspect what happens when:
+
+- no Cognitive Path exists
+- path exists but no target is marked
+- multiple targets are marked
+- target and MicroNode Bloom disagree
+
+Report existing invariants and gaps.
+
+==================================================
+PART 5 — PERFORMANCE OBJECTIVE / SUCCESS CRITERION
+==================================================
+
+For the target Cognitive Level, determine whether quiz generation can
+currently retrieve:
+
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- minimumIndependentEvidence
+
+Trace whether these are currently used by quiz generation.
+
+We ultimately want the generation contract to be capable of:
+
+MicroNode
+→ target Cognitive Level
+→ performanceObjective
+→ successCriterion
+→ preferredInteractionTypes
+→ source/theory context
+→ generated question
+
+Audit whether all necessary information already exists.
+
+==================================================
+PART 6 — QUESTION IDENTITY / EVIDENCE
+==================================================
+
+Inspect quiz question persistence.
+
+For every generated question, determine whether we currently persist:
+
+- quizId
+- questionId
+- nodeId / MicroNode identity
+- lessonId
+- cognitiveLevel
+- cognitivePathLevelId
+- performanceObjective snapshot/reference
+- successCriterion snapshot/reference
+- question type
+- correct answer
+- explanation / solution
+- source/exercise relationship
+
+Then trace what quiz completion/evidence currently knows.
+
+Can the current system say:
+
+"Student demonstrated MicroNode 2492 at Apply level"
+
+or can it only say:
+
+"Student answered a question linked to MicroNode 2492 correctly"?
+
+This distinction is critical.
+
+==================================================
+PART 7 — QUESTION TYPE COMPATIBILITY
+==================================================
+
+We already have preferredInteractionTypes on Cognitive Path levels.
+
+Audit:
+
+1. Existing canonical interaction-type vocabulary.
+2. Existing quiz question-type vocabulary.
+3. Mapping between the two, if one exists.
+4. Which interaction types the current student quiz UI can actually render.
+5. Which generated answer formats scoring can actually grade.
+6. Any interaction type that Cognitive Path supports but quiz UI/scoring
+   cannot safely support today.
+
+Do not change anything.
+
+==================================================
+PART 8 — REAL LESSON 754 READ-ONLY SAMPLE
+==================================================
+
+Use Lesson 754 only as a READ-ONLY example.
+
+Do NOT modify it.
+Do NOT generate anything.
+
+For its five MicroNodes, report a compact matrix:
+
+MicroNode ID
+MicroNode title
+MicroNode Bloom
+Cognitive Path levels in sequence
+isTargetCeiling
+target level according to CURRENT persisted data
+performanceObjective for target
+successCriterion for target
+preferredInteractionTypes for target
+whether current quiz generator receives these fields
+
+This is only evidence gathering.
+
+==================================================
+PART 9 — ASYNC COMPATIBILITY
+==================================================
+
+Task #212 introduced the async job architecture while preserving legacy
+frontend compatibility.
+
+Audit where the normalized quiz-generation request snapshot is stored.
+
+Determine what would eventually need to change if:
+
+difficultyMode
+
+is replaced or deprecated in favor of a cognitive-target-based generation
+contract.
+
+DO NOT change #212.
+
+Report whether this can be done additively without redesigning the async
+job architecture.
+
+==================================================
+PART 10 — FINAL GAP ANALYSIS
+==================================================
+
+Return exactly these classifications:
+
+A. ALREADY SUFFICIENT
+Existing data and contracts are enough; only generator selection/prompt
+logic needs changing.
+
+B. SMALL CONTRACT GAP
+Core data exists, but quiz question identity or target resolution needs a
+small additive change.
+
+C. MATERIAL DATA GAP
+Mapping/Cognitive Path does not persist enough information to reliably
+generate target-level questions.
+
+D. INCONSISTENT MODEL
+Multiple current fields disagree about what target cognitive performance
+means and must first be reconciled.
+
+Choose ONE primary classification and justify it with code/schema evidence.
+
+==================================================
+REQUIRED FINAL REPORT
+==================================================
+
+Return:
+
+1. Current quiz-generation flow
+2. Exact meaning of EASY/MEDIUM/HARD/MIXED today
+3. Current MicroNode + Cognitive Path data contract
+4. How target cognitive level is represented today
+5. Whether target resolution is deterministic
+6. Whether performanceObjective/successCriterion are available
+7. Whether preferredInteractionTypes are usable
+8. Current quiz-question identity/evidence contract
+9. Lesson 754 five-node target matrix
+10. Async #212 compatibility assessment
+11. Primary classification A/B/C/D
+12. Exact smallest recommended implementation step AFTER this audit
+
+Then STOP.
+
+Do not implement the recommendation.
