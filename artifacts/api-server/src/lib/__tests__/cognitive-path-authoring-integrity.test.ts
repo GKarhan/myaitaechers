@@ -10,6 +10,7 @@ import { Client } from "pg";
 import {
   confirmAuthoredCognitivePath,
   deleteAuthoredCognitiveLevel,
+  deriveCognitivePathReadState,
   reorderAuthoredCognitiveLevels,
   updateAuthoredNodeAtCognitivePathBoundary,
 } from "../cognitive-path-authoring.js";
@@ -520,6 +521,117 @@ try {
     const after = await getNodeAndLevels();
     assert.equal(after.currentNode.status, "needs_review");
     assert.equal(after.currentNode.cogPathStatus, "needs_review");
+  });
+
+  await test("U: zero Cognitive Levels is the missing-path state", async () => {
+    await setPath([]);
+    await db.update(lessonNodesTable)
+      .set({ cogPathStatus: null })
+      .where(eq(lessonNodesTable.id, node.id));
+    const current = await getNodeAndLevels();
+    assert.equal(current.levels.length, 0);
+    assert.equal(deriveCognitivePathReadState(current.currentNode.cogPathStatus, 0), "missing");
+  });
+
+  await test("V: first and additional manual levels synchronize null status to review-required", async () => {
+    await setPath([]);
+    await db.update(lessonNodesTable)
+      .set({ cogPathStatus: null })
+      .where(eq(lessonNodesTable.id, node.id));
+
+    const first = await createTeacherCognitiveLevel(node.id, {
+      cognitiveLevel: "understand",
+      performanceObjective,
+      successCriterion,
+      minimumIndependentEvidence: 3,
+      preferredInteractionTypes: ["multiple_choice"],
+    });
+    assert.ok(first);
+    let current = await getNodeAndLevels();
+    assert.equal(current.currentNode.cogPathStatus, "needs_review");
+    assert.equal(deriveCognitivePathReadState(current.currentNode.cogPathStatus, current.levels.length), "review_required");
+
+    const additional = await createTeacherCognitiveLevel(node.id, {
+      cognitiveLevel: "apply",
+      performanceObjective,
+      successCriterion,
+      minimumIndependentEvidence: 3,
+      preferredInteractionTypes: ["short_answer"],
+    });
+    assert.ok(additional);
+    current = await getNodeAndLevels();
+    assert.equal(current.currentNode.cogPathStatus, "needs_review");
+    assert.equal(current.levels.length, 2);
+    assert.notEqual(current.currentNode.cogPathStatus, "confirmed");
+  });
+
+  await test("W: editing an unconfirmed path preserves synchronized review state", async () => {
+    const [level] = await setPath([
+      { cognitiveLevel: "understand", isTargetCeiling: true },
+    ]);
+    const updated = await updateTeacherCognitiveLevel(node.id, level, {
+      successCriterion: "Սովորողը ճիշտ է բացատրում ջրի դերը կյանքի համար։",
+    });
+    assert.ok(updated);
+    const current = await getNodeAndLevels();
+    assert.equal(current.currentNode.cogPathStatus, "needs_review");
+    assert.equal(deriveCognitivePathReadState(current.currentNode.cogPathStatus, current.levels.length), "review_required");
+  });
+
+  await test("X: deletion synchronizes review while rows remain and missing after the final row", async () => {
+    const levels = await setPath([
+      { cognitiveLevel: "understand" },
+      { cognitiveLevel: "apply", isTargetCeiling: true },
+    ], { cogPathStatus: "confirmed", targetBloomLevel: 3 });
+
+    assert.deepEqual(
+      await deleteAuthoredCognitiveLevel(lesson.id, node.id, levels[1].id),
+      { found: true, deleted: true },
+    );
+    let current = await getNodeAndLevels();
+    assert.equal(current.currentNode.cogPathStatus, "needs_review");
+    assert.equal(deriveCognitivePathReadState(current.currentNode.cogPathStatus, current.levels.length), "review_required");
+
+    assert.deepEqual(
+      await deleteAuthoredCognitiveLevel(lesson.id, node.id, levels[0].id),
+      { found: true, deleted: true },
+    );
+    current = await getNodeAndLevels();
+    assert.equal(current.currentNode.cogPathStatus, null);
+    assert.equal(deriveCognitivePathReadState(current.currentNode.cogPathStatus, current.levels.length), "missing");
+  });
+
+  await test("Y: lesson summary semantics use row existence plus confirmation state", async () => {
+    const states = [
+      deriveCognitivePathReadState(null, 0),
+      deriveCognitivePathReadState(null, 1),
+      deriveCognitivePathReadState("needs_review", 2),
+      deriveCognitivePathReadState("confirmed", 1),
+    ];
+    assert.deepEqual(states, ["missing", "review_required", "review_required", "confirmed"]);
+    assert.equal(states.filter((state) => state !== "missing").length, 3);
+    assert.equal(states.filter((state) => state === "missing").length, 1);
+    assert.equal(states.filter((state) => state === "review_required").length, 2);
+    assert.equal(states.filter((state) => state === "confirmed").length, 1);
+  });
+
+  await test("Z: target-ceiling change invalidates confirmation without auto-confirming", async () => {
+    const levels = await setPath([
+      { cognitiveLevel: "understand" },
+      { cognitiveLevel: "apply", isTargetCeiling: true },
+    ]);
+    await assertConfirmedTarget("apply", 3);
+    const updated = await updateTeacherCognitiveLevel(node.id, levels[0], {
+      isTargetCeiling: true,
+    });
+    assert.ok(updated);
+    const current = await getNodeAndLevels();
+    assert.equal(current.currentNode.cogPathStatus, "needs_review");
+    assert.equal(current.levels.find((level) => level.id === levels[0].id)?.isTargetCeiling, true);
+    assert.equal(current.levels.find((level) => level.id === levels[1].id)?.isTargetCeiling, false);
+    const resolution = resolveCanonicalQuizTarget(current.currentNode, current.levels);
+    assert.equal(resolution.valid, false);
+    if (!resolution.valid) assert.equal(resolution.reason, "PATH_NOT_CONFIRMED");
   });
 } finally {
   await factory.cleanup();

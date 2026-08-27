@@ -80,6 +80,7 @@ import {
 import {
   confirmAuthoredCognitivePath,
   deleteAuthoredCognitiveLevel,
+  deriveCognitivePathReadState,
   reorderAuthoredCognitiveLevels,
   updateAuthoredNodeAtCognitivePathBoundary,
 } from "../lib/cognitive-path-authoring.js";
@@ -3061,7 +3062,9 @@ router.get("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async (
     : [];
 
   res.json(
-    nodes.map((n) => ({
+    nodes.map((n) => {
+      const nodeCognitiveLevels = cognitiveLevels.filter((level) => level.lessonNodeId === n.id);
+      return {
       id: n.id,
       lessonId: n.lessonId,
       topicId: n.topicId ?? null,
@@ -3086,6 +3089,11 @@ router.get("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async (
         ? n.changeReason
         : null,
       cogPathStatus: (n as any).cogPathStatus ?? null,
+      cognitivePathState: deriveCognitivePathReadState(
+        (n as any).cogPathStatus,
+        nodeCognitiveLevels.length,
+      ),
+      cognitiveLevelCount: nodeCognitiveLevels.length,
       teachingContentStale: !!((n as any).teachingContentStale),
       sourceSupport: classifyMicroNodeSourceAlignment(n.learningObjective, [{
         sourceText: n.theoryContent ?? "",
@@ -3094,13 +3102,14 @@ router.get("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async (
       cognitivePathGroundingStatus: validateCognitivePathGrounding(
         n.theoryContent,
         n.learningObjective,
-        cognitiveLevels.filter((level) => level.lessonNodeId === n.id).map((level) => ({
+        nodeCognitiveLevels.map((level) => ({
           performanceObjective: level.performanceObjective,
           successCriterion: level.successCriterion,
           preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
         })),
       ).status,
-    }))
+      };
+    })
   );
 });
 

@@ -420,6 +420,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
             qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) }),
             qc.invalidateQueries({ queryKey: ["lesson-topics", lessonId] }),
             qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) }),
+            qc.invalidateQueries({ queryKey: ["lesson-final-approval-readiness", lessonId] }),
           ]);
         }}
       />
@@ -881,8 +882,6 @@ function LessonNodesPanel({
   const [bulkCogPathSummary, setBulkCogPathSummary] = useState<BulkCogPathSummary | null>(null);
 
   const COG_LEVEL_LABELS: Record<string, string> = { remember: 'Հիշել', understand: 'Հասկանալ', apply: 'Կիրառել', analyze: 'Վերլուծել', evaluate: 'Գնահատել', create: 'Ստեղծել' };
-  // Canonical Bloom 2001 order for display sorting (no manual reorder).
-  const CANONICAL_COG_ORDER = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'];
   // Armenian teacher-facing labels for interaction types.
   const INTERACTION_LABELS: Record<string, string> = {
     multiple_choice:      'Բազմակի ընտրություն',
@@ -928,23 +927,23 @@ function LessonNodesPanel({
         method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...cogLevelEditForm, performanceObjective: cogLevelEditForm.performanceObjective || null, successCriterion: cogLevelEditForm.successCriterion || null }),
       });
-      if (r.ok) { setCogLevelEditId(null); setCogLevelEditForm(null); await loadCogPath(nodeId); }
+      if (r.ok) { setCogLevelEditId(null); setCogLevelEditForm(null); await refreshCognitivePathViews(nodeId); }
       else { const d = await r.json() as { error?: string }; setCogPathError((e) => ({ ...e, [nodeId]: d.error ?? 'Save failed' })); }
     } finally { setCogLevelSaving(false); }
   };
 
   const setCogCeiling = async (levelId: number, nodeId: number) => {
-    await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}/update`, {
+    const response = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}/update`, {
       method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ isTargetCeiling: true }),
     });
-    await loadCogPath(nodeId);
+    if (response.ok) await refreshCognitivePathViews(nodeId);
   };
 
   const deleteCogLevel = async (levelId: number, nodeId: number, levelKey: string) => {
     if (!confirm(`Hetаrzhkel «${COG_LEVEL_LABELS[levelKey] ?? levelKey}» macardaky?`)) return;
-    await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${authToken ?? ""}` } });
-    await loadCogPath(nodeId);
+    const response = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${authToken ?? ""}` } });
+    if (response.ok) await refreshCognitivePathViews(nodeId);
   };
 
   const linkExercise = async (cognitiveLevelId: number, lessonExerciseId: number, nodeId: number) => {
@@ -975,7 +974,7 @@ function LessonNodesPanel({
           const prev = d[nodeId];
           return { ...d, [nodeId]: prev ? { ...prev, cogPathStatus: 'confirmed' } : { nodeId, cogPathStatus: 'confirmed', levels: [] } };
         });
-        refreshNodes(); // update the node list so lesson-level readiness reflects confirmation
+        await refreshCognitivePathViews(nodeId);
       } else {
         setCogPathError((e) => ({ ...e, [nodeId]: data.message ?? data.error ?? 'Hastatumn xalech ar' }));
       }
@@ -996,7 +995,7 @@ function LessonNodesPanel({
       if (r.ok) {
         setAddLevelOpen((a) => ({ ...a, [nodeId]: false }));
         setAddLevelForm((f) => { const n = { ...f }; delete n[nodeId]; return n; });
-        await loadCogPath(nodeId);
+        await refreshCognitivePathViews(nodeId);
       } else {
         const d = await r.json() as { error?: string };
         setCogPathError((e) => ({ ...e, [nodeId]: d.error ?? 'Avel xalech ar' }));
@@ -1012,11 +1011,11 @@ function LessonNodesPanel({
     if (swapIdx < 0 || swapIdx >= levels.length) return;
     const newLevels = [...levels];
     [newLevels[idx], newLevels[swapIdx]] = [newLevels[swapIdx], newLevels[idx]];
-    await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/reorder`, {
+    const response = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/reorder`, {
       method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderedLevelIds: newLevels.map((l) => l.id) }),
     });
-    await loadCogPath(nodeId);
+    if (response.ok) await refreshCognitivePathViews(nodeId);
   };
 
   const { token: authToken } = useAuth();
@@ -1065,6 +1064,13 @@ function LessonNodesPanel({
   const reorderNodesMutation = useReorderLessonNodes();
 
   const refreshNodes = () => qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
+  const refreshCognitivePathViews = async (nodeId: number) => {
+    await Promise.all([
+      loadCogPath(nodeId),
+      refreshNodes(),
+      qc.invalidateQueries({ queryKey: ["lesson-final-approval-readiness", lessonId] }),
+    ]);
+  };
   const refreshEx = () => qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
   const refreshTopics = () => qc.invalidateQueries({ queryKey: ["lesson-topics", lessonId] });
 
@@ -1082,11 +1088,22 @@ function LessonNodesPanel({
       && Array.isArray(content.nonExamples) && content.nonExamples.length > 0;
   };
   const hasGeneratedTeachingContent = hasCompleteTeachingContent;
+  const getNodeCognitivePathState = (node: (typeof nodes)[number]) => {
+    const state = (node as any).cognitivePathState;
+    if (state === "missing" || state === "review_required" || state === "confirmed") {
+      return state;
+    }
+    return (node as any).cogPathStatus === "confirmed"
+      ? "confirmed"
+      : (node as any).cogPathStatus === "needs_review"
+        ? "review_required"
+        : "missing";
+  };
   const cognitivePathsCreated = nodes.filter((node) =>
-    ["needs_review", "confirmed"].includes((node as any).cogPathStatus),
+    getNodeCognitivePathState(node) !== "missing",
   ).length;
   const cognitivePathsConfirmed = nodes.filter((node) =>
-    (node as any).cogPathStatus === "confirmed",
+    getNodeCognitivePathState(node) === "confirmed",
   ).length;
   const teachingContentGenerated = nodes.filter(hasGeneratedTeachingContent).length;
   const teachingContentComplete = nodes.filter(hasCompleteTeachingContent).length;
@@ -1596,7 +1613,7 @@ function LessonNodesPanel({
     const canMoveDown = nIdxInGroup < groupLength - 1;
     const nodeStatus = (n as any).status as string | null;
     const sourceNeedsReview = ['PARTIAL', 'INSUFFICIENT', 'UNREADABLE'].includes((n as any).sourceSupport);
-    const cogPathNeedsReview = (n as any).cogPathStatus === 'needs_review';
+    const cogPathNeedsReview = getNodeCognitivePathState(n) === 'review_required';
     const cogPathGroundingNeedsReview = (n as any).cognitivePathGroundingStatus === 'REVIEW_REQUIRED';
     const readinessNotes = [
       sourceNeedsReview ? 'Աղբյուրի վերանայում է պահանջվում' : null,
@@ -2018,7 +2035,7 @@ function LessonNodesPanel({
               🧠 <span>Ճանաչողական ուղի</span>
               {cogPathData[n.id]?.levels.length ? (
                 <span className="text-[10px] text-indigo-400/50">
-                  ({[...cogPathData[n.id]!.levels].sort((a, b) => CANONICAL_COG_ORDER.indexOf(a.cognitiveLevel) - CANONICAL_COG_ORDER.indexOf(b.cognitiveLevel)).map((l) => COG_LEVEL_LABELS[l.cognitiveLevel] ?? l.cognitiveLevel).join(' → ')})
+                  ({[...cogPathData[n.id]!.levels].sort((a, b) => a.sequence - b.sequence).map((l) => COG_LEVEL_LABELS[l.cognitiveLevel] ?? l.cognitiveLevel).join(' → ')})
                 </span>
               ) : null}
               {cogPathData[n.id]?.cogPathStatus === 'needs_review' && (
@@ -2042,8 +2059,8 @@ function LessonNodesPanel({
                 <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1">{cogPathError[n.id]}</p>
               )}
 
-              {/* Levels list — sorted by canonical Bloom order, not DB sequence */}
-              {[...(cogPathData[n.id]?.levels ?? [])].sort((a, b) => CANONICAL_COG_ORDER.indexOf(a.cognitiveLevel) - CANONICAL_COG_ORDER.indexOf(b.cognitiveLevel)).map((level) => {
+              {/* Levels list follows the persisted authoring sequence. */}
+              {[...(cogPathData[n.id]?.levels ?? [])].sort((a, b) => a.sequence - b.sequence).map((level) => {
                 const isEditing = cogLevelEditId === level.id;
                 const linkedCount = level.tasks.length;
                 const mie = level.minimumIndependentEvidence;

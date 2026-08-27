@@ -1,0 +1,353 @@
+IMPLEMENT PHASE 2 ONLY — FIX MANUAL COGNITIVE PATH STATE SYNCHRONIZATION
+
+Your Phase 1 diagnosis is accepted.
+
+Implement ONLY the smallest systemic fix identified in that diagnosis.
+
+Do not perform another broad audit.
+Do not modify Lesson 754 data.
+Do not generate a quiz.
+Do not call any provider.
+Do not modify quiz-generation semantics.
+
+==================================================
+ACCEPTED ROOT CAUSE
+==================================================
+
+The canonical confirmation authority is already correct and must remain unchanged.
+
+The problems are:
+
+1. Manual Cognitive Level mutations can create real path rows while
+   lesson_nodes.cog_path_status remains null.
+
+2. The lesson summary incorrectly uses cog_path_status alone as proof
+   that a path exists.
+
+3. Main-dashboard Cognitive Path mutations refresh the local path panel
+   but do not consistently refresh the lesson-node/readiness data used
+   by summary and warning UI.
+
+4. "Path exists", "needs review", and "confirmed" must remain distinct.
+
+==================================================
+REQUIRED BACKEND INVARIANT
+==================================================
+
+After every successful teacher Cognitive Path mutation:
+
+- CREATE level
+- EDIT level
+- DELETE level
+- reorder levels
+- change target ceiling
+
+synchronize the MicroNode path state from the CURRENT persisted rows.
+
+Rules:
+
+A. If ZERO Cognitive Level rows remain:
+   the node must represent MISSING PATH.
+
+B. If one or more Cognitive Level rows exist and the path is not
+   canonically confirmed:
+   cog_path_status must be `needs_review`.
+
+C. NEVER automatically set `confirmed`.
+
+D. Only the existing canonical confirmation operation may set
+   `confirmed`, after its existing structural + grounding + target
+   acceptance checks pass.
+
+E. If a confirmed path is mutated:
+   it must become `needs_review`, as today.
+
+Do not create another confirmation authority.
+
+==================================================
+LESSON SUMMARY
+==================================================
+
+Fix the lesson Cognitive Path summary so it reflects CURRENT reality.
+
+Required semantic states:
+
+MISSING
+= zero Cognitive Level rows
+
+REVIEW REQUIRED
+= one or more Cognitive Level rows exist but canonical confirmation
+  has not been completed / remains invalidated
+
+CONFIRMED
+= canonical persisted confirmation state
+
+Therefore:
+
+createdCount
+= review-required + confirmed paths
+
+missingCount
+= nodes with zero Cognitive Level rows
+
+reviewCount
+= paths that exist but are not confirmed
+
+confirmedCount
+= confirmed paths
+
+Do not use nullable legacy cog_path_status alone to infer path existence.
+
+Prefer one backend/read-model authority if practical rather than
+duplicating counting semantics in multiple frontend components.
+
+==================================================
+FRONTEND REFRESH
+==================================================
+
+After every successful Cognitive Path mutation:
+
+- create
+- edit
+- delete
+- reorder
+- target change
+- confirm
+
+refresh/invalidate BOTH:
+
+1. the open Cognitive Path detail state/query
+2. the lesson-node/readiness query or queries that drive:
+   - lesson-level Cognitive Path counts
+   - MicroNode warnings/status
+   - assignment/readiness display if dependent
+
+Do not require a page reload for the UI to become correct.
+
+==================================================
+IMPORTANT — DO NOT "FIX" REAL INVALID PATHS
+==================================================
+
+Do NOT automatically repair or confirm Lesson 754 paths.
+
+The Phase 1 audit proved:
+
+MN1:
+persisted order is Apply → Understand
+→ INVALID_COGNITIVE_ORDER
+
+MN2:
+target ceiling missing
+
+MN3:
+target ceiling missing
+
+MN4:
+structurally valid and target exists, but still requires explicit
+canonical confirmation
+
+MN5:
+target ceiling missing
+
+These are real authoring issues.
+
+This task must make the UI/state REPRESENT them correctly.
+It must NOT silently repair them.
+
+Especially:
+
+- Do not reorder MN1 automatically.
+- Do not invent targets for MN2/MN3/MN5.
+- Do not auto-confirm MN4.
+- Do not change Lesson 754 rows.
+
+==================================================
+UI PRESENTATION BUG — MN1
+==================================================
+
+Also fix the misleading Cognitive Path display ordering if confirmed by
+the existing code trace.
+
+The Phase 1 diagnosis found:
+
+Persisted MN1 sequence:
+1. Apply
+2. Understand
+
+But UI displays:
+Understand → Apply
+
+because it sorts levels by Bloom order.
+
+For an authoring/review UI, persisted path sequence must be visible.
+
+The UI must NOT cosmetically reorder an invalid persisted path into a
+valid-looking Cognitive Path.
+
+Display Cognitive Path levels by persisted `sequence`.
+
+Bloom ordering may still be used in selectors/options, but not to
+rewrite the displayed path order.
+
+Do not automatically repair persisted sequence data.
+
+==================================================
+REGRESSION TESTS
+==================================================
+
+Add provider-free isolated tests covering at least:
+
+1. Node with zero levels
+   → MISSING.
+
+2. CREATE first manual level on null-status node
+   → status becomes needs_review
+   → summary no longer says missing.
+
+3. CREATE additional level
+   → remains needs_review.
+
+4. EDIT unconfirmed path
+   → remains needs_review.
+
+5. DELETE while levels remain
+   → needs_review.
+
+6. DELETE final remaining level
+   → becomes missing.
+
+7. Change target on confirmed path
+   → becomes needs_review.
+
+8. Reorder confirmed path
+   → becomes needs_review.
+
+9. Valid manual path is NOT automatically confirmed.
+
+10. Explicit existing confirmation operation on a valid path
+    → confirmed.
+
+11. Invalid manual path
+    → confirmation fails closed.
+
+12. Lesson summary counts are derived correctly from actual level-row
+    existence + confirmation state.
+
+13. Read-after-write / refresh returns the same state.
+
+14. Display order follows persisted Cognitive Level sequence and does
+    not hide INVALID_COGNITIVE_ORDER.
+
+15. Existing Canonical Quiz Target Resolver behavior remains unchanged.
+
+==================================================
+PROTECTED SYSTEMS
+==================================================
+
+Do not modify:
+
+- Canonical Quiz Target Resolver semantics
+- canonical confirmation acceptance rules
+- grounding authority
+- T7.1
+- T7.2
+- T7.3
+- T8.1
+- T8.2B
+- T8.2C
+- async quiz generation
+- retests
+- scoring
+- Knowledge Tree
+- AI Teacher
+- Teaching Content
+- mapping/source data
+- exercises
+
+No schema migration unless absolutely proven necessary.
+Prefer no migration.
+
+No provider calls.
+
+Use isolated fixtures for mutation tests.
+
+Lesson 754 must remain READ ONLY.
+
+==================================================
+FINAL READ-ONLY LESSON 754 CHECK
+==================================================
+
+After implementation, inspect Lesson 754 read-only.
+
+Expected representation should now reflect reality approximately as:
+
+MN1:
+PATH EXISTS / REVIEW REQUIRED
+and persisted invalid order must remain visible
+
+MN2:
+PATH EXISTS / REVIEW REQUIRED
+target missing
+
+MN3:
+PATH EXISTS / REVIEW REQUIRED
+target missing
+
+MN4:
+PATH EXISTS / REVIEW REQUIRED
+confirmation-ready but not confirmed
+
+MN5:
+PATH EXISTS / REVIEW REQUIRED
+target missing
+
+Therefore the lesson must NOT continue saying:
+3/5 created, 2 missing
+
+if all five still have Cognitive Level rows.
+
+Expected summary:
+5/5 paths exist
+0 missing
+5 review-required
+0 confirmed
+
+Do NOT repair those five paths in this task.
+
+Then verify Canonical Quiz Target Resolver still fails closed for
+unconfirmed paths.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report:
+
+1. Root cause implemented against.
+2. Files changed.
+3. Backend state synchronization behavior.
+4. Lesson summary calculation behavior.
+5. Frontend invalidation/refetch behavior.
+6. Cognitive Path display-order behavior.
+7. Regression tests and results.
+8. Read-only Lesson 754 post-fix representation.
+9. Confirmation that no Lesson 754 data changed.
+10. Confirmation that no quiz/provider work occurred.
+
+End exactly:
+
+MANUAL CREATE SETS CURRENT PATH STATE: YES/NO
+MANUAL EDIT SETS CURRENT PATH STATE: YES/NO
+MANUAL DELETE SETS CURRENT PATH STATE: YES/NO
+TARGET CHANGE INVALIDATES CONFIRMATION: YES/NO
+REORDER INVALIDATES CONFIRMATION: YES/NO
+ZERO LEVELS MEANS MISSING: YES/NO
+EXISTING UNCONFIRMED LEVELS MEAN REVIEW REQUIRED: YES/NO
+LESSON SUMMARY USES ACTUAL CURRENT PATHS: YES/NO
+DISPLAY PRESERVES PERSISTED PATH SEQUENCE: YES/NO
+INVALID PATH AUTO-CONFIRMED: NO
+CANONICAL QUIZ TARGET RESOLVER PRESERVED: YES/NO
+QUIZ GENERATION MODIFIED: NO
+PROVIDER CALLED: NO
+LESSON 754 MODIFIED: NO
+READY FOR MANUAL PATH CORRECTION: YES/NO

@@ -1016,7 +1016,7 @@ function CognitiveSection({ node, path, exercises, editId, newForNodeId, form, b
   onLink: (levelId: number, exerciseId: number) => void;
   onUnlink: (taskId: number) => void;
 }) {
-  const levels = [...(path?.levels ?? [])].sort((a, b) => COGNITIVE_LEVELS.indexOf(a.cognitiveLevel) - COGNITIVE_LEVELS.indexOf(b.cognitiveLevel));
+  const levels = [...(path?.levels ?? [])].sort((a, b) => a.sequence - b.sequence);
   const update = <K extends keyof CognitiveForm>(key: K, value: CognitiveForm[K]) => onChange({ ...form, [key]: value });
   return (
     <section className="rounded-xl border border-indigo-400/15 bg-indigo-400/[0.03] p-3">

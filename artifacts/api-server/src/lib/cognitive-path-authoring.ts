@@ -22,15 +22,33 @@ export function buildCognitivePathMutationInvalidationQuery(nodeId: number) {
   return sql`
     UPDATE ${lessonNodesTable}
     SET
-      cog_path_status = 'needs_review',
+      cog_path_status = CASE
+        WHEN EXISTS (
+          SELECT 1
+          FROM ${lessonNodeCognitiveLevelsTable}
+          WHERE ${lessonNodeCognitiveLevelsTable.lessonNodeId} = ${nodeId}
+        ) THEN 'needs_review'
+        ELSE NULL
+      END,
       teaching_content_stale = CASE
-        WHEN child_friendly_explanation IS NOT NULL THEN TRUE
+        WHEN cog_path_status = 'confirmed'
+          AND child_friendly_explanation IS NOT NULL
+          THEN TRUE
         ELSE teaching_content_stale
       END
     WHERE
       id = ${nodeId}
-      AND cog_path_status = 'confirmed'
   `;
+}
+
+export type CognitivePathReadState = "missing" | "review_required" | "confirmed";
+
+export function deriveCognitivePathReadState(
+  cogPathStatus: string | null | undefined,
+  cognitiveLevelCount: number,
+): CognitivePathReadState {
+  if (cognitiveLevelCount === 0) return "missing";
+  return cogPathStatus === "confirmed" ? "confirmed" : "review_required";
 }
 
 export async function updateAuthoredNodeAtCognitivePathBoundary(input: {
@@ -116,6 +134,15 @@ export async function updateAuthoredNodeAtCognitivePathBoundary(input: {
       .where(eq(lessonNodesTable.id, input.nodeId))
       .returning();
     if (!updated) return { found: false };
+    if (input.invalidatesCognitivePath) {
+      await tx.execute(buildCognitivePathMutationInvalidationQuery(input.nodeId));
+      updated.cogPathStatus = deriveCognitivePathReadState(
+        updated.cogPathStatus,
+        (await tx.select({ id: lessonNodeCognitiveLevelsTable.id })
+          .from(lessonNodeCognitiveLevelsTable)
+          .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, input.nodeId))).length,
+      ) === "missing" ? null : "needs_review";
+    }
     return { found: true, updated: true, node: updated };
   });
 }
