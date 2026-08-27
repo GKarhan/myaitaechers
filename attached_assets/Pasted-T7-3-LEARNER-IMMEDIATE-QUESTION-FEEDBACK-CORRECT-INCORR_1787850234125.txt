@@ -1,0 +1,572 @@
+T7.3 — LEARNER IMMEDIATE QUESTION FEEDBACK
+CORRECT / INCORRECT + CORRECT ANSWER + SHORT EXPLANATION
+
+IMPORTANT CONTEXT
+
+T7.1 is complete:
+- Normal quiz questions use the canonical MicroNode target Cognitive Level.
+- Each question persists authoritative:
+  - nodeId
+  - cognitiveLevelId
+- Difficulty does NOT determine Bloom.
+
+T7.2 is complete:
+- Teacher review displays:
+  - MicroNode label
+  - Cognitive Level label
+- Labels come only from persisted provenance.
+
+This task is ONLY T7.3.
+
+Do NOT redesign scoring.
+Do NOT change Knowledge Tree.
+Do NOT change retest authority.
+Do NOT change quiz generation cognitive-target semantics.
+Do NOT change AI Teacher.
+Do NOT change mapping.
+Do NOT change Cognitive Path authoring.
+
+==================================================
+GOAL
+==================================================
+
+When a learner answers a quiz question and FINALIZES that answer,
+the learner should receive immediate instructional feedback BEFORE
+moving to the next question.
+
+Minimum feedback:
+
+1. Whether the learner was correct or incorrect.
+2. The learner's submitted answer.
+3. The correct answer.
+4. A short instructional explanation of WHY that answer is correct.
+
+For mathematical/calculation/problem questions, the feedback should
+contain a concise solution/reasoning path when appropriate.
+
+The learner should not merely memorize a result such as:
+
+"Correct answer: 3250"
+
+Instead, where appropriate, show something like:
+
+Քո պատասխանը՝ 3000 գ
+Ճիշտ պատասխանը՝ 3250 գ
+
+Բացատրություն․
+3 կգ = 3000 գ
+3000 գ + 250 գ = 3250 գ
+
+Then the learner explicitly continues to the next question.
+
+==================================================
+STEP 0 — INSPECT FIRST, NO CODE CHANGES
+==================================================
+
+Before changing anything, report:
+
+1. Exact learner quiz-taking page/component.
+2. Exact endpoint currently used when submitting an answer.
+3. Whether answers are persisted:
+   - per question immediately
+   OR
+   - only at final quiz submission.
+4. Current answer-submit response shape.
+5. Current quiz question read shape exposed to the learner.
+6. CRITICAL:
+   Does the learner currently receive the correct answer BEFORE
+   submitting/finalizing the question?
+
+7. Where the correct answer is currently stored.
+8. Whether the question already stores any:
+   - explanation
+   - rationale
+   - solution
+   - worked solution
+   - feedback
+   - answer explanation
+
+9. Whether the current quiz generator already produces such a field
+   but persistence/read APIs discard it.
+
+10. Exact current behavior for:
+   - multiple choice
+   - multi-select if supported
+   - true/false if supported
+   - numeric answer
+   - short answer
+   - constructed/problem-solving responses
+
+11. Smallest safe file set required for T7.3.
+
+DO NOT IMPLEMENT until this inspection is complete.
+
+==================================================
+SECURITY / ANSWER-LEAK RULE
+==================================================
+
+This is mandatory.
+
+The learner MUST NOT receive:
+
+- correctOptionIndex
+- correct answer
+- answer key
+- explanation revealing the answer
+- worked solution
+
+BEFORE the learner finalizes/submits that question.
+
+If GET quiz currently exposes correctOptionIndex or equivalent to
+the learner, report it as a correctness/security issue and fix it
+within this task.
+
+Teacher review may continue to receive the answer key.
+
+Learner and teacher read models may therefore need to differ.
+
+==================================================
+CANONICAL INTERACTION
+==================================================
+
+For each question:
+
+QUESTION
+↓
+learner selects/types answer
+↓
+learner clicks:
+
+«Հաստատել պատասխանը»
+
+↓
+SERVER evaluates/persists the finalized answer
+↓
+SERVER returns authoritative immediate feedback
+↓
+UI locks that question's answer
+↓
+learner sees feedback
+↓
+learner clicks:
+
+«Հաջորդ հարցը»
+
+Only then move to the next question.
+
+Do NOT determine correctness only in the browser.
+
+The backend is authoritative.
+
+==================================================
+FEEDBACK UI
+==================================================
+
+After answer finalization, display a compact feedback block.
+
+CORRECT example:
+
+✅ Ճիշտ է
+
+Քո պատասխանը՝ 3250 գ
+
+Ճիշտ պատասխանը՝ 3250 գ
+
+Բացատրություն
+3 կգ = 3000 գ, հետևաբար
+3 կգ 250 գ = 3250 գ։
+
+[Հաջորդ հարցը]
+
+
+INCORRECT example:
+
+❌ Սխալ է
+
+Քո պատասխանը՝ 3000 գ
+
+Ճիշտ պատասխանը՝ 3250 գ
+
+Բացատրություն
+3 կգ = 3000 գ։
+Դրան պետք է ավելացնել ևս 250 գ։
+Ուստի՝ 3000 գ + 250 գ = 3250 գ։
+
+[Հաջորդ հարցը]
+
+Keep it concise and readable.
+
+Do not create a new page.
+
+==================================================
+IMPORTANT — EXPLANATION MUST TEACH
+==================================================
+
+The explanation is not merely:
+
+"Սա ճիշտ պատասխանն է։"
+
+It should provide the minimum reasoning needed to understand why.
+
+For factual/remember questions:
+
+Question:
+1 կգ-ը քանի՞ գրամ է։
+
+Feedback may be:
+
+1 կգ = 1000 գ, հետևաբար ճիշտ պատասխանն է 1000 գ։
+
+For Understand questions:
+
+Explain the relevant relationship/concept briefly.
+
+For Apply questions:
+
+Show the essential application/calculation steps.
+
+For Analyze/Evaluate questions:
+
+Show the key reasoning or distinction that justifies the correct answer.
+
+Do NOT expose chain-of-thought style hidden reasoning.
+
+We need a concise pedagogical explanation / solution, not internal model reasoning.
+
+==================================================
+QUESTION TYPES
+==================================================
+
+Do not assume every question is multiple choice.
+
+Inspect current supported question types.
+
+Feedback must use the canonical answer representation for the type.
+
+Examples:
+
+MULTIPLE CHOICE
+Learner answer:
+«1 կգ = 100 գ»
+
+Correct answer:
+«1 կգ = 1000 գ»
+
+Do not display:
+"Option 2"
+
+if the actual answer text is available.
+
+
+NUMERIC ANSWER
+
+Քո պատասխանը՝ 3000
+Ճիշտ պատասխանը՝ 3250
+
+Use unit/context where stored and appropriate.
+
+
+TRUE/FALSE
+
+Display the Armenian semantic value rather than internal boolean/index
+when possible.
+
+
+SHORT ANSWER / CONSTRUCTED RESPONSE
+
+Do NOT invent exact-match correctness rules if the existing system uses
+another evaluator.
+
+Preserve existing evaluation semantics.
+
+If a question type cannot currently produce authoritative immediate
+correctness safely, identify it explicitly instead of silently adding
+a weak heuristic.
+
+==================================================
+EXPLANATION DATA CONTRACT
+==================================================
+
+First inspect whether an explanation/solution field already exists.
+
+If a suitable persisted field already exists:
+REUSE IT.
+
+If generation already produces an explanation but it is discarded:
+persist it through the smallest existing contract extension.
+
+If no suitable field exists, add ONE canonical question-level field,
+following existing naming conventions, for example:
+
+answerExplanation
+
+or
+
+solutionExplanation
+
+Do not add multiple overlapping fields.
+
+This explanation belongs to the QUESTION / ANSWER KEY, not to a
+student attempt.
+
+It must be generated when the quiz question is created/reviewed,
+not by making a new provider call every time a student answers.
+
+CRITICAL:
+
+Student answer submission must NOT trigger a provider/AI call merely
+to explain the answer.
+
+Immediate feedback must be fast and deterministic from persisted data.
+
+==================================================
+GENERATION CONTRACT IF EXPLANATION IS MISSING
+==================================================
+
+Only if inspection proves that explanation is not already available:
+
+Extend the existing question-generation contract so every newly
+generated question includes a concise instructional explanation of
+the correct answer.
+
+The explanation must align with:
+
+- the question
+- canonical correct answer
+- MicroNode
+- canonical Cognitive Level
+- performance objective
+- success criterion
+
+For mathematical/problem questions it should contain the essential
+solution steps.
+
+Do NOT change T7.1 target selection.
+
+Do NOT let explanation generation choose a new Bloom level.
+
+==================================================
+TEACHER REVIEW
+==================================================
+
+If explanation becomes a canonical persisted question field,
+the teacher review page should at minimum be able to see it.
+
+Prefer allowing the teacher to edit it IF the existing question edit
+architecture makes this a small safe extension.
+
+Do not redesign teacher review.
+
+Teacher should be able to verify what the learner will later see.
+
+==================================================
+FINALIZED ANSWER RULE
+==================================================
+
+Once the learner clicks «Հաստատել պատասխանը»:
+
+- persist/evaluate the answer
+- lock the answer in the UI
+- show feedback
+- do not allow changing that finalized answer
+- do not allow resubmitting the same question to discover the answer
+  and then change it
+
+Refresh must not reopen a finalized answer for editing.
+
+If the existing attempt model cannot currently support this invariant,
+report the exact gap before making a broad schema change.
+
+Prefer reusing existing answer/attempt persistence.
+
+==================================================
+DO NOT CHANGE SCORING SEMANTICS
+==================================================
+
+Existing correctness/scoring authority must remain authoritative.
+
+T7.3 consumes that result.
+
+Do NOT redefine:
+
+- mastery thresholds
+- Knowledge Tree state
+- 3/3, 2/3, etc.
+- retest eligibility
+- continuous test semantics
+- attempt completion
+
+If existing scoring has a defect discovered during inspection,
+report it separately unless it prevents T7.3 correctness.
+
+==================================================
+OLD QUIZZES / LEGACY QUESTIONS
+==================================================
+
+Old questions may not have a persisted explanation.
+
+Do NOT fabricate one at answer time using AI.
+
+Safe fallback:
+
+Correct/incorrect
++
+learner answer
++
+correct answer
+
+and:
+
+«Այս հարցի համար բացատրություն պահպանված չէ»։
+
+New generated questions should have the explanation if the canonical
+field is introduced.
+
+==================================================
+TESTS
+==================================================
+
+Add focused provider-free regression coverage.
+
+At minimum:
+
+A. Correct multiple-choice answer
+→ finalized
+→ correct = true
+→ learner answer returned
+→ correct answer returned
+→ explanation returned
+
+B. Incorrect multiple-choice answer
+→ correct = false
+→ learner answer returned
+→ correct answer returned
+→ explanation returned
+
+C. BEFORE submission
+→ learner quiz read endpoint does NOT expose answer key
+→ does NOT expose correctOptionIndex
+→ does NOT expose explanation that reveals the answer
+
+D. Teacher review
+→ still sees correct answer
+→ sees explanation if canonical field exists
+
+E. Finalized answer cannot be changed.
+
+F. Refresh/reload
+→ finalized question remains finalized
+→ feedback can be reconstructed/read safely.
+
+G. Numeric answer
+→ canonical correctness preserved
+→ learner/correct answer rendered meaningfully
+→ concise solution returned if stored.
+
+H. Difficulty does not affect feedback correctness or Cognitive Level.
+
+I. Question retains T7.1:
+→ nodeId
+→ cognitiveLevelId
+
+J. T7.1 canonical generation tests remain green.
+
+K. T7.2 provenance/read tests remain green.
+
+L. Async generation tests remain green.
+
+M. Retest tests remain green.
+
+N. Existing scoring tests remain green.
+
+==================================================
+BROWSER VERIFICATION
+==================================================
+
+Use an isolated test fixture.
+
+Verify actual learner flow:
+
+1. Open quiz.
+2. See question WITHOUT answer leakage.
+3. Select/type an incorrect answer.
+4. Click «Հաստատել պատասխանը».
+5. See:
+   - ❌ Սխալ է
+   - learner answer
+   - correct answer
+   - explanation
+6. Cannot change answer.
+7. Click «Հաջորդ հարցը».
+8. Answer another correctly.
+9. See corresponding correct feedback.
+10. Refresh a finalized question/session.
+11. Confirm it does not become editable again.
+
+Also verify teacher review still sees the answer key.
+
+Do not use Lesson 754 if its current Cognitive Path state prevents
+safe normal generation.
+
+Use isolated fixtures where necessary.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+DO NOT implement yet:
+
+- Knowledge Tree update changes
+- Test session redesign
+- «Գիտի / Սովորելու» redesign
+- retest grouping changes
+- Easy/Medium/Hard removal
+- frontend async polling
+- game-style quizzes
+- AI Teacher changes
+- mastery/scoring redesign
+- cognitive evidence redesign beyond what T7.3 strictly requires
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Inspection findings.
+2. Whether any answer leakage existed before the change.
+3. Existing answer persistence/evaluation flow.
+4. Whether explanation data already existed.
+5. Files changed.
+6. DB/schema change, if any, and why.
+7. New/updated generation contract, if needed.
+8. Exact learner submission response.
+9. Exact learner UI behavior.
+10. Finalized-answer locking behavior.
+11. Legacy-question behavior.
+12. Teacher-review behavior.
+13. Tests and results.
+14. Browser verification.
+15. Confirmation no provider call occurs when a learner submits an answer.
+16. Confirmation scoring/Knowledge Tree/retest semantics were not changed.
+
+Finish with exactly:
+
+LEARNER ANSWER KEY HIDDEN BEFORE FINALIZATION: YES/NO
+IMMEDIATE CORRECT/INCORRECT FEEDBACK: YES/NO
+LEARNER ANSWER SHOWN AFTER FINALIZATION: YES/NO
+CORRECT ANSWER SHOWN AFTER FINALIZATION: YES/NO
+SHORT INSTRUCTIONAL EXPLANATION SHOWN: YES/NO
+MATH/PROBLEM FEEDBACK SUPPORTS SOLUTION STEPS: YES/NO
+FINALIZED ANSWER LOCKED: YES/NO
+REFRESH PRESERVES FINALIZED STATE: YES/NO
+ANSWER SUBMISSION CALLS AI/PROVIDER: YES/NO
+T7.1 PROVENANCE PRESERVED: YES/NO
+T7.2 TEACHER LABELS PRESERVED: YES/NO
+SCORING SEMANTICS CHANGED: YES/NO
+KNOWLEDGE TREE SEMANTICS CHANGED: YES/NO
+RETEST SEMANTICS CHANGED: YES/NO
+READY FOR NEXT TEST 2.0 STEP: YES/NO
+
+STOP after T7.3.
+Do not begin the next task.

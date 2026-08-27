@@ -19,11 +19,18 @@ type TakeData = {
   attemptId: number;
   attemptSequence: number;
   questions: TakeQuestion[];
+  finalizedAnswers: Array<Feedback & {
+    questionId: number;
+    selectedOptionIndex: number;
+  }>;
 };
 
 type Feedback = {
   isCorrect: boolean;
+  selectedOptionIndex: number;
   correctOptionIndex: number;
+  selectedAnswer: string | null;
+  correctAnswer: string | null;
   feedback: {
     whyCorrect: string | null;
     whyWrong: string | null;
@@ -73,7 +80,22 @@ export default function QuizTake() {
         }
         return payload as TakeData;
       })
-      .then((payload) => payload && setData(payload))
+      .then((payload) => {
+        if (!payload) return;
+        setData(payload);
+        setAnswers(Object.fromEntries(
+          (payload.finalizedAnswers ?? []).map((answer) => [
+            answer.questionId,
+            answer.selectedOptionIndex,
+          ]),
+        ));
+        setFeedback(Object.fromEntries(
+          (payload.finalizedAnswers ?? []).map((answer) => [
+            answer.questionId,
+            answer,
+          ]),
+        ));
+      })
       .catch((reason: Error) => {
         if (reason.name !== "AbortError") setError(reason.message);
       })
@@ -88,6 +110,14 @@ export default function QuizTake() {
     () => !!data && data.questions.every((item) => feedback[item.id] != null),
     [data, feedback],
   );
+  const primaryExplanation = currentFeedback
+    ? currentFeedback.isCorrect
+      ? currentFeedback.feedback.whyCorrect
+        ?? currentFeedback.feedback.solutionExplanation
+      : currentFeedback.feedback.whyWrong
+        ?? currentFeedback.feedback.solutionExplanation
+        ?? currentFeedback.feedback.whyCorrect
+    : null;
 
   async function commitAnswer(optionIndex: number) {
     if (!token || !data || !question || currentFeedback || checking) return;
@@ -110,8 +140,12 @@ export default function QuizTake() {
       );
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Պատասխանը չհաջողվեց ստուգել");
-      setAnswers((current) => ({ ...current, [question.id]: optionIndex }));
-      setFeedback((current) => ({ ...current, [question.id]: payload as Feedback }));
+      const finalized = payload as Feedback;
+      setAnswers((current) => ({
+        ...current,
+        [question.id]: finalized.selectedOptionIndex,
+      }));
+      setFeedback((current) => ({ ...current, [question.id]: finalized }));
     } catch (reason) {
       setSubmitError(reason instanceof Error ? reason.message : "Պատասխանը չհաջողվեց ստուգել");
     } finally {
@@ -206,15 +240,30 @@ export default function QuizTake() {
 
           {currentFeedback && (
             <div className={`mt-6 rounded-2xl border p-4 ${currentFeedback.isCorrect ? "border-teal-400/30 bg-teal-400/10" : "border-amber-400/30 bg-amber-400/10"}`}>
-              <p className="font-semibold">{currentFeedback.isCorrect ? "Ճիշտ է" : "Սովորենք այս պատասխանից"}</p>
-              {currentFeedback.feedback.whyWrong && <p className="text-sm text-white/75 mt-2">{currentFeedback.feedback.whyWrong}</p>}
-              {currentFeedback.feedback.whyCorrect && <p className="text-sm text-white/75 mt-2">{currentFeedback.feedback.whyCorrect}</p>}
-              {currentFeedback.feedback.solutionExplanation && (
-                <div className="mt-3 pt-3 border-t border-white/10">
-                  <p className="text-xs font-semibold text-primary">Կարճ լուծում</p>
-                  <p className="text-sm text-white/75 mt-1 whitespace-pre-wrap">{currentFeedback.feedback.solutionExplanation}</p>
-                </div>
-              )}
+              <p className="font-semibold">
+                {currentFeedback.isCorrect ? "✅ Ճիշտ է" : "❌ Սխալ է"}
+              </p>
+              <div className="mt-3 space-y-2 text-sm text-white/80">
+                <p>
+                  <span className="font-semibold text-white">Քո պատասխանը՝</span>{" "}
+                  {currentFeedback.selectedAnswer ?? "Պատասխանը հասանելի չէ"}
+                </p>
+                <p>
+                  <span className="font-semibold text-white">Ճիշտ պատասխանը՝</span>{" "}
+                  {currentFeedback.correctAnswer ?? "Պատասխանը հասանելի չէ"}
+                </p>
+                <p>
+                  <span className="font-semibold text-white">Բացատրություն՝</span>{" "}
+                  {primaryExplanation ?? "Այս հարցի համար բացատրություն պահպանված չէ։"}
+                </p>
+                {!currentFeedback.isCorrect
+                  && currentFeedback.feedback.whyCorrect
+                  && currentFeedback.feedback.whyCorrect !== primaryExplanation && (
+                    <p className="text-teal-200">
+                      {currentFeedback.feedback.whyCorrect}
+                    </p>
+                  )}
+              </div>
             </div>
           )}
         </section>

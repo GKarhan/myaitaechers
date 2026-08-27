@@ -9,6 +9,8 @@ interface QuizQuestion {
   questionText: string;
   options: string[];
   correctOptionIndex: number;
+  optionExplanations: Array<string | null> | null;
+  solutionExplanation: string | null;
   difficultyLevel: string;
   sequence: number;
   cognitiveLevelId: number | null;
@@ -391,6 +393,22 @@ export default function QuizReview() {
                       )}
                     </div>
                   ))}
+                  {(q.optionExplanations?.[q.correctOptionIndex] || q.solutionExplanation) && (
+                    <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+                      <p className="text-xs font-semibold text-primary">Բացատրություն</p>
+                      {q.optionExplanations?.[q.correctOptionIndex] && (
+                        <p className="mt-1 text-sm text-white/75">
+                          {q.optionExplanations[q.correctOptionIndex]}
+                        </p>
+                      )}
+                      {q.solutionExplanation
+                        && q.solutionExplanation !== q.optionExplanations?.[q.correctOptionIndex] && (
+                          <p className="mt-1 text-sm text-white/75 whitespace-pre-wrap">
+                            {q.solutionExplanation}
+                          </p>
+                        )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

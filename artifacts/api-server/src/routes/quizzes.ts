@@ -1215,6 +1215,8 @@ router.get("/quizzes/:id", requireTeacher, async (req: AuthRequest, res) => {
       questionText:       quizQuestionsTable.questionText,
       options:             quizQuestionsTable.options,
       correctOptionIndex: quizQuestionsTable.correctOptionIndex,
+      optionExplanations: quizQuestionsTable.optionExplanations,
+      solutionExplanation: quizQuestionsTable.solutionExplanation,
       difficultyLevel:    quizQuestionsTable.difficultyLevel,
       sequence:           quizQuestionsTable.sequence,
       cognitiveLevelId:   quizQuestionsTable.cognitiveLevelId,
@@ -1255,6 +1257,8 @@ router.get("/quizzes/:id", requireTeacher, async (req: AuthRequest, res) => {
       questionText:       q.questionText,
       options:            q.options,
       correctOptionIndex: q.correctOptionIndex,
+      optionExplanations: q.optionExplanations,
+      solutionExplanation: q.solutionExplanation,
       difficultyLevel:    q.difficultyLevel,
       sequence:           q.sequence,
        cognitiveLevelId:   q.cognitiveLevelId ?? null,
@@ -1450,6 +1454,12 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
     return;
   }
 
+  const finalizedAnswers = await db
+    .select()
+    .from(quizAnswersTable)
+    .where(eq(quizAnswersTable.attemptId, opened.attempt.id));
+  const finalizedAnswerMap = new Map(finalizedAnswers.map((answer) => [answer.questionId, answer]));
+
   res.json({
     assignmentId:     assignment.id,
     assignmentStatus: "IN_PROGRESS",
@@ -1457,6 +1467,30 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
     attemptId: opened.attempt.id,
     attemptSequence: opened.attempt.attemptSequence,
     questions: opened.snapshots.map(presentAttemptQuestion),
+    finalizedAnswers: opened.snapshots.flatMap((snapshot) => {
+      const answer = finalizedAnswerMap.get(snapshot.questionId);
+      if (!answer) return [];
+      const selectedPresentationIndex = answer.selectedPresentationIndex
+        ?? (Array.isArray(snapshot.optionOrder)
+          ? (snapshot.optionOrder as number[]).indexOf(answer.selectedOptionIndex)
+          : answer.selectedOptionIndex);
+      const scored = scorePresentedAnswer(snapshot, selectedPresentationIndex);
+      if (!scored) return [];
+      const options = Array.isArray(snapshot.options) ? snapshot.options as string[] : [];
+      const order = Array.isArray(snapshot.optionOrder)
+        ? snapshot.optionOrder as number[]
+        : options.map((_, index) => index);
+      const presentedOptions = order.map((index) => options[index]);
+      return [{
+        questionId: snapshot.questionId,
+        selectedOptionIndex: scored.selectedPresentationIndex,
+        isCorrect: scored.isCorrect,
+        correctOptionIndex: scored.correctPresentationIndex,
+        selectedAnswer: presentedOptions[scored.selectedPresentationIndex] ?? null,
+        correctAnswer: presentedOptions[scored.correctPresentationIndex] ?? null,
+        feedback: scored.feedback,
+      }];
+    }),
   });
 }));
 
@@ -1471,34 +1505,80 @@ router.post("/quizzes/:id/attempts/:attemptId/feedback", requireAuth, asyncHandl
     return;
   }
 
-  const [access] = await db.select({
-    completedAt: quizAttemptsTable.completedAt,
-  }).from(quizAttemptsTable)
-    .innerJoin(quizSessionsTable, eq(quizSessionsTable.id, quizAttemptsTable.quizSessionId))
-    .where(and(
-      eq(quizAttemptsTable.id, attemptId),
-      eq(quizSessionsTable.rootQuizId, quizId),
-      eq(quizSessionsTable.studentId, req.userId!),
+  const outcome = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM quiz_attempts WHERE id = ${attemptId} FOR UPDATE`);
+    const [access] = await tx.select({
+      completedAt: quizAttemptsTable.completedAt,
+    }).from(quizAttemptsTable)
+      .innerJoin(quizSessionsTable, eq(quizSessionsTable.id, quizAttemptsTable.quizSessionId))
+      .where(and(
+        eq(quizAttemptsTable.id, attemptId),
+        eq(quizSessionsTable.rootQuizId, quizId),
+        eq(quizSessionsTable.studentId, req.userId!),
+      )).limit(1);
+    if (!access) return { status: 403, body: { error: "Attempt access denied" } };
+    if (access.completedAt) return { status: 409, body: { error: "Attempt already completed" } };
+
+    const [snapshot] = await tx.select().from(quizAttemptQuestionsTable).where(and(
+      eq(quizAttemptQuestionsTable.attemptId, attemptId),
+      eq(quizAttemptQuestionsTable.questionId, questionId),
     )).limit(1);
-  if (!access) { res.status(403).json({ error: "Attempt access denied" }); return; }
-  if (access.completedAt) { res.status(409).json({ error: "Attempt already completed" }); return; }
+    if (!snapshot) return { status: 404, body: { error: "Question not in this attempt" } };
 
-  const [snapshot] = await db.select().from(quizAttemptQuestionsTable).where(and(
-    eq(quizAttemptQuestionsTable.attemptId, attemptId),
-    eq(quizAttemptQuestionsTable.questionId, questionId),
-  )).limit(1);
-  if (!snapshot) { res.status(404).json({ error: "Question not in this attempt" }); return; }
+    const options = Array.isArray(snapshot.options) ? snapshot.options as string[] : [];
+    const order = Array.isArray(snapshot.optionOrder)
+      ? snapshot.optionOrder as number[]
+      : options.map((_, index) => index);
+    const requestedScore = scorePresentedAnswer(snapshot, selectedPresentationIndex);
+    if (!requestedScore) return { status: 400, body: { error: "Invalid option index" } };
 
-  const scored = scorePresentedAnswer(snapshot, selectedPresentationIndex);
-  if (!scored) {
-    res.status(400).json({ error: "Invalid option index" });
-    return;
-  }
-  res.json({
-    isCorrect: scored.isCorrect,
-    correctOptionIndex: scored.correctPresentationIndex,
-    feedback: scored.feedback,
+    const [existing] = await tx.select().from(quizAnswersTable).where(and(
+      eq(quizAnswersTable.attemptId, attemptId),
+      eq(quizAnswersTable.questionId, questionId),
+    )).limit(1);
+    const existingPresentationIndex = existing
+      ? existing.selectedPresentationIndex ?? order.indexOf(existing.selectedOptionIndex)
+      : null;
+    if (existing && existingPresentationIndex !== selectedPresentationIndex) {
+      return { status: 409, body: { error: "Finalized answer cannot be changed" } };
+    }
+    if (!existing) {
+      await tx.insert(quizAnswersTable).values({
+        attemptId,
+        questionId,
+        selectedOptionIndex: requestedScore.canonicalSelectedOptionIndex,
+        selectedPresentationIndex: requestedScore.selectedPresentationIndex,
+        isCorrect: requestedScore.isCorrect,
+        nodeId: snapshot.nodeId,
+      });
+    }
+
+    const [persisted] = existing
+      ? [existing]
+      : await tx.select().from(quizAnswersTable).where(and(
+          eq(quizAnswersTable.attemptId, attemptId),
+          eq(quizAnswersTable.questionId, questionId),
+        )).limit(1);
+    if (!persisted) return { status: 503, body: { error: "Answer could not be finalized" } };
+    const persistedPresentationIndex = persisted.selectedPresentationIndex
+      ?? order.indexOf(persisted.selectedOptionIndex);
+    const persistedScore = scorePresentedAnswer(snapshot, persistedPresentationIndex);
+    if (!persistedScore) return { status: 409, body: { error: "Finalized answer is invalid" } };
+
+    const presentedOptions = order.map((index) => options[index]);
+    return {
+      status: 200,
+      body: {
+        isCorrect: persisted.isCorrect,
+        selectedOptionIndex: persistedPresentationIndex,
+        correctOptionIndex: persistedScore.correctPresentationIndex,
+        selectedAnswer: presentedOptions[persistedPresentationIndex] ?? null,
+        correctAnswer: presentedOptions[persistedScore.correctPresentationIndex] ?? null,
+        feedback: persistedScore.feedback,
+      },
+    };
   });
+  res.status(outcome.status).json(outcome.body);
 }));
 
 // ── POST /api/quizzes/:id/submit ──────────────────────────────────────────────
@@ -1564,6 +1644,9 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     .where(eq(quizAttemptQuestionsTable.attemptId, attempt.id))
     .orderBy(asc(quizAttemptQuestionsTable.sequence));
   const snapshotMap = new Map(snapshots.map((snapshot) => [snapshot.questionId, snapshot]));
+  const existingAnswers = await db.select().from(quizAnswersTable)
+    .where(eq(quizAnswersTable.attemptId, attempt.id));
+  const existingAnswerMap = new Map(existingAnswers.map((answer) => [answer.questionId, answer]));
   if (
     answers.length !== snapshots.length ||
     new Set(answers.map((answer) => answer.questionId)).size !== snapshots.length ||
@@ -1594,28 +1677,51 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     }] as const;
   }));
 
-  let totalCorrect = 0;
+  let finalizedAnswerConflict = false;
   const answerRows = answers.map((a) => {
     const q = questionMap.get(a.questionId);
     const snapshot = snapshotMap.get(a.questionId)!;
+    const existingAnswer = existingAnswerMap.get(a.questionId);
+    if (existingAnswer) {
+      const storedPresentationIndex = existingAnswer.selectedPresentationIndex
+        ?? (Array.isArray(snapshot.optionOrder)
+          ? (snapshot.optionOrder as number[]).indexOf(existingAnswer.selectedOptionIndex)
+          : existingAnswer.selectedOptionIndex);
+      if (storedPresentationIndex !== a.selectedOptionIndex) {
+        finalizedAnswerConflict = true;
+      }
+      return {
+        questionId: a.questionId,
+        selectedOptionIndex: existingAnswer.selectedOptionIndex,
+        selectedPresentationIndex: storedPresentationIndex,
+        isCorrect: existingAnswer.isCorrect,
+        nodeId: existingAnswer.nodeId ?? snapshot.nodeId ?? q?.nodeId ?? null,
+        alreadyPersisted: true,
+      };
+    }
     const scored = scorePresentedAnswer(snapshot, a.selectedOptionIndex);
     const canonicalSelected = scored?.canonicalSelectedOptionIndex ?? -1;
     const isCorrect = scored?.isCorrect === true;
-    if (isCorrect) totalCorrect++;
     return {
       questionId:          a.questionId,
       selectedOptionIndex: canonicalSelected,
       selectedPresentationIndex: a.selectedOptionIndex,
       isCorrect,
       nodeId:              snapshot.nodeId ?? q?.nodeId ?? null,
+      alreadyPersisted: false,
     };
   });
 
+  if (finalizedAnswerConflict) {
+    res.status(409).json({ error: "Finalized answer cannot be changed" });
+    return;
+  }
   if (answerRows.some((answer) => answer.selectedOptionIndex < 0)) {
     res.status(400).json({ error: "Invalid option index" });
     return;
   }
 
+  const totalCorrect = answerRows.filter((answer) => answer.isCorrect).length;
   const totalQuestions = snapshots.length;
   const scorePercent   = totalQuestions > 0
     ? Math.round((totalCorrect / totalQuestions) * 100)
@@ -1632,6 +1738,33 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     .filter((id): id is number => id !== null))];
   try {
     await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM quiz_attempts WHERE id = ${attempt.id} FOR UPDATE`);
+    const [lockedAttempt] = await tx
+      .select({ completedAt: quizAttemptsTable.completedAt })
+      .from(quizAttemptsTable)
+      .where(eq(quizAttemptsTable.id, attempt.id))
+      .limit(1);
+    if (!lockedAttempt || lockedAttempt.completedAt) {
+      throw new Error("QUIZ_ATTEMPT_ALREADY_COMPLETED");
+    }
+    const lockedAnswers = await tx
+      .select()
+      .from(quizAnswersTable)
+      .where(eq(quizAnswersTable.attemptId, attempt.id));
+    for (const lockedAnswer of lockedAnswers) {
+      const answer = answerRows.find((candidate) => candidate.questionId === lockedAnswer.questionId);
+      const snapshot = snapshotMap.get(lockedAnswer.questionId);
+      if (!answer || !snapshot) throw new Error("FINALIZED_ANSWER_CONFLICT");
+      const storedPresentationIndex = lockedAnswer.selectedPresentationIndex
+        ?? (Array.isArray(snapshot.optionOrder)
+          ? (snapshot.optionOrder as number[]).indexOf(lockedAnswer.selectedOptionIndex)
+          : lockedAnswer.selectedOptionIndex);
+      if (storedPresentationIndex !== answer.selectedPresentationIndex) {
+        throw new Error("FINALIZED_ANSWER_CONFLICT");
+      }
+      answer.alreadyPersisted = true;
+    }
+
     const [quizRow] = await tx
       .select({ subjectId: quizzesTable.subjectId })
       .from(quizzesTable)
@@ -1780,16 +1913,19 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
       } as any);
     }
 
-    await tx.insert(quizAnswersTable).values(
-      answerRows.map((answer) => ({
+    const pendingAnswerRows = answerRows.filter((answer) => !answer.alreadyPersisted);
+    if (pendingAnswerRows.length > 0) {
+      await tx.insert(quizAnswersTable).values(
+        pendingAnswerRows.map((answer) => ({
         attemptId: attempt.id,
         questionId: answer.questionId,
         selectedOptionIndex: answer.selectedOptionIndex,
         selectedPresentationIndex: answer.selectedPresentationIndex,
         isCorrect: answer.isCorrect,
         nodeId: answer.nodeId,
-      })),
-    );
+        })),
+      );
+    }
 
     const [completedAttempt] = await tx
       .update(quizAttemptsTable)
@@ -1814,6 +1950,10 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
       .where(eq(quizAssignmentsTable.id, assignment.id));
     });
   } catch (err) {
+    if (err instanceof Error && err.message === "FINALIZED_ANSWER_CONFLICT") {
+      res.status(409).json({ error: "Finalized answer cannot be changed" });
+      return;
+    }
     if (err instanceof Error && err.message === "QUIZ_ATTEMPT_ALREADY_COMPLETED") {
       res.status(409).json({ error: "Attempt already completed" });
       return;

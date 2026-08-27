@@ -95,6 +95,7 @@
     "test:quiz-continuous-upgrade": "psql \"$TEST_DATABASE_URL\" -v ON_ERROR_STOP=1 -c 'ALTER TABLE quiz_sessions DROP CONSTRAINT IF EXISTS quiz_sessions_root_student_uq; ALTER TABLE quiz_sessions ADD CONSTRAINT quiz_sessions_root_student_uq UNIQUE (root_quiz_id, student_id);' && psql \"$TEST_DATABASE_URL\" -v ON_ERROR_STOP=1 -f ../../lib/db/migrations/0012_quiz_sessions_assignment_identity.sql && DATABASE_URL=$TEST_DATABASE_URL tsx src/services/__tests__/quiz-continuous-session-db.test.ts",
     "test:quiz-generation-jobs": "psql \"$TEST_DATABASE_URL\" -v ON_ERROR_STOP=1 -f ../../lib/db/migrations/0013_quiz_generation_jobs.sql && DATABASE_URL=$TEST_DATABASE_URL tsx src/services/__tests__/quiz-generation-jobs.test.ts",
     "test:quiz-review-provenance": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/quiz-review-provenance.test.ts",
+    "test:quiz-immediate-feedback": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/quiz-immediate-feedback.test.ts",
     "test:c6-personalization": "tsx src/services/__tests__/c6-personalization.test.ts",
     "test:c7-3": "tsx src/services/phase2/__tests__/c7-execution-target.test.ts"
   },
