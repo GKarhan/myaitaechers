@@ -1,0 +1,783 @@
+IMPLEMENTATION TASK — T8.2C
+LIVE COGNITIVE QUESTION QUALITY GATE INTEGRATION
+
+IMPORTANT CONTEXT
+
+T8.2B is complete.
+
+We already have a provider-free canonical quality foundation with:
+
+- normalized generated-question candidate contract
+- six Cognitive Level operational assessment contracts
+- interaction compatibility metadata
+- bounded quality reason codes
+- deterministic validator
+- conservative duplicate detection
+- semantic-review input/output interface
+- provider-free quality tests
+
+T8.2C must now integrate that approved contract into LIVE NORMAL QUIZ GENERATION.
+
+This is NOT a quiz-system redesign.
+
+Do NOT change:
+- canonical target resolver
+- Cognitive Path acceptance
+- mapping
+- AI Teacher
+- learner scoring
+- Knowledge Tree
+- retest authority
+- continuous session behavior
+- teacher provenance UI
+- learner immediate feedback
+- answer-key secrecy
+- async job architecture
+- idempotency model
+- teacher difficulty UI
+- LOW/MEDIUM/HIGH meaning
+- Lesson 754 data
+
+==================================================
+GOAL
+==================================================
+
+The live normal-quiz pipeline must become:
+
+MicroNode
+→ canonical target
+→ provider generation
+→ normalize candidate
+→ deterministic quality validation
+→ independent semantic review
+→ accept only PASS questions
+→ retry only failed slots
+→ canonical target revalidation
+→ atomic persistence
+
+No question may persist merely because it carries the correct:
+
+nodeId
+cognitiveLevelId
+
+The actual question must also pass the approved Cognitive Question Quality Gate.
+
+==================================================
+STEP 0 — INSPECT BEFORE EDITING
+==================================================
+
+Before changes, report:
+
+1. Exact T8.2B quality module file.
+2. Exact deterministic validator function.
+3. Exact semantic-review interface/type.
+4. Exact normal generation function.
+5. Exact per-node batch boundary introduced in T7.1.
+6. Exact normalized provider-output boundary.
+7. Exact point where generated questions are added to the accepted batch.
+8. Exact persistence boundary.
+9. Exact async job error mapping path.
+10. Smallest files to modify.
+
+Then implement.
+
+==================================================
+1. INTEGRATION POINT
+==================================================
+
+Insert the live quality gate ONLY at:
+
+provider output
+→ parse / normalize
+→ T8.2B deterministic validator
+→ semantic review
+→ accepted generated question(s)
+
+BEFORE:
+
+- generated batch acceptance
+- canonical pre-persistence target revalidation
+- quiz/question persistence
+
+Do not move the canonical target resolver.
+
+Do not move the existing target lock/revalidation.
+
+==================================================
+2. DETERMINISTIC VALIDATION FIRST
+==================================================
+
+Every candidate must first pass the existing T8.2B deterministic validator.
+
+Examples of deterministic rejection include:
+
+- malformed/empty question
+- placeholder content
+- invalid options
+- duplicate options
+- invalid correct index
+- malformed explanations
+- node mismatch
+- cognitiveLevelId mismatch
+- unsupported current delivery format
+- target/format incompatibility
+- duplicate/near-duplicate question
+
+Do NOT call semantic review for a candidate that already deterministically fails unless there is a concrete architectural reason.
+
+Preserve bounded reason codes.
+
+==================================================
+3. INDEPENDENT SEMANTIC REVIEW
+==================================================
+
+Implement ONE semantic-review service using the existing T8.2B semantic-review contract.
+
+IMPORTANT:
+This review must be logically independent from the generation request.
+
+It evaluates the generated question against authoritative context:
+
+- MicroNode
+- canonical target Cognitive Level
+- six-level operational contract
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- instructional/source context
+- question text
+- options
+- correct answer
+- explanation
+
+The reviewer returns ONLY bounded structured output.
+
+At minimum:
+
+verdict:
+PASS | FAIL | REVIEW_ERROR
+
+reasonCodes[]
+
+measuredCognitiveLevel
+
+nodeAligned
+
+objectiveAligned
+
+criterionAligned
+
+interactionCompatible
+
+sourceGrounded
+
+Do not persist free-form chain-of-thought.
+
+Do not request or expose hidden reasoning.
+
+A short optional diagnostic summary may be used internally if needed,
+but it is not authoritative and must not be exposed to users.
+
+==================================================
+4. REVIEW AUTHORITY RULE
+==================================================
+
+The semantic reviewer may say:
+
+Target = Apply
+Measured = Remember
+→ FAIL
+
+It may NOT cause:
+
+Apply → Remember
+
+or:
+
+persist question as Remember.
+
+Likewise:
+
+Target = Analyze
+Measured = Apply
+→ FAIL
+
+Canonical target remains immutable.
+
+The quality gate can reject the generated QUESTION.
+
+It cannot change the mapped Cognitive Path.
+
+==================================================
+5. OPERATIONAL BLOOM CHECK
+==================================================
+
+Use the approved T8.2B six-level contract.
+
+Examples:
+
+REMEMBER
+→ direct recall/recognition can pass.
+
+UNDERSTAND
+→ pure verbatim recall must fail.
+
+APPLY
+→ pure recall of a formula/fact must fail.
+→ learner must use the rule/method in a concrete case.
+
+ANALYZE
+→ routine one-step application must fail.
+→ question must require decomposition, comparison, relationship/error analysis, etc.
+
+EVALUATE
+→ analysis without justified judgment must fail.
+
+CREATE
+→ selection among completed alternatives alone must fail.
+→ genuine construction/design/synthesis is required.
+
+Do not implement keyword heuristics as the semantic authority.
+
+==================================================
+6. FAILED-SLOT-ONLY RETRY
+==================================================
+
+Do NOT regenerate the whole quiz when one question fails.
+
+For each per-node requested batch:
+
+1. Generate requested candidate count.
+2. Validate each candidate.
+3. Keep PASS questions in memory.
+4. Track failed/missing slots.
+5. Regenerate only the failed slot count.
+6. Retry against the SAME:
+   - MicroNode
+   - canonical target
+   - performanceObjective
+   - successCriterion
+   - preferred interactions
+   - internal complexity requirements
+
+Do not alter the target during retry.
+
+==================================================
+7. BOUNDED RETRY BUDGET
+==================================================
+
+Keep retry bounded.
+
+Use the smallest safe retry budget.
+
+Preferred:
+
+- initial generation
+- up to 2 replacement attempts per failed slot
+
+If current architecture makes 1 retry clearly safer, explain and use it.
+
+Do NOT retry forever.
+
+Do NOT exceed a small bounded provider cost.
+
+==================================================
+8. RETRY INSTRUCTIONS
+==================================================
+
+When regenerating failed slots, pass only bounded failure information.
+
+Example reason codes:
+
+COGNITIVE_DEMAND_TOO_LOW
+MICRONODE_MISALIGNED
+PERFORMANCE_OBJECTIVE_MISALIGNED
+SUCCESS_CRITERION_MISALIGNED
+SOURCE_GROUNDING_FAILED
+DUPLICATE_QUESTION
+TARGET_FORMAT_MISMATCH
+
+Do NOT feed raw reviewer reasoning back into generation.
+
+Do NOT expose previous provider hidden reasoning.
+
+The retry instruction should say conceptually:
+
+"Regenerate this failed slot for the SAME canonical target.
+Previous candidate failed for reason(s): X, Y."
+
+==================================================
+9. PASSING QUESTIONS MUST NOT BE REGENERATED
+==================================================
+
+This is mandatory for:
+
+- cost
+- latency
+- stability
+- determinism
+
+If 4 requested questions are:
+
+PASS
+FAIL
+PASS
+PASS
+
+only 1 replacement question should be generated.
+
+The 3 passing questions remain unchanged.
+
+==================================================
+10. EXACT QUESTION COUNT
+==================================================
+
+At the end of the quality/retry cycle:
+
+accepted valid questions for each node
+must equal
+requested allocated count.
+
+If the system cannot obtain the exact count within the retry budget:
+
+FAIL THE NORMAL QUIZ GENERATION.
+
+Do NOT:
+
+- persist partial quiz
+- lower question count silently
+- accept failed questions
+- change target level
+- substitute another MicroNode
+
+==================================================
+11. SEMANTIC REVIEW FAILURE
+==================================================
+
+If semantic review returns malformed output or times out:
+
+- retry semantic review once for that candidate
+- if still unavailable:
+  REVIEW_ERROR
+  → fail that candidate slot
+
+Then normal failed-slot regeneration rules apply.
+
+If the review service remains unavailable and exact valid count cannot be obtained:
+fail closed.
+
+Do not persist unreviewed questions.
+
+==================================================
+12. PROVIDER SEPARATION
+==================================================
+
+Inspect the current provider client architecture.
+
+Prefer using the existing AI provider infrastructure, but generation and semantic review must use separate calls/contracts.
+
+Do not treat generator self-declaration as independent proof.
+
+If the same underlying model/provider is used initially for practicality, the review call must still:
+
+- use a separate prompt
+- receive authoritative target context
+- receive the completed generated candidate
+- return the bounded reviewer schema
+
+Report this explicitly.
+
+Do not build a multi-provider platform in this task.
+
+==================================================
+13. SOURCE / MICRONODE GROUNDING
+==================================================
+
+The reviewer must check whether the generated question is actually about the selected MicroNode and supported instructional content.
+
+Do not allow a semantically valid Apply question about unrelated content to pass.
+
+Use the best authoritative context already available in the normal quiz generation pipeline.
+
+Do not redesign mapping/source storage.
+
+==================================================
+14. INTERACTION TYPE LIMITATION
+==================================================
+
+Current learner quiz delivery remains primarily multiple-choice.
+
+T8.2B already identified target-format compatibility constraints.
+
+Do NOT implement:
+
+- numeric-answer UI
+- short-answer UI
+- matching
+- classification
+- ordering
+- constructed response
+- problem-solving renderers
+
+in T8.2C.
+
+If the target’s accepted/preferred interaction contract cannot be represented by current delivery:
+
+FAIL CLOSED with the existing bounded compatibility reason.
+
+Do not silently convert a Create/Evaluate task into weak MC if the quality contract rejects it.
+
+This limitation must be visible in structured generation failure.
+
+==================================================
+15. ASYNC JOB INTEGRATION
+==================================================
+
+The async quiz-generation backend is protected behavior.
+
+Quality review/retries happen inside the background generation work.
+
+Preserve:
+
+- POST 202 async contract where used
+- durable jobs
+- ownership
+- idempotency
+- request fingerprinting
+- claim leases
+- heartbeat
+- stale recovery
+- supervisor
+- client disconnect independence
+- atomic quiz + completed-job finalization
+
+Do not change async architecture.
+
+If quality validation ultimately fails, async job should persist a bounded safe failure such as:
+
+errorCode:
+QUIZ_QUESTION_QUALITY_FAILED
+
+and optional bounded errorDetails such as:
+
+{
+  nodeId,
+  reasonCodes
+}
+
+Do not persist raw reviewer response or provider reasoning.
+
+==================================================
+16. SYNCHRONOUS COMPATIBILITY PATH
+==================================================
+
+The existing synchronous compatibility path must use the SAME quality gate.
+
+There must not be:
+
+async = validated
+sync = unvalidated
+
+Both normal generation paths must share the same live quality-gated generation service.
+
+==================================================
+17. RETEST / CONTINUOUS QUIZ
+==================================================
+
+Do NOT automatically apply T8.2C semantics to active continuous/retest flows unless they already share the exact normal generation path.
+
+Audit first.
+
+Protected rule:
+
+T8.2C applies to NORMAL QUIZ GENERATION.
+
+If active continuous sessions reuse existing root-quiz questions:
+leave them unchanged.
+
+If a retired child-retest generator shares a service:
+do not revive or redesign it.
+
+Report the boundary.
+
+==================================================
+18. PERSISTENCE
+==================================================
+
+No DB migration should be required for the minimal version.
+
+Only quality-passing questions may reach the existing persistence transaction.
+
+Preserve:
+
+- authoritative nodeId
+- authoritative cognitiveLevelId
+- explanations
+- difficulty metadata
+- interaction metadata behavior
+- atomic quiz persistence
+
+Do not persist quality FAIL candidates.
+
+==================================================
+19. PROVIDER-FREE TESTABILITY
+==================================================
+
+Dependency-inject BOTH:
+
+- question generator
+- semantic reviewer
+
+so the full quality-gate/retry behavior can be tested without live provider calls.
+
+Do not create tests that require a real model.
+
+==================================================
+20. REQUIRED TEST MATRIX
+==================================================
+
+Add focused provider-free integration tests.
+
+At minimum:
+
+A.
+Remember target
++ valid recall
+→ PASS
+→ persisted
+
+B.
+Understand target
++ valid interpretation
+→ PASS
+
+C.
+Understand target
++ recall-only reviewer result
+→ failed slot regenerated
+→ replacement passes
+
+D.
+Apply target
++ valid application
+→ PASS
+
+E.
+Apply target
++ recall-only candidate
+→ rejected
+→ only failed slot regenerated
+
+F.
+Analyze target
++ routine Apply demand
+→ reject and retry
+
+G.
+Evaluate target
++ analysis without judgment
+→ reject
+
+H.
+Create target
++ answer-selection-only MC
+→ target-format / demand failure
+
+I.
+Correct node provenance
++ reviewer says MICRONODE_MISALIGNED
+→ reject
+
+J.
+Success criterion misaligned
+→ reject
+
+K.
+Deterministic structural failure
+→ semantic reviewer NOT called for that candidate
+
+L.
+Duplicate candidate
+→ reject before semantic review where deterministic
+
+M.
+PASS questions preserved across retry.
+
+N.
+Only failed count regenerated.
+
+O.
+Retry budget exhausted
+→ entire quiz fails
+→ zero quiz/question persistence.
+
+P.
+Semantic reviewer malformed once
+→ reviewer retried once
+→ valid second response accepted.
+
+Q.
+Semantic reviewer unavailable repeatedly
+→ fail closed.
+
+R.
+HIGH complexity + Understand target
+→ persisted target remains Understand.
+
+S.
+LOW complexity + Apply target
+→ persisted target remains Apply.
+
+T.
+Provider attempts wrong cognitiveLevelId
+→ backend canonical provenance remains authoritative
+→ candidate fails/normalizes according to existing authority rule.
+
+U.
+Canonical target changes while review/retry runs
+→ existing locked finalization rejects persistence.
+
+V.
+Async job quality failure
+→ safe bounded job error
+→ no quiz persisted.
+
+W.
+Sync compatibility path also uses quality gate.
+
+X.
+No partial quiz persistence.
+
+==================================================
+21. EXISTING REGRESSION SUITES
+==================================================
+
+Run:
+
+- T8.2B quality foundation tests
+- T7.1 canonical quiz generation
+- T7.2 teacher provenance
+- T7.3 learner feedback
+- async quiz jobs
+- retest
+- continuous quiz/scoring
+- T5 resolver
+- T6 Cognitive Path integrity
+- API typecheck
+- API build
+
+Do not mutate unrelated legacy fixtures to force them green.
+
+==================================================
+22. COST / LATENCY REPORT
+==================================================
+
+Because this introduces an additional semantic review provider call,
+report expected provider-call behavior.
+
+For an N-question quiz, estimate structurally:
+
+best case:
+generation calls + review calls
+
+one-failed-slot case:
+additional generation/review calls
+
+worst bounded case:
+maximum calls allowed by retry budget
+
+Do not estimate dollar price unless current provider pricing is already
+available in project configuration.
+
+We need architectural call counts, not speculative costs.
+
+==================================================
+23. LESSON 754
+==================================================
+
+Do NOT modify Lesson 754.
+
+Do NOT confirm its Cognitive Paths.
+
+Do NOT generate a real quiz from it.
+
+If read-only diagnostics are useful, keep them read-only.
+
+Its current unconfirmed nodes are expected to fail canonical target
+resolution before quality review.
+
+==================================================
+24. INDEPENDENT REVIEW
+==================================================
+
+Request focused independent architecture review.
+
+Specifically verify:
+
+1. canonical target cannot be changed by quality review
+2. deterministic validator runs before semantic review
+3. generator self-declaration is not treated as proof
+4. only failed slots are regenerated
+5. retry is bounded
+6. passing questions are preserved
+7. exact requested question count is required
+8. failure is fail-closed
+9. no partial quiz persistence
+10. async and sync paths share quality gate
+11. provider reasoning is not persisted
+12. retest/continuous behavior preserved
+13. nodeId/cognitiveLevelId remain backend-owned
+
+Fix concrete findings before completion.
+
+==================================================
+25. FINAL REPORT
+==================================================
+
+Return:
+
+1. Inspection findings
+2. Files changed
+3. Live quality-gate pipeline
+4. Deterministic validation behavior
+5. Semantic-review implementation
+6. Six-level operational enforcement
+7. Retry behavior
+8. Retry budget
+9. Passing-question preservation
+10. Exact-count behavior
+11. Failure behavior
+12. Async integration
+13. Sync compatibility behavior
+14. Retest/continuous boundary
+15. Persistence behavior
+16. Provider call-count model
+17. Tests/results
+18. Independent review result
+19. Any remaining limitation
+20. Next smallest recommended Test 2.0 step
+
+Finish with exactly:
+
+LIVE QUALITY GATE ENABLED: YES/NO
+DETERMINISTIC VALIDATION RUNS BEFORE SEMANTIC REVIEW: YES/NO
+SEMANTIC REVIEW IS INDEPENDENT FROM GENERATION CALL: YES/NO
+QUALITY GATE CAN CHANGE CANONICAL TARGET: YES/NO
+ONLY FAILED QUESTIONS ARE REGENERATED: YES/NO
+PASSING QUESTIONS ARE PRESERVED: YES/NO
+RETRY BUDGET IS BOUNDED: YES/NO
+EXACT REQUESTED QUESTION COUNT REQUIRED: YES/NO
+FAILED QUESTIONS CAN BE PERSISTED: YES/NO
+PARTIAL QUIZ CAN BE PERSISTED: YES/NO
+ASYNC PATH USES QUALITY GATE: YES/NO
+SYNC COMPATIBILITY PATH USES QUALITY GATE: YES/NO
+RETEST SEMANTICS CHANGED: YES/NO
+KNOWLEDGE TREE CHANGED: YES/NO
+SCORING CHANGED: YES/NO
+PROVIDER REASONING PERSISTED: YES/NO
+DB MIGRATION CREATED: YES/NO
+LESSON 754 MODIFIED: YES/NO
+READY FOR REAL QUALITY ACCEPTANCE TEST: YES/NO
+
+STOP AFTER T8.2C.
+DO NOT START THE NEXT TEST 2.0 STEP.
