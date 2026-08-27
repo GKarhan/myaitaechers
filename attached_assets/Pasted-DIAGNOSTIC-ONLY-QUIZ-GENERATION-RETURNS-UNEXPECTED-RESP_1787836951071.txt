@@ -1,0 +1,121 @@
+DIAGNOSTIC ONLY — QUIZ GENERATION RETURNS UNEXPECTED RESPONSE
+
+Do NOT change code yet.
+
+Real current UI flow:
+
+Teacher opens quiz creation.
+Selected lesson:
+Մաթեմատիկա 5
+«Նժարավոր կշեռքն ու զանգվածի միավորները»
+
+Question count: 15
+Difficulty: mixed
+
+The UI fails with:
+
+«Թեստի ստեղծման հարցումը վերադարձրել է անսպասելի պատասխան։ Կրկին փորձեք»
+
+I want a read-only diagnostic only.
+
+Do not edit code.
+Do not mutate lesson/quiz data.
+Do not run mapping.
+Do not change C1/C2.
+Do not make unrelated fixes.
+Do not create a broad task.
+
+==================================================
+1. TRACE THE EXACT FRONTEND REQUEST
+==================================================
+
+Identify:
+
+- exact frontend component/function that submits quiz generation
+- exact API endpoint
+- exact request body currently sent
+- exact response shape frontend expects
+
+Report safe structured fields only.
+
+==================================================
+2. CAPTURE THE REAL CURRENT RESPONSE
+==================================================
+
+Using the current lesson and same request parameters, determine the exact backend response that causes the UI message.
+
+Report:
+
+- HTTP status
+- response body shape
+- error code
+- message/classification
+- whether response is JSON
+- whether request reached quiz generation logic
+- whether provider/AI generation was attempted
+- whether anything was persisted before failure
+
+Do not expose prompts, credentials, or provider secrets.
+
+==================================================
+3. FIND THE FIRST FAILING BOUNDARY
+==================================================
+
+Identify exactly where failure starts:
+
+A. frontend request construction
+B. request validation
+C. lesson/node selection
+D. question-count validation
+E. difficulty validation
+F. quiz generation/provider call
+G. generated-response parsing
+H. generated-response schema validation
+I. persistence
+J. frontend response parsing
+K. another path
+
+Give exact function/file and exact condition.
+
+==================================================
+4. CHECK FOR CONTRACT DRIFT
+==================================================
+
+Compare:
+
+- backend success response
+- backend error response
+- frontend expected response
+
+Determine whether this is:
+
+A. backend generation failure
+B. malformed provider output
+C. frontend/backend contract mismatch
+D. stale frontend expectation
+E. missing field
+F. old/new Test 2.0 route mismatch
+G. other
+
+==================================================
+5. STOP
+==================================================
+
+Return only:
+
+1. endpoint
+2. request body shape
+3. HTTP status
+4. actual response shape
+5. expected frontend response shape
+6. exact error code/message
+7. first failing function/file
+8. whether provider was called
+9. whether DB was modified
+10. primary diagnosis A–G
+11. ONE smallest recommended next fix
+
+NO CODE CHANGES.
+NO DB CHANGES.
+NO RESTARTS unless absolutely required to inspect the live response.
+STOP.
