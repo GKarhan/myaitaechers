@@ -6,7 +6,10 @@ import {
   type LessonNodeCognitiveLevel,
 } from "@workspace/db";
 import { and, eq, max, ne, sql } from "drizzle-orm";
-import { buildCognitivePathMutationInvalidationQuery } from "./cognitive-path-authoring.js";
+import {
+  buildCognitivePathMutationInvalidationQuery,
+  normalizeCognitivePathSequences,
+} from "./cognitive-path-authoring.js";
 
 export type CognitiveLevelFields = {
   cognitiveLevel?: unknown;
@@ -100,8 +103,17 @@ export async function createTeacherCognitiveLevel(
       minimumIndependentEvidence: input.minimumIndependentEvidence ?? 3,
       preferredInteractionTypes: input.preferredInteractionTypes ?? [],
     }).returning();
+    await normalizeCognitivePathSequences(tx, nodeId);
     await tx.execute(buildCognitivePathMutationInvalidationQuery(nodeId));
-    return inserted;
+    const [normalized] = await tx
+      .select()
+      .from(lessonNodeCognitiveLevelsTable)
+      .where(and(
+        eq(lessonNodeCognitiveLevelsTable.id, inserted.id),
+        eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId),
+      ))
+      .limit(1);
+    return normalized ?? null;
   });
 }
 
@@ -176,8 +188,18 @@ export async function updateTeacherCognitiveLevel(
       ))
       .returning();
     if (updated) {
+      await normalizeCognitivePathSequences(tx, nodeId);
       await tx.execute(buildCognitivePathMutationInvalidationQuery(nodeId));
+      const [normalized] = await tx
+        .select()
+        .from(lessonNodeCognitiveLevelsTable)
+        .where(and(
+          eq(lessonNodeCognitiveLevelsTable.id, updated.id),
+          eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId),
+        ))
+        .limit(1);
+      return normalized ?? null;
     }
-    return updated ?? null;
+    return null;
   });
 }

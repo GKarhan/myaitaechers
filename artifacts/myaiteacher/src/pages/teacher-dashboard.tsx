@@ -2035,7 +2035,7 @@ function LessonNodesPanel({
               🧠 <span>Ճանաչողական ուղի</span>
               {cogPathData[n.id]?.levels.length ? (
                 <span className="text-[10px] text-indigo-400/50">
-                  ({[...cogPathData[n.id]!.levels].sort((a, b) => a.sequence - b.sequence).map((l) => COG_LEVEL_LABELS[l.cognitiveLevel] ?? l.cognitiveLevel).join(' → ')})
+                  ({cogPathData[n.id]!.levels.map((l) => COG_LEVEL_LABELS[l.cognitiveLevel] ?? l.cognitiveLevel).join(' → ')})
                 </span>
               ) : null}
               {cogPathData[n.id]?.cogPathStatus === 'needs_review' && (
@@ -2060,7 +2060,7 @@ function LessonNodesPanel({
               )}
 
               {/* Levels list follows the persisted authoring sequence. */}
-              {[...(cogPathData[n.id]?.levels ?? [])].sort((a, b) => a.sequence - b.sequence).map((level) => {
+              {(cogPathData[n.id]?.levels ?? []).map((level) => {
                 const isEditing = cogLevelEditId === level.id;
                 const linkedCount = level.tasks.length;
                 const mie = level.minimumIndependentEvidence;

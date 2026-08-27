@@ -12,6 +12,7 @@ import {
   type CogPathInput,
 } from "./lesson-mapping.js";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
+import { normalizeCognitivePathSequences } from "../lib/cognitive-path-authoring.js";
 import type { TargetCognitiveDemand } from "../lib/c2-target-demand.js";
 import {
   progressionAllowsPersistence,
@@ -602,6 +603,7 @@ async function persistCognitivePathAtomically(
         preferredInteractionTypes: level.preferredInteractionTypes,
       });
     }
+    await normalizeCognitivePathSequences(tx, nodeId);
 
     const updates: Record<string, unknown> = { cogPathStatus: "needs_review" };
     if (node.cogPathStatus === "confirmed" && node.childFriendlyExplanation) {

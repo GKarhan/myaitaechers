@@ -1,0 +1,301 @@
+IMPLEMENT ONLY — AUTOMATIC COGNITIVE PATH BLOOM ORDER NORMALIZATION
+
+We have finished the Cognitive Path state/summary synchronization fix.
+
+Now implement ONLY the next small issue:
+
+For every MicroNode, its existing Cognitive Levels must automatically be stored in canonical Bloom order, regardless of whether the levels were created by AI or manually by the teacher.
+
+DO NOT redesign Cognitive Path.
+DO NOT modify quiz generation.
+DO NOT modify AI Teacher.
+DO NOT modify scoring, retest, Knowledge Tree, assignment logic, mapping semantics, Teaching Content, or provider prompts.
+DO NOT add drag-and-drop/reorder UI.
+DO NOT generate any new Cognitive Levels.
+DO NOT delete any Cognitive Levels.
+DO NOT change the pedagogical content of any Cognitive Level.
+
+══════════════════════════════════════
+1. CANONICAL BLOOM ORDER
+══════════════════════════════════════
+
+The only canonical ordering is:
+
+1. remember
+2. understand
+3. apply
+4. analyze
+5. evaluate
+6. create
+
+Within ONE MicroNode, existing Cognitive Level rows must always be ordered according to this canonical Bloom order.
+
+Example:
+
+Existing rows:
+
+apply
+understand
+
+must become:
+
+1 → understand
+2 → apply
+
+Another example:
+
+evaluate
+remember
+apply
+
+must become:
+
+1 → remember
+2 → apply
+3 → evaluate
+
+IMPORTANT:
+
+Do NOT create the missing intermediate Bloom levels.
+
+For example:
+
+remember
+apply
+evaluate
+
+must remain exactly those 3 levels:
+
+1 → remember
+2 → apply
+3 → evaluate
+
+Do NOT automatically insert understand or analyze.
+
+══════════════════════════════════════
+2. NORMALIZATION TRIGGERS
+══════════════════════════════════════
+
+After every successful Cognitive Level mutation for a MicroNode:
+
+- CREATE
+- UPDATE when cognitiveLevel changes
+- DELETE
+
+run one shared backend normalization function for that MicroNode.
+
+The normalizer must:
+
+1. Fetch all current Cognitive Levels for that MicroNode.
+2. Sort them by the canonical Bloom rank above.
+3. Rewrite sequence as contiguous 1..N.
+4. Do this transactionally with the mutation whenever possible.
+
+Do NOT duplicate ordering logic across routes.
+
+Create/reuse ONE backend authority/helper for this.
+
+══════════════════════════════════════
+3. TARGET CEILING — DO NOT INVENT IT
+══════════════════════════════════════
+
+Ordering and target selection are separate concerns.
+
+The normalizer MUST NOT:
+
+- invent a new isTargetCeiling
+- move isTargetCeiling to another level merely because it is the highest Bloom level
+- remove an existing target
+- automatically confirm the path
+
+Preserve the existing isTargetCeiling value on its existing Cognitive Level row.
+
+If the resulting path requires review, preserve the existing Cognitive Path state synchronization rules from the previous task.
+
+Any mutation that currently invalidates confirmation must continue to invalidate confirmation.
+
+Do not weaken the Canonical Quiz Target Resolver.
+
+══════════════════════════════════════
+4. PRESERVE ALL LEVEL DATA
+══════════════════════════════════════
+
+Normalization may change ONLY sequence/order.
+
+It must preserve each row's:
+
+- id
+- cognitiveLevel
+- performanceObjective
+- successCriterion
+- minimumIndependentEvidence
+- preferredInteractionTypes
+- provenance
+- isApplicable
+- isTargetCeiling
+- all other pedagogical/content fields
+
+No AI/provider call is allowed.
+
+══════════════════════════════════════
+5. DUPLICATE BLOOM LEVEL SAFETY
+══════════════════════════════════════
+
+Do not silently solve duplicate Cognitive Levels by deleting or merging rows.
+
+If the current contract already prevents duplicate Bloom levels within one MicroNode, preserve that behavior.
+
+If legacy duplicate rows exist, fail closed / report them according to the existing integrity contract.
+
+Do NOT invent a new automatic merge policy in this task.
+
+══════════════════════════════════════
+6. EXISTING / LEGACY WRONG ORDER
+══════════════════════════════════════
+
+The same shared normalizer must be reusable for existing paths that were persisted before this fix.
+
+Example currently observed in Lesson 754:
+
+MN1 has persisted:
+
+Apply → Understand
+
+The canonical normalized result would be:
+
+Understand → Apply
+
+BUT:
+
+DO NOT modify Lesson 754 yet.
+
+For this task, inspect Lesson 754 READ-ONLY after implementation and report:
+
+- current persisted order
+- canonical order the new normalizer would produce
+- whether any other MicroNode in Lesson 754 has a non-canonical persisted order
+
+Do not repair Lesson 754 unless I explicitly authorize it after seeing the report.
+
+══════════════════════════════════════
+7. UI
+══════════════════════════════════════
+
+No new reorder controls.
+
+The UI must simply display the persisted sequence returned by the backend.
+
+After create/edit/delete, existing refresh/invalidation behavior must show the newly normalized order immediately.
+
+Do not independently sort in the frontend as a substitute for fixing persistence.
+
+Backend persisted order is authoritative.
+
+══════════════════════════════════════
+8. REQUIRED PROVIDER-FREE TESTS
+══════════════════════════════════════
+
+Add focused tests proving at least:
+
+A. Existing:
+   apply
+   then create understand
+   → persisted order = understand, apply
+   → sequences = 1,2
+
+B. Existing:
+   apply
+   then create remember
+   → remember, apply
+   → no understand automatically created
+
+C. Existing:
+   remember, apply, evaluate
+   → normalize = remember, apply, evaluate
+   → sequences = 1,2,3
+
+D. Update:
+   existing understand → changed to analyze
+   with apply also present
+   → apply, analyze
+
+E. Delete:
+   remember, understand, apply
+   delete understand
+   → remember, apply
+   → sequences = 1,2
+
+F. Target preservation:
+   understand(target=false)
+   apply(target=true)
+   normalization
+   → apply remains target=true
+
+G. Confirmation/state:
+   mutation + normalization must NOT automatically confirm the path
+
+H. All pedagogical fields remain unchanged after normalization.
+
+I. Duplicate Cognitive Level protection remains intact.
+
+J. Canonical Quiz Target Resolver regression suite still passes.
+
+Also run the existing Cognitive Path CRUD/authoring integrity tests.
+
+No provider calls.
+
+══════════════════════════════════════
+9. IMPORTANT ARCHITECTURAL RULE
+══════════════════════════════════════
+
+Cognitive Path ordering is determined by Bloom semantics,
+NOT by creation time.
+
+Therefore:
+
+AI-created levels and manually created levels follow exactly the same ordering authority.
+
+There must not be:
+
+"AI levels first → manually added levels afterward"
+
+or:
+
+"newest level goes last"
+
+The resulting persisted path is always the canonical Bloom ordering of the levels that actually exist.
+
+══════════════════════════════════════
+10. STOP CONDITION
+══════════════════════════════════════
+
+After implementing and testing this ONE change:
+
+STOP.
+
+Do not start quiz generation.
+Do not repair Lesson 754.
+Do not start another Test 2.0 task.
+
+Return:
+
+1. Root cause of the previous ordering behavior.
+2. Files changed.
+3. Shared normalization function/location.
+4. Exact mutation routes using it.
+5. Tests run/results.
+6. Read-only Lesson 754 audit.
+7. Explicit YES/NO:
+
+COGNITIVE LEVEL CREATE AUTO-NORMALIZES: YES/NO
+COGNITIVE LEVEL EDIT AUTO-NORMALIZES: YES/NO
+COGNITIVE LEVEL DELETE AUTO-NORMALIZES: YES/NO
+ORDER IS CANONICAL BLOOM ORDER: YES/NO
+MISSING INTERMEDIATE LEVELS AUTO-CREATED: YES/NO
+TARGET CEILING AUTO-INVENTED: YES/NO
+PEDAGOGICAL CONTENT MODIFIED BY NORMALIZATION: YES/NO
+FRONTEND USED AS ORDERING AUTHORITY: YES/NO
+CANONICAL QUIZ TARGET RESOLVER PRESERVED: YES/NO
+PROVIDER CALLED: YES/NO
+LESSON 754 MODIFIED: YES/NO
+READY FOR LESSON 754 MANUAL REPAIR/RETEST: YES/NO

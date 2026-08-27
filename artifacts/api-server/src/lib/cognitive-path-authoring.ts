@@ -1,5 +1,6 @@
 import {
   COGNITIVE_LEVEL_TO_BLOOM_INT,
+  COGNITIVE_LEVELS,
   db,
   lessonNodeCognitiveLevelsTable,
   lessonNodesTable,
@@ -12,6 +13,69 @@ import {
   type CognitivePathAcceptance,
   type CognitivePathConfirmationAssessment,
 } from "./cognitive-path-grounding.js";
+
+type DbTransaction = Parameters<typeof db.transaction>[0] extends (
+  tx: infer T,
+  ...args: never[]
+) => unknown ? T : never;
+
+/**
+ * Make the persisted path follow revised Bloom order without changing any
+ * level data. The temporary negative sequences avoid the per-node sequence
+ * uniqueness constraint while rows swap positions.
+ */
+export async function normalizeCognitivePathSequences(
+  tx: DbTransaction,
+  nodeId: number,
+): Promise<number> {
+  await tx.execute(sql`
+    SELECT ${lessonNodesTable.id}
+    FROM ${lessonNodesTable}
+    WHERE ${lessonNodesTable.id} = ${nodeId}
+    FOR UPDATE
+  `);
+  const levels = await tx
+    .select({
+      id: lessonNodeCognitiveLevelsTable.id,
+      cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel,
+      sequence: lessonNodeCognitiveLevelsTable.sequence,
+    })
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId))
+    .orderBy(
+      asc(lessonNodeCognitiveLevelsTable.sequence),
+      asc(lessonNodeCognitiveLevelsTable.id),
+    );
+  const bloomRank = new Map<string, number>(
+    COGNITIVE_LEVELS.map((level, index) => [level, index]),
+  );
+  const normalized = [...levels].sort((a, b) => (
+    (bloomRank.get(a.cognitiveLevel) ?? Number.MAX_SAFE_INTEGER)
+      - (bloomRank.get(b.cognitiveLevel) ?? Number.MAX_SAFE_INTEGER)
+      || a.sequence - b.sequence
+      || a.id - b.id
+  ));
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    await tx
+      .update(lessonNodeCognitiveLevelsTable)
+      .set({ sequence: -(1_000_000 + index + 1) })
+      .where(and(
+        eq(lessonNodeCognitiveLevelsTable.id, normalized[index].id),
+        eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId),
+      ));
+  }
+  for (let index = 0; index < normalized.length; index += 1) {
+    await tx
+      .update(lessonNodeCognitiveLevelsTable)
+      .set({ sequence: index + 1 })
+      .where(and(
+        eq(lessonNodeCognitiveLevelsTable.id, normalized[index].id),
+        eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId),
+      ));
+  }
+  return normalized.length;
+}
 
 /**
  * Preserve targetBloomLevel as a compatibility snapshot while a path is under
@@ -281,24 +345,7 @@ export async function reorderAuthoredCognitiveLevels(
       };
     }
 
-    for (let index = 0; index < orderedLevelIds.length; index += 1) {
-      await tx
-        .update(lessonNodeCognitiveLevelsTable)
-        .set({ sequence: -(index + 1) })
-        .where(and(
-          eq(lessonNodeCognitiveLevelsTable.id, orderedLevelIds[index]),
-          eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId),
-        ));
-    }
-    for (let index = 0; index < orderedLevelIds.length; index += 1) {
-      await tx
-        .update(lessonNodeCognitiveLevelsTable)
-        .set({ sequence: index + 1 })
-        .where(and(
-          eq(lessonNodeCognitiveLevelsTable.id, orderedLevelIds[index]),
-          eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId),
-        ));
-    }
+    await normalizeCognitivePathSequences(tx, nodeId);
     await tx.execute(buildCognitivePathMutationInvalidationQuery(nodeId));
     return { found: true, valid: true, reordered: orderedLevelIds.length };
   });
@@ -341,26 +388,7 @@ export async function deleteAuthoredCognitiveLevel(
       .returning({ id: lessonNodeCognitiveLevelsTable.id });
     if (!deleted) return { found: true, deleted: false };
 
-    const remainingLevels = await tx
-      .select({ id: lessonNodeCognitiveLevelsTable.id })
-      .from(lessonNodeCognitiveLevelsTable)
-      .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId))
-      .orderBy(
-        asc(lessonNodeCognitiveLevelsTable.sequence),
-        asc(lessonNodeCognitiveLevelsTable.id),
-      );
-    for (let index = 0; index < remainingLevels.length; index += 1) {
-      await tx
-        .update(lessonNodeCognitiveLevelsTable)
-        .set({ sequence: -(index + 1) })
-        .where(eq(lessonNodeCognitiveLevelsTable.id, remainingLevels[index].id));
-    }
-    for (let index = 0; index < remainingLevels.length; index += 1) {
-      await tx
-        .update(lessonNodeCognitiveLevelsTable)
-        .set({ sequence: index + 1 })
-        .where(eq(lessonNodeCognitiveLevelsTable.id, remainingLevels[index].id));
-    }
+    await normalizeCognitivePathSequences(tx, nodeId);
     await tx.execute(buildCognitivePathMutationInvalidationQuery(nodeId));
     return { found: true, deleted: true };
   });

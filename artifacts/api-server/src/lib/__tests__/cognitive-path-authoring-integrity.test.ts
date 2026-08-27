@@ -257,7 +257,7 @@ try {
     assert.equal(after.levels.some((level) => level.isTargetCeiling), false);
   });
 
-  await test("L: reordering a confirmed path deconfirms and preserves requested order", async () => {
+  await test("L: reorder requests deconfirm but canonical Bloom order remains authoritative", async () => {
     const levels = await setPath([
       { cognitiveLevel: "understand" },
       { cognitiveLevel: "apply", isTargetCeiling: true },
@@ -271,13 +271,10 @@ try {
     assert.deepEqual(result, { found: true, valid: true, reordered: 2 });
     const after = await getNodeAndLevels();
     assert.equal(after.currentNode.cogPathStatus, "needs_review");
-    assert.deepEqual(after.levels.map((level) => level.id), [levels[1].id, levels[0].id]);
+    assert.deepEqual(after.levels.map((level) => level.id), [levels[0].id, levels[1].id]);
     assert.deepEqual(after.levels.map((level) => level.sequence), [1, 2]);
     const assessment = assessCognitivePathForConfirmation(after.currentNode, after.levels);
-    assert.equal(assessment.valid, false);
-    if (!assessment.valid) {
-      assert.ok(assessment.reasons.includes("INVALID_COGNITIVE_ORDER"));
-    }
+    assert.equal(assessment.valid, true);
   });
 
   await test("M: AI-generated and manual paths use identical confirmation rules", async () => {

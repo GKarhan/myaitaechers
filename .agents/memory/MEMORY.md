@@ -77,4 +77,4 @@
 - [Normal quiz target provenance](normal-quiz-target-provenance.md) — resolve all targets before generation, allocate questions per node server-side, then lock and revalidate target snapshots before persistence.
 - [Continuous quiz sessions](continuous-quiz-sessions.md) — retests are immutable child attempts of one root assignment; C5 drives two-state scope and completion commits answers/evidence atomically.
 - [Durable job claim leases](durable-job-claim-leases.md) — stale external-provider jobs must rotate a persisted lease; every state transition must match the active lease.
-- [Manual Cognitive Path state](manual-cognitive-path-state.md) — row existence defines missing vs review; only canonical confirmation may set confirmed, and authoring displays preserve persisted sequence.
+- [Manual Cognitive Path state](manual-cognitive-path-state.md) — row existence defines state; backend canonicalizes existing levels by Bloom rank, while only canonical confirmation may confirm.

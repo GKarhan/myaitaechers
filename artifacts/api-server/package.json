@@ -47,6 +47,7 @@
     "test:cognitive-level-crud": "tsx src/lib/__tests__/cognitive-level-crud.test.ts",
     "test:cognitive-level-crud-db": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/cognitive-level-crud-db.test.ts",
     "test:cognitive-path-authoring-integrity": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/cognitive-path-authoring-integrity.test.ts",
+    "test:cognitive-path-bloom-normalization": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/cognitive-path-bloom-normalization.test.ts",
     "test:c2-target-demand": "tsx src/lib/__tests__/c2-target-demand.test.ts",
     "test:c2-approved-readiness": "tsx src/lib/__tests__/c2-approved-readiness.test.ts",
     "test:canonical-quiz-target": "tsx src/lib/__tests__/canonical-quiz-target-resolver.test.ts",
