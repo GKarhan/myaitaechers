@@ -48,6 +48,9 @@ try {
   assert.equal(second.sequence, 2);
   assert.deepEqual(first.preferredInteractionTypes, ["multiple_choice", "short_answer"]);
 
+  const [nodeBeforeDraftEdit] = await db.select({ targetBloomLevel: lessonNodesTable.targetBloomLevel })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.id, primaryNode.id));
   const targeted = await updateTeacherCognitiveLevel(primaryNode.id, first, { isTargetCeiling: true });
   assert.ok(targeted);
   const edited = await updateTeacherCognitiveLevel(primaryNode.id, targeted, {
@@ -70,7 +73,11 @@ try {
   const [nodeAfterEdit] = await db.select({ targetBloomLevel: lessonNodesTable.targetBloomLevel })
     .from(lessonNodesTable)
     .where(eq(lessonNodesTable.id, primaryNode.id));
-  assert.equal(nodeAfterEdit.targetBloomLevel, 2, "legacy target stays synchronized with edited target level");
+  assert.equal(
+    nodeAfterEdit.targetBloomLevel,
+    nodeBeforeDraftEdit.targetBloomLevel,
+    "draft target edits preserve the legacy copy until canonical confirmation",
+  );
 
   const primaryLevels = await db.select()
     .from(lessonNodeCognitiveLevelsTable)

@@ -33,7 +33,6 @@ import {
 } from "../lib/lesson-source-set.js";
 import { classifyMicroNodeSourceAlignment } from "../lib/micronode-source-alignment.js";
 import {
-  satisfiesLearningObjectiveCognitiveFloor,
   validateCognitivePathGrounding,
 } from "../lib/cognitive-path-grounding.js";
 import { assessC2GenerationPreflight } from "../lib/c2-generation-preflight.js";
@@ -78,6 +77,12 @@ import {
   updateTeacherCognitiveLevel,
   validateCognitiveLevelFields,
 } from "../lib/cognitive-level-crud.js";
+import {
+  confirmAuthoredCognitivePath,
+  deleteAuthoredCognitiveLevel,
+  reorderAuthoredCognitiveLevels,
+  updateAuthoredNodeAtCognitivePathBoundary,
+} from "../lib/cognitive-path-authoring.js";
 import {
   C6_ENTRY_INTENTS,
   isC6DeliveryBlocked,
@@ -3267,7 +3272,9 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
       return;
     }
     if (
-      (theoryContent !== undefined || learningObjective !== undefined)
+      (theoryContent !== undefined
+        || learningObjective !== undefined
+        || targetBloomLevel !== undefined)
       && existing.cogPathStatus === "confirmed"
     ) {
       res.status(409).json({
@@ -3320,17 +3327,36 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
     res.status(400).json({ error: "No fields to update" }); return;
   }
 
-  const [updated] = await db
-    .update(lessonNodesTable)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .set(patch as any)
-    .where(eq(lessonNodesTable.id, nodeId))
-    .returning();
+  const updateResult = await updateAuthoredNodeAtCognitivePathBoundary({
+    lessonId,
+    nodeId,
+    // The route has already normalized and validated its accepted fields.
+    patch: patch as Partial<typeof lessonNodesTable.$inferInsert>,
+    invalidatesCognitivePath:
+      theoryContent !== undefined
+      || learningObjective !== undefined
+      || targetBloomLevel !== undefined,
+    invalidatesTeachingContent:
+      theoryContent !== undefined
+      || learningObjective !== undefined,
+    requiresAcceptedCognitivePath: patch.status === "approved",
+  });
+  if (!updateResult.found) {
+    res.status(404).json({ error: "Node not found" });
+    return;
+  }
+  if (!updateResult.updated) {
+    res.status(409).json({
+      error: "COG_PATH_NOT_READY",
+      reason: updateResult.acceptance.reason,
+      grounding: updateResult.acceptance.grounding,
+      message: "MicroNode-ը չի կարող հաստատվել, քանի դեռ դրա C2 ճանաչողական ուղին վավեր և հաստատված չէ։",
+    });
+    return;
+  }
+  const updated = updateResult.node;
 
   await invalidateLessonApproval(lessonId);
-  if (theoryContent !== undefined || learningObjective !== undefined) {
-    await invalidateCogPathConfirmation(nodeId);
-  }
   if (patch.status === "approved" && req.userId !== undefined) {
     await markSourceAlignmentReviewedByTeacher(lessonId, nodeId, req.userId);
     if (requiresPedagogicalReview(existing.changeReason)) {
@@ -7440,58 +7466,36 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
 });
 
 // POST /lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path
-// Teacher explicitly confirms the cognitive path. Requirements: ≥1 level, exactly 1 ceiling.
-// Sets cogPathStatus = 'confirmed' on lesson_nodes.
+// Teacher explicitly confirms the cognitive path against the canonical runtime
+// contract and synchronizes the derived Bloom compatibility copy atomically.
 router.post("/lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
 
-  const node = await getCogNode(lessonId, nodeId);
-  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
-
-  const levels = await db
-    .select()
-    .from(lessonNodeCognitiveLevelsTable)
-    .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId));
-
-  if (levels.length === 0) {
-    res.status(422).json({ error: "NO_LEVELS", message: "Channachogakan ughine bats e. Nakhapez ksteghtsi." });
+  const result = await confirmAuthoredCognitivePath(lessonId, nodeId);
+  if (!result.found) {
+    res.status(404).json({ error: "Node not found" });
     return;
   }
-  const ceilings = levels.filter((l) => l.isTargetCeiling);
-  if (ceilings.length !== 1) {
-    res.status(422).json({ error: "CEILING_REQUIRED", message: `Petq e lini kovki mek thirakayin macardak. Ayzhm: ${ceilings.length}.` });
-    return;
-  }
-  if (!satisfiesLearningObjectiveCognitiveFloor(node.learningObjective, levels)) {
+  if (!result.confirmed) {
     res.status(422).json({
-      error: "COG_PATH_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION",
-      message: "Ճանաչողական ուղու թիրախային մակարդակը ցածր է կանոնական ուսումնական նպատակի պահանջից։",
-    });
-    return;
-  }
-  const grounding = validateCognitivePathGrounding(
-    node.theoryContent,
-    node.learningObjective,
-    levels.map((level) => ({
-      performanceObjective: level.performanceObjective,
-      successCriterion: level.successCriterion,
-      preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
-    })),
-  );
-  if (grounding.status !== "GROUNDED") {
-    res.status(422).json({
-      error: "COG_PATH_GROUNDING_INVALID",
-      message: "Ճանաչողական ուղին պարունակում է աղբյուրով չհիմնավորված պնդում կամ օրինակ։",
-      groundingStatus: grounding.status,
+      error: result.assessment.reason,
+      reasons: result.assessment.reasons,
+      acceptanceReason: result.assessment.acceptanceReason ?? null,
+      grounding: result.assessment.grounding ?? null,
+      message: "Ճանաչողական ուղին չի համապատասխանում հաստատման կանոնական պայմանագրին։",
     });
     return;
   }
 
-  await db.update(lessonNodesTable).set({ cogPathStatus: "confirmed" } as any).where(eq(lessonNodesTable.id, nodeId));
   await invalidateLessonApproval(lessonId);
-  res.json({ cogPathStatus: "confirmed", nodeId });
+  res.json({
+    cogPathStatus: result.cogPathStatus,
+    nodeId: result.nodeId,
+    targetBloomLevel: result.targetBloomLevel,
+    target: result.assessment.target,
+  });
 });
 
 // POST /lessons/:lessonId/nodes/:nodeId/cognitive-levels
@@ -7527,7 +7531,6 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels", requireAuth, re
     return;
   }
 
-  await invalidateCogPathConfirmation(nodeId);
   await invalidateLessonApproval(lessonId);
 
   res.status(201).json({ ...inserted, preferredInteractionTypes: (inserted.preferredInteractionTypes ?? []) as string[], tasks: [] });
@@ -7540,33 +7543,23 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/reorder", require
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
 
-  const node = await getCogNode(lessonId, nodeId);
-  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
-
   const { orderedLevelIds } = req.body as { orderedLevelIds?: number[] };
   if (!Array.isArray(orderedLevelIds) || orderedLevelIds.length === 0) {
     res.status(400).json({ error: "orderedLevelIds required" });
     return;
   }
 
-  // Two-pass update to avoid unique-sequence constraint violations during reorder
-  await db.transaction(async (tx) => {
-    const offset = orderedLevelIds.length + 1000;
-    for (let i = 0; i < orderedLevelIds.length; i++) {
-      await tx.update(lessonNodeCognitiveLevelsTable)
-        .set({ sequence: offset + i })
-        .where(and(eq(lessonNodeCognitiveLevelsTable.id, orderedLevelIds[i]), eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId)));
-    }
-    for (let i = 0; i < orderedLevelIds.length; i++) {
-      await tx.update(lessonNodeCognitiveLevelsTable)
-        .set({ sequence: i + 1 })
-        .where(and(eq(lessonNodeCognitiveLevelsTable.id, orderedLevelIds[i]), eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId)));
-    }
-  });
-
-  await invalidateCogPathConfirmation(nodeId);
+  const result = await reorderAuthoredCognitiveLevels(lessonId, nodeId, orderedLevelIds);
+  if (!result.found) {
+    res.status(404).json({ error: "Node not found" });
+    return;
+  }
+  if (!result.valid) {
+    res.status(409).json({ error: result.reason });
+    return;
+  }
   await invalidateLessonApproval(lessonId);
-  res.json({ reordered: orderedLevelIds.length });
+  res.json({ reordered: result.reordered });
 });
 
 // POST /lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update
@@ -7619,8 +7612,6 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update",
     return;
   }
 
-  // Invalidate confirmation if this node's cog path was confirmed
-  await invalidateCogPathConfirmation(nodeId);
   await invalidateLessonApproval(lessonId);
 
   res.json({ success: true, level: { ...updated, preferredInteractionTypes: (updated.preferredInteractionTypes ?? []) as string[] } });
@@ -7634,19 +7625,15 @@ router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId", requ
   const levelId  = parseInt(String(req.params.levelId),  10);
   if (isNaN(lessonId) || isNaN(nodeId) || isNaN(levelId)) { res.status(400).json({ error: "Invalid ids" }); return; }
 
-  const node = await getCogNode(lessonId, nodeId);
-  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
-
-  const [level] = await db
-    .select({ id: lessonNodeCognitiveLevelsTable.id })
-    .from(lessonNodeCognitiveLevelsTable)
-    .where(and(eq(lessonNodeCognitiveLevelsTable.id, levelId), eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId)))
-    .limit(1);
-  if (!level) { res.status(404).json({ error: "Level not found" }); return; }
-
-  // Invalidate confirmation before deleting (must check confirmed state first)
-  await invalidateCogPathConfirmation(nodeId);
-  await db.delete(lessonNodeCognitiveLevelsTable).where(eq(lessonNodeCognitiveLevelsTable.id, levelId));
+  const result = await deleteAuthoredCognitiveLevel(lessonId, nodeId, levelId);
+  if (!result.found) {
+    res.status(404).json({ error: "Node not found" });
+    return;
+  }
+  if (!result.deleted) {
+    res.status(404).json({ error: "Level not found" });
+    return;
+  }
   await invalidateLessonApproval(lessonId);
   res.json({ success: true });
 });

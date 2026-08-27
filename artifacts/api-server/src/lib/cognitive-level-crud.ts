@@ -1,13 +1,12 @@
 import {
   COGNITIVE_LEVELS,
-  COGNITIVE_LEVEL_TO_BLOOM_INT,
   INTERACTION_TYPE_VALUES,
   db,
   lessonNodeCognitiveLevelsTable,
-  lessonNodesTable,
   type LessonNodeCognitiveLevel,
 } from "@workspace/db";
 import { and, eq, max, ne, sql } from "drizzle-orm";
+import { buildCognitivePathMutationInvalidationQuery } from "./cognitive-path-authoring.js";
 
 export type CognitiveLevelFields = {
   cognitiveLevel?: unknown;
@@ -101,6 +100,7 @@ export async function createTeacherCognitiveLevel(
       minimumIndependentEvidence: input.minimumIndependentEvidence ?? 3,
       preferredInteractionTypes: input.preferredInteractionTypes ?? [],
     }).returning();
+    await tx.execute(buildCognitivePathMutationInvalidationQuery(nodeId));
     return inserted;
   });
 }
@@ -166,9 +166,6 @@ export async function updateTeacherCognitiveLevel(
           eq(lessonNodeCognitiveLevelsTable.isTargetCeiling, true),
           ne(lessonNodeCognitiveLevelsTable.id, level.id),
         ));
-      await tx.update(lessonNodesTable)
-        .set({ targetBloomLevel: COGNITIVE_LEVEL_TO_BLOOM_INT[nextCognitiveLevel as keyof typeof COGNITIVE_LEVEL_TO_BLOOM_INT] })
-        .where(eq(lessonNodesTable.id, nodeId));
     }
 
     const [updated] = await tx.update(lessonNodeCognitiveLevelsTable)
@@ -178,6 +175,9 @@ export async function updateTeacherCognitiveLevel(
         eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId),
       ))
       .returning();
+    if (updated) {
+      await tx.execute(buildCognitivePathMutationInvalidationQuery(nodeId));
+    }
     return updated ?? null;
   });
 }

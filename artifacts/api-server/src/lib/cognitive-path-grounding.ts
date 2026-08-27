@@ -139,7 +139,8 @@ export function assessCognitivePathStructure(
     return "TARGET_CEILING_INVALID";
   }
   if (levels.some((level, index) =>
-    index > 0 && level.sequence <= levels[index - 1].sequence,
+    level.sequence !== index + 1
+    || (index > 0 && level.sequence <= levels[index - 1].sequence),
   )) {
     return "LEVEL_ORDER_INVALID";
   }
@@ -407,6 +408,101 @@ export function resolveCanonicalQuizTarget(
     target: resolvedTarget,
     acceptance,
     ...resolvedTarget,
+  };
+}
+
+export type CognitivePathConfirmationFailureReason =
+  | Exclude<
+      CanonicalQuizTargetFailureReason,
+      "PATH_NOT_CONFIRMED" | "TARGET_BLOOM_COPY_MISMATCH"
+    >
+  | "MISSING_PERFORMANCE_OBJECTIVE"
+  | "MISSING_SUCCESS_CRITERION"
+  | "INVALID_EVIDENCE_BUDGET"
+  | "INVALID_INTERACTION_TYPES"
+  | "LEARNING_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION";
+
+export type CognitivePathConfirmationAssessment =
+  | {
+      valid: true;
+      target: CanonicalQuizTarget;
+      acceptance: CognitivePathAcceptance;
+    }
+  | {
+      valid: false;
+      reason: CognitivePathConfirmationFailureReason;
+      reasons: CognitivePathConfirmationFailureReason[];
+      acceptance?: CognitivePathAcceptance;
+      acceptanceReason?: CognitivePathAcceptance["reason"];
+      grounding?: CognitivePathGroundingAudit | null;
+    };
+
+/**
+ * Authoring confirmation delegates to the same canonical runtime resolver while
+ * deliberately ignoring the legacy targetBloomLevel copy. That copy is derived
+ * from the returned target only after this assessment succeeds.
+ */
+export function assessCognitivePathForConfirmation(
+  node: Omit<CanonicalQuizTargetNode, "cogPathStatus" | "targetBloomLevel">,
+  cognitiveLevels: readonly CanonicalQuizTargetLevel[],
+): CognitivePathConfirmationAssessment {
+  const resolution = resolveCanonicalQuizTarget(
+    {
+      ...node,
+      cogPathStatus: "confirmed",
+      targetBloomLevel: undefined,
+    },
+    cognitiveLevels,
+  );
+  if (resolution.valid) {
+    return {
+      valid: true,
+      target: resolution.target,
+      acceptance: resolution.acceptance,
+    };
+  }
+
+  const reasons: CognitivePathConfirmationFailureReason[] = [];
+  const addReason = (reason: CognitivePathConfirmationFailureReason): void => {
+    if (!reasons.includes(reason)) reasons.push(reason);
+  };
+
+  if (resolution.reason === "PATH_NOT_CONFIRMED"
+    || resolution.reason === "TARGET_BLOOM_COPY_MISMATCH") {
+    addReason("PATH_NOT_ACCEPTED");
+  } else if (resolution.reason === "PATH_NOT_ACCEPTED") {
+    if (resolution.acceptanceReason === "EVIDENCE_BUDGET_INVALID") {
+      addReason("INVALID_EVIDENCE_BUDGET");
+    } else if (resolution.acceptanceReason === "INTERACTION_TYPES_INVALID") {
+      addReason("INVALID_INTERACTION_TYPES");
+    } else if (resolution.acceptanceReason === "LEARNING_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION") {
+      addReason("LEARNING_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION");
+    } else {
+      addReason("PATH_NOT_ACCEPTED");
+    }
+  } else if (resolution.reason === "PATH_GROUNDING_FAILED") {
+    const applicableLevels = cognitiveLevels.filter((level) => level.isApplicable);
+    if (applicableLevels.some((level) => !(level.performanceObjective ?? "").trim())) {
+      addReason("MISSING_PERFORMANCE_OBJECTIVE");
+    }
+    if (applicableLevels.some((level) => !(level.successCriterion ?? "").trim())) {
+      addReason("MISSING_SUCCESS_CRITERION");
+    }
+    if ((resolution.grounding?.issueCounts.INVALID_INTERACTION_TYPE ?? 0) > 0) {
+      addReason("INVALID_INTERACTION_TYPES");
+    }
+    addReason("PATH_GROUNDING_FAILED");
+  } else {
+    addReason(resolution.reason);
+  }
+
+  return {
+    valid: false,
+    reason: reasons[0],
+    reasons,
+    acceptance: resolution.acceptance,
+    acceptanceReason: resolution.acceptanceReason,
+    grounding: resolution.grounding,
   };
 }
 

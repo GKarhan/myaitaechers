@@ -1,0 +1,549 @@
+IMPLEMENTATION TASK — T6
+COGNITIVE PATH INTEGRITY AT AUTHORING BOUNDARY
+
+IMPORTANT CONTEXT
+
+T5 is complete.
+
+We now have a canonical fail-closed resolver for quiz assessment target:
+
+resolveCanonicalQuizTarget(node, cognitiveLevels)
+
+It correctly treats:
+
+lesson_node_cognitive_levels.isTargetCeiling
+
+as the canonical assessment target and rejects invalid/unconfirmed paths.
+
+However, the current authoring CRUD can still persist inconsistent Cognitive Paths.
+
+Lesson 754 demonstrated real examples:
+
+- path order can decrease cognitively
+- target can be missing
+- target can be non-final
+- targetBloomLevel can disagree with canonical target
+- teacher edits can leave review-state paths that cannot be safely consumed
+
+GOAL
+
+Fix the AUTHORING boundary so new teacher-created or teacher-edited Cognitive Paths
+cannot be confirmed/published in a state that violates the canonical accepted-path contract.
+
+This is NOT a quiz-generator task.
+
+Do NOT wire T5 into quiz generation yet.
+
+Do NOT modify Lesson 754 data automatically.
+
+==================================================
+0. INSPECT FIRST — NO CODE CHANGES YET
+==================================================
+
+Inspect the current Cognitive Path authoring flows:
+
+- manual level creation
+- level editing
+- level deletion
+- level reordering
+- target selection/change
+- applicability change
+- confirmation/approval
+- AI-generated path acceptance
+- teacher-confirmed path edits
+
+Identify:
+
+1. all API routes that mutate Cognitive Path levels
+2. frontend forms/components calling them
+3. confirmation route/action
+4. how targetBloomLevel compatibility copy is currently updated
+5. which existing accepted-path validators are currently reused
+6. which authoring routes bypass those validators
+7. whether any route can persist an invalid intermediate path
+8. which intermediate invalid states are intentionally allowed while still in draft/review
+
+Report this before editing.
+
+==================================================
+1. KEY PRODUCT RULE
+==================================================
+
+Draft authoring may temporarily be incomplete.
+
+Example:
+
+teacher creates first level
+→ no target yet
+→ still allowed as DRAFT / NEEDS_REVIEW
+
+But a path must NOT become:
+
+CONFIRMED / ACCEPTED / READY
+
+unless it passes the SAME canonical runtime Cognitive Path contract.
+
+Therefore distinguish:
+
+A. editable draft/review state
+B. confirmed/accepted state
+
+Do NOT prevent all partial editing.
+
+Do prevent invalid paths from being confirmed.
+
+==================================================
+2. REUSE ONE CANONICAL ACCEPTANCE AUTHORITY
+==================================================
+
+Do not create a second authoring-specific definition of valid Cognitive Path.
+
+Reuse the existing shared structural/grounding authorities already used by:
+
+- assessAcceptedCognitivePath()
+- assessCognitivePathStructure()
+- orderCognitivePathLevels()
+- cognitive-path grounding logic
+- T5 canonical quiz target resolver where appropriate
+
+The confirmation boundary must rely on the same canonical invariants.
+
+==================================================
+3. CONFIRMATION MUST FAIL CLOSED
+==================================================
+
+When teacher attempts to confirm/approve a Cognitive Path, require:
+
+1. At least one applicable Cognitive Level.
+2. Exactly one applicable isTargetCeiling=true.
+3. Target is applicable.
+4. Target is the final ordered applicable level.
+5. Sequences are valid/contiguous according to existing path contract.
+6. Cognitive/Bloom progression is strictly increasing.
+7. No duplicate cognitive levels.
+8. Required performanceObjective exists.
+9. Required successCriterion exists.
+10. minimumIndependentEvidence satisfies current contract.
+11. preferredInteractionTypes satisfy current contract.
+12. grounding/source requirements pass.
+13. any other current accepted-path invariant passes.
+
+If not:
+
+- do NOT confirm
+- do NOT mark cogPathStatus confirmed
+- return machine-readable validation reasons
+
+Do not silently fix semantic structure during confirmation.
+
+==================================================
+4. SINGLE-LEVEL PATH MUST BE VALID
+==================================================
+
+This is important.
+
+A MicroNode may legitimately have only one cognitive level.
+
+Example:
+
+Understand [target]
+
+This must be confirmable if all other requirements pass.
+
+Do NOT force:
+
+Remember → Understand
+
+or any lower Bloom levels.
+
+Likewise:
+
+Apply [target]
+
+may be valid if that is the intentionally mapped single-level path and the accepted contract permits it.
+
+The authoring system must reflect the mapped curriculum path, not mechanically construct all Bloom levels.
+
+==================================================
+5. TARGET INTEGRITY
+==================================================
+
+At most one target is already DB-protected, but authoring must enforce the full target contract.
+
+When teacher changes target:
+
+- old target must be cleared atomically
+- new target must be applicable
+- new target must be final in the confirmed path
+- no transient confirmed state with two/no targets
+
+If teacher changes ordering and target is no longer final:
+
+- path must return/remain NEEDS_REVIEW
+- it must not stay CONFIRMED
+
+If teacher makes target non-applicable:
+
+- path must return/remain NEEDS_REVIEW
+- confirmation must fail until corrected
+
+==================================================
+6. COGNITIVE ORDER INTEGRITY
+==================================================
+
+Confirmed paths must progress in valid Bloom order.
+
+Examples:
+
+VALID:
+Remember → Understand
+Understand → Apply
+Understand → Apply → Analyze
+
+INVALID:
+Apply → Understand
+Analyze → Apply
+Apply → Remember → Analyze
+
+Do not reorder the teacher's path automatically during confirmation.
+
+Return a clear structural validation reason.
+
+Draft editing may temporarily contain invalid order, but it cannot be confirmed.
+
+==================================================
+7. targetBloomLevel COMPATIBILITY COPY
+==================================================
+
+Canonical target remains:
+
+lesson_node_cognitive_levels.isTargetCeiling
+
+lesson_nodes.targetBloomLevel is compatibility/derived data only.
+
+Inspect current synchronization behavior.
+
+On successful confirmation:
+
+- synchronize targetBloomLevel from the canonical target level
+- do this in the same transaction as confirmation if possible
+
+Do NOT use targetBloomLevel to decide the canonical target.
+
+If path becomes invalid/review-required after an edit:
+
+choose the safest behavior according to current architecture:
+
+- either keep compatibility value but mark path NEEDS_REVIEW,
+- or clear it if that is already the established invariant.
+
+Do not invent inconsistent semantics.
+
+Document the chosen behavior.
+
+==================================================
+8. MUTATION AFTER CONFIRMATION
+==================================================
+
+Any edit to a confirmed Cognitive Path that could affect validity must force revalidation.
+
+Examples:
+
+- cognitiveLevel changed
+- sequence changed
+- target changed
+- applicability changed
+- performanceObjective changed
+- successCriterion changed
+- interaction types changed
+- evidence count changed
+- level deleted
+- new level added
+
+Preferred rule:
+
+confirmed path + structural/semantic edit
+→ path becomes NEEDS_REVIEW / unconfirmed
+→ teacher must confirm again
+
+unless existing architecture already has a safe equivalent rule.
+
+Do not allow stale CONFIRMED status after meaningful edits.
+
+==================================================
+9. DELETE BEHAVIOR
+==================================================
+
+Deleting a level must preserve structural safety.
+
+If delete affects:
+
+- target
+- final level
+- sequence
+- confirmed path
+
+then:
+
+- normalize level sequence if existing authoring contract requires it
+- path becomes NEEDS_REVIEW
+- target invariants must be re-established before reconfirmation
+
+Do not auto-select a new target silently unless this is already canonical behavior.
+
+==================================================
+10. REORDER BEHAVIOR
+==================================================
+
+Reordering must preserve deterministic sequence values.
+
+After reorder:
+
+- sequence = 1..N
+- relative order = requested order
+- if confirmed path no longer satisfies cognitive progression/target-final invariant:
+  mark NEEDS_REVIEW
+
+Do not silently change cognitiveLevel values.
+
+==================================================
+11. AI-CREATED AND MANUAL PATHS
+==================================================
+
+The same integrity rules must apply regardless of provenance:
+
+- AI-generated path
+- teacher-created path
+- AI-generated then teacher-edited path
+
+Provenance may remain visible.
+
+Provenance must NOT bypass canonical confirmation validation.
+
+==================================================
+12. MACHINE-READABLE VALIDATION
+==================================================
+
+Use/reuse explicit validation codes.
+
+At minimum cover equivalent reasons for:
+
+- NO_APPLICABLE_LEVELS
+- TARGET_MISSING
+- MULTIPLE_TARGETS
+- TARGET_NOT_APPLICABLE
+- TARGET_NOT_FINAL
+- INVALID_SEQUENCE
+- INVALID_COGNITIVE_ORDER
+- MISSING_PERFORMANCE_OBJECTIVE
+- MISSING_SUCCESS_CRITERION
+- INVALID_EVIDENCE_BUDGET
+- INVALID_INTERACTION_TYPES
+- PATH_GROUNDING_FAILED
+
+Reuse existing canonical vocabulary where available.
+
+Do not create duplicate error-taxonomy if equivalent codes already exist.
+
+==================================================
+13. T5 COMPATIBILITY
+==================================================
+
+After a path is successfully confirmed:
+
+resolveCanonicalQuizTarget(...)
+
+must succeed deterministically for that MicroNode.
+
+This is a hard acceptance test.
+
+Do NOT wire it into quiz generation.
+
+Just prove authoring produces data T5 can safely consume.
+
+==================================================
+14. REQUIRED PROVIDER-FREE TESTS
+==================================================
+
+Add focused deterministic tests.
+
+CASE A
+Single Understand[target]
+→ confirm succeeds
+→ status confirmed
+→ T5 resolver returns Understand
+
+CASE B
+Understand → Apply[target]
+→ confirm succeeds
+→ T5 returns Apply
+
+CASE C
+Remember → Understand → Apply[target]
+→ confirm succeeds
+
+CASE D
+Apply[target] → Understand
+→ confirmation rejected
+→ INVALID_COGNITIVE_ORDER and/or TARGET_NOT_FINAL
+
+CASE E
+Understand → Apply with no target
+→ confirmation rejected TARGET_MISSING
+
+CASE F
+Target not final
+→ confirmation rejected
+
+CASE G
+Target marked non-applicable
+→ confirmation rejected
+
+CASE H
+Confirmed path edited structurally
+→ status becomes NEEDS_REVIEW/unconfirmed
+
+CASE I
+Confirmed path interaction types/evidence/objective edited
+→ status becomes NEEDS_REVIEW if current contract requires reconfirmation
+
+CASE J
+Successful reconfirmation
+→ targetBloomLevel compatibility copy matches canonical target
+
+CASE K
+Delete target from confirmed path
+→ path no longer remains confirmed
+
+CASE L
+Reorder confirmed path into invalid Bloom progression
+→ path no longer remains confirmed
+
+CASE M
+AI-created path and manual path
+→ same confirmation rules
+
+CASE N
+Invalid path may exist as DRAFT/NEEDS_REVIEW
+→ but cannot be CONFIRMED
+
+CASE O
+Every successfully confirmed fixture
+→ resolveCanonicalQuizTarget succeeds
+
+==================================================
+15. LESSON 754 — READ ONLY
+==================================================
+
+After implementation and tests:
+
+Run a read-only validation report for Lesson 754.
+
+Do NOT modify it.
+
+For each MicroNode report:
+
+- current path status
+- current confirmation validation result
+- exact reasons preventing confirmation
+- whether T5 resolver succeeds/fails
+
+This is diagnostic only.
+
+Do not repair Lesson 754 in this task.
+
+==================================================
+16. PROTECTED SYSTEMS
+==================================================
+
+Do NOT modify:
+
+- quiz generator
+- quiz prompt
+- EASY/MEDIUM/HARD/MIXED
+- async quiz job system #212
+- quiz persistence
+- scoring
+- Test 2.0 retest session
+- Knowledge Tree
+- AI Teacher runtime
+- mapping generation
+- lesson source content
+
+This task is ONLY Cognitive Path authoring integrity.
+
+==================================================
+17. NON-REGRESSION
+==================================================
+
+Run:
+
+- existing Cognitive Path CRUD tests
+- existing Cognitive Path acceptance/grounding tests
+- T5 resolver tests
+- API typecheck
+- API build
+- frontend typecheck if authoring UI contract changes
+- frontend build if UI touched
+
+No provider calls.
+
+Do not alter unrelated legacy fixtures to force green tests.
+
+==================================================
+18. INDEPENDENT REVIEW
+==================================================
+
+Request focused review for:
+
+1. one canonical accepted-path contract
+2. draft vs confirmed separation
+3. target-final invariant
+4. cognitive-order invariant
+5. single-level path validity
+6. mutation invalidates stale confirmation
+7. targetBloomLevel remains derived
+8. T5 resolver succeeds for confirmed paths
+9. no quiz-generator changes
+10. no AI Teacher changes
+
+Fix concrete findings before completion.
+
+==================================================
+19. FINAL REPORT
+==================================================
+
+Return:
+
+1. files changed
+2. authoring routes changed
+3. canonical confirmation contract
+4. draft/review behavior
+5. target behavior
+6. reorder/delete behavior
+7. targetBloomLevel synchronization behavior
+8. mutation-after-confirmation behavior
+9. tests/results
+10. Lesson 754 read-only findings
+11. independent review result
+12. remaining blockers before Quiz Target Plan integration
+
+End with:
+
+INVALID PATH CAN REMAIN DRAFT/NEEDS_REVIEW: YES / NO
+
+INVALID PATH CAN BE CONFIRMED: YES / NO
+
+CONFIRMED PATH ALWAYS HAS EXACTLY ONE FINAL TARGET: YES / NO
+
+CONFIRMED PATH USES VALID COGNITIVE ORDER: YES / NO
+
+targetBloomLevel REMAINS DERIVED: YES / NO
+
+T5 RESOLVER SUCCEEDS FOR CONFIRMED PATHS: YES / NO
+
+READY FOR T7 QUIZ TARGET PLAN: YES / NO
+
+STOP.
+
+Do not proceed to quiz generation automatically.
