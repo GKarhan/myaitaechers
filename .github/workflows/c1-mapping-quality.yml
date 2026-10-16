@@ -26,5 +26,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: C1 unit tests
         run: pnpm --filter @workspace/api-server test:c1-quality
+      - name: Build shared TypeScript libraries
+        run: pnpm run typecheck:libs
       - name: API TypeScript check
         run: pnpm --filter @workspace/api-server typecheck
