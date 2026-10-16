@@ -6575,7 +6575,8 @@ direct support for every child, do not propose the split.`;
       ? await completionRequester()
       : await openrouter.chat.completions.create({
         model:      PASS2B_REVIEW_MODEL,
-        max_tokens: 2000,
+        // Structured per-node decisions and Armenian explanations exceed 2,000 tokens.
+        max_tokens: 8000,
         temperature: 0,
         messages: [
           { role: "system", content: PASS2B_REVIEW_SYSTEM },
