@@ -1956,9 +1956,10 @@ export async function extractBlocksWithVision(
 //   • "Exercises on X" MicroNode named as an anti-pattern by name.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PASS2_STEP1_MODEL   = "deepseek/deepseek-chat";   // topic boundary detection
-const PASS2_STEP2_MODEL   = "google/gemini-2.5-flash";  // per-topic MicroNode org
-const PASS2B_REVIEW_MODEL = "deepseek/deepseek-chat";   // semantic granularity review (Phase 4)
+// Isolated pilot comparison: same prompts and gates, GPT-5.4 for semantic stages.
+const PASS2_STEP1_MODEL   = "openai/gpt-5.4"; // topic boundary detection
+const PASS2_STEP2_MODEL   = "openai/gpt-5.4"; // per-topic MicroNode org
+const PASS2B_REVIEW_MODEL = "openai/gpt-5.4"; // semantic granularity review
 const PASS2_MAX_GROUP_SIZE = 20;                          // size-cap before subdividing
 
 // ── Pass 2 output types ───────────────────────────────────────────────────────
