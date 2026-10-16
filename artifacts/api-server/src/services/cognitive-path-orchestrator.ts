@@ -463,6 +463,11 @@ async function claimCognitivePathJob(
 ): Promise<JobClaim> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
+    const [otherStage] = await tx.select({ id: mappingJobsTable.id }).from(mappingJobsTable)
+      .where(and(eq(mappingJobsTable.lessonId, lessonId),
+        inArray(mappingJobsTable.jobType, ["map", "generate_teaching_content"]),
+        inArray(mappingJobsTable.status, ["pending", "running"]))).limit(1);
+    if (otherStage) return { job: null, conflictingNodeIds: ledger.map(entry => entry.nodeId) };
     const activeJobs = await tx
       .select()
       .from(mappingJobsTable)

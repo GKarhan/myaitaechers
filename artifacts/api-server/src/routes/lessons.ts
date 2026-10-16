@@ -1,3 +1,5 @@
+import { claimMappingStage } from "../services/unified-mapping-job-claim.js";
+import { readUnifiedMappingResume } from "../services/unified-mapping-resume-state.js";
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { getLatestCompletedQuizScoreStats } from "../services/quiz-reporting.js";
@@ -4772,47 +4774,12 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     .where(eq(subjectsTable.id, lesson.subjectId))
     .limit(1);
 
-  // Preflight: refuse a second C1 job and never silently replace a map.
-  // NOTE: This read-before-write guard is not an atomic distributed lock.
-  // A unique active-job claim is still required before production rollout.
-  const [activeMappingJob] = await db.select({ id: mappingJobsTable.id })
-    .from(mappingJobsTable)
-    .where(and(
-      eq(mappingJobsTable.lessonId, lessonId),
-      eq(mappingJobsTable.jobType, "map"),
-      inArray(mappingJobsTable.status, ["pending", "running"]),
-    ))
-    .limit(1);
-  if (activeMappingJob) {
-    res.status(409).json({ error: "MAPPING_ALREADY_IN_PROGRESS", jobId: activeMappingJob.id });
+  const claim = await claimMappingStage(lessonId, "map");
+  if ("error" in claim) {
+    res.status(claim.error === "LESSON_NOT_FOUND" ? 404 : 409).json(claim);
     return;
   }
-  const [existingMappedNode] = await db.select({ id: lessonNodesTable.id })
-    .from(lessonNodesTable)
-    .where(eq(lessonNodesTable.lessonId, lessonId)).limit(1);
-  if (existingMappedNode) {
-    res.status(409).json({
-      error: "EXISTING_MAP_REQUIRES_EXPLICIT_REPLACEMENT",
-      message: "Գոյություն ունեցող քարտեզը չի վերագրվում առանց ուսուցչի առանձին հաստատման։",
-    });
-    return;
-  }
-
-  // ── Create background job and respond immediately ─────────────────────────
-  // All slow work (AI calls, DB writes) runs inside setImmediate so the HTTP
-  // connection is released without waiting 5+ minutes.
-  // INSERT is the authoritative conflict claim once the partial unique
-  // index migration is installed. Without that index the preflight above is
-  // only best-effort; production must not enable concurrency without it.
-  const [job] = await db
-    .insert(mappingJobsTable)
-    .values({ lessonId, jobType: "map", status: "pending" })
-    .onConflictDoNothing()
-    .returning();
-  if (!job) {
-    res.status(409).json({ error: "MAPPING_ALREADY_IN_PROGRESS" });
-    return;
-  }
+  const { job } = claim;
 
   res.json({ jobId: job.id, status: "pending" as const });
 
@@ -6126,11 +6093,12 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
     cogLevelsByNode.set(level.lessonNodeId, levels);
   }
 
-  // ── Create job, respond immediately ──────────────────────────────────────
-  const [job] = await db
-    .insert(mappingJobsTable)
-    .values({ lessonId, jobType: "generate_teaching_content", status: "pending" })
-    .returning();
+  const claim = await claimMappingStage(lessonId, "generate_teaching_content");
+  if ("error" in claim) {
+    res.status(claim.error === "LESSON_NOT_FOUND" ? 404 : 409).json(claim);
+    return;
+  }
+  const { job } = claim;
 
   res.json({ jobId: job.id, status: "pending" as const });
 
@@ -6335,6 +6303,16 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       .catch(() => {});
   }
   }); // end setImmediate
+});
+
+// Read-only recovery snapshot. GET never starts or cancels generation.
+router.get("/lessons/:lessonId/unified-resume-state", requireAuth, requireLessonAuthor, async (req: AuthRequest, res, next) => {
+  const lessonId = Number(req.params.lessonId);
+  if (!Number.isSafeInteger(lessonId) || lessonId <= 0) {
+    res.status(400).json({ error: "Invalid lesson id" }); return;
+  }
+  try { res.json(await readUnifiedMappingResume(lessonId)); }
+  catch (error) { next(error); }
 });
 
 // ── GET /lessons/:lessonId/map-status ─────────────────────────────────────────
