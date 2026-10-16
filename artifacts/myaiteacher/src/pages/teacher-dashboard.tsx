@@ -35,6 +35,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
 import ManualMappingEditor from "@/components/ManualMappingEditor";
+import { UnifiedLessonMapButton } from "@/components/UnifiedLessonMapButton";
 import CognitiveLevelForm, { type CognitiveLevelFormValue } from "@/components/CognitiveLevelForm";
 import {
   useGetTeacherClasses,
@@ -367,6 +368,18 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
 
   return (
     <>
+      <UnifiedLessonMapButton
+        lessonId={lessonId}
+        token={token}
+        hasExistingMap={isMapped}
+        onRefresh={() => {
+          void qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
+          void qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
+          void qc.invalidateQueries({ queryKey: ['lesson-topics', lessonId] });
+          void qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
+          void qc.invalidateQueries({ queryKey: ['lesson-final-approval-readiness', lessonId] });
+        }}
+      />
       {/* ── Ավtomatie mapping button ─────────────────────────────────── */}
       <button
         onClick={handleMap}
