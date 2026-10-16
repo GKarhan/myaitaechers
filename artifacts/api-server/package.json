@@ -100,7 +100,7 @@
     "test:quiz-immediate-feedback": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/quiz-immediate-feedback.test.ts",
     "test:c6-personalization": "tsx src/services/__tests__/c6-personalization.test.ts",
     "test:c7-3": "tsx src/services/phase2/__tests__/c7-execution-target.test.ts",
-    "test:c1-quality": "tsx --test src/services/unified-lesson-mapping-plan.test.ts src/services/c1-source-coverage-gate.test.ts src/services/c1-mapping-coverage-adapter.test.ts src/services/c1-micronode-integrity.test.ts src/services/unified-mapping-quality-readiness.test.ts src/services/unified-mapping-persisted-evidence.test.ts"
+    "test:c1-quality": "tsx --test src/services/unified-lesson-mapping-plan.test.ts src/services/c1-source-coverage-gate.test.ts src/services/c1-mapping-coverage-adapter.test.ts src/services/c1-micronode-integrity.test.ts src/services/unified-mapping-quality-readiness.test.ts src/services/unified-mapping-persisted-evidence.test.ts src/services/unified-mapping-resume-policy.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
