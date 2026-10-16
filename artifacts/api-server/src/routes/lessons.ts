@@ -4801,10 +4801,18 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
   // ── Create background job and respond immediately ─────────────────────────
   // All slow work (AI calls, DB writes) runs inside setImmediate so the HTTP
   // connection is released without waiting 5+ minutes.
+  // INSERT is the authoritative conflict claim once the partial unique
+  // index migration is installed. Without that index the preflight above is
+  // only best-effort; production must not enable concurrency without it.
   const [job] = await db
     .insert(mappingJobsTable)
     .values({ lessonId, jobType: "map", status: "pending" })
+    .onConflictDoNothing()
     .returning();
+  if (!job) {
+    res.status(409).json({ error: "MAPPING_ALREADY_IN_PROGRESS" });
+    return;
+  }
 
   res.json({ jobId: job.id, status: "pending" as const });
 
