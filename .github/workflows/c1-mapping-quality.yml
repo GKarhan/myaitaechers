@@ -1,0 +1,30 @@
+name: C1 Mapping Quality
+
+on:
+  pull_request:
+    paths:
+      - "artifacts/api-server/**"
+      - ".github/workflows/c1-mapping-quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  c1-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: C1 unit tests
+        run: pnpm --filter @workspace/api-server test:c1-quality
+      - name: API TypeScript check
+        run: pnpm --filter @workspace/api-server typecheck
