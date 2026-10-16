@@ -4,6 +4,7 @@ import { getLatestCompletedQuizScoreStats } from "../services/quiz-reporting.js"
 import { Router, type NextFunction, type Response } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, lessonSourceMaterialsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, lessonNodeTeachingPackageItemsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
+import { auditPersistableC1TaskCoverage } from "../services/c1-mapping-coverage-adapter.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
@@ -5110,6 +5111,16 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         pass2.semanticScope.records.map((record) => [record.blockIndex, record.scope]),
       ),
     });
+    // Extra C1 completeness gate: a source record alone does not mean that a
+    // textbook exercise was actually retained as an answerable task.
+    // Do not replace the current map if any in-scope task silently disappears.
+    const taskCoverage = auditPersistableC1TaskCoverage(durableSourceMaterials, pass2.topics);
+    if (!taskCoverage.ok) {
+      throw new Error(
+        "C1 source/task preservation failed before persistence: "
+        + JSON.stringify(taskCoverage.issues),
+      );
+    }
     const durableSourceDispositionCounts = durableSourceMaterials.reduce<
       Partial<Record<string, number>>
     >((counts, material) => {
