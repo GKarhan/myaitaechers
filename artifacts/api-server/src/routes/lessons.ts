@@ -6,6 +6,7 @@ import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTab
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { auditPersistableC1TaskCoverage } from "../services/c1-mapping-coverage-adapter.js";
 import { reviewC1MicroNodeIntegrity } from "../services/c1-micronode-integrity.js";
+import { reviewPersistedUnifiedMap } from "../services/unified-mapping-persisted-review.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
@@ -4334,6 +4335,22 @@ router.get("/lessons/:lessonId/topics", requireAuth, requireLessonAuthor, async 
 // POST /lessons/:lessonId/final-approve — authoritative assignment preflight.
 // Teachers may explicitly accept safe review findings in one delivery decision;
 // data-integrity and learner-safety errors remain hard blockers.
+// Read-only NEW unified-map quality report, available to the lesson author.
+// It does not approve, publish, remap or update canonical lesson data.
+router.get("/lessons/:lessonId/unified-quality-readiness", requireAuth, requireLessonAuthor, async (req: AuthRequest, res, next) => {
+  try {
+    const lessonId = Number(req.params.lessonId);
+    if (!Number.isSafeInteger(lessonId) || lessonId <= 0) {
+      res.status(400).json({ error: "Invalid lesson id" });
+      return;
+    }
+    const report = await reviewPersistedUnifiedMap(lessonId);
+    res.json({ lessonId, ...report });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/lessons/:lessonId/final-approval-readiness", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
