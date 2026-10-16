@@ -1,3 +1,4 @@
+import { reconcileTextbookQuestions } from "../lib/textbook-question-inventory.js";
 import { boundLessonSection } from "../lib/lesson-section-boundary.js";
 import { activeMappingJob, assertActiveMappingWriter, retireInterruptedMapping } from "../services/unified-mapping-recovery.js";
 import { claimMappingStage } from "../services/unified-mapping-job-claim.js";
@@ -4859,6 +4860,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
 
     // ── Pass 1: Pure verbatim block extraction (in-memory, no DB write yet) ──
     let pass1: Pass1Result;
+    const questionInventoryAudits: Array<ReturnType<typeof reconcileTextbookQuestions>["audit"]> = [];
     let textPageBindingAudit: ReturnType<typeof bindTextBlocksToPhysicalPages>["audit"] | null = null;
     if (useVision) {
       logger.info(
@@ -4886,9 +4888,17 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           lessonText: formatExtractedPagesForPass1([page]),
         }, { sourcePageOverride: page.pageNumber });
         const bound = bindTextBlocksToPhysicalPages([page], result.blocks);
+        const reconciled = reconcileTextbookQuestions(page, filterVerifiedTextBlocks(bound.blocks));
+        questionInventoryAudits.push(reconciled.audit);
+        if (reconciled.audit.state === "AMBIGUOUS_NUMBERING") {
+          physicalPageProvenance = { questionInventory: questionInventoryAudits };
+          throw new MappingSourceScopeError({ questionInventory: questionInventoryAudits });
+        }
+        // Rebind server-sliced questions through the same provenance validator.
+        const reconciledBound = bindTextBlocksToPhysicalPages([page], reconciled.blocks);
         pageResults.push({
           result,
-          verifiedBlocks: filterVerifiedTextBlocks(bound.blocks),
+          verifiedBlocks: filterVerifiedTextBlocks(reconciledBound.blocks),
           audit: bound.audit,
         });
       }
@@ -4962,6 +4972,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     physicalPageProvenance = {
       ...physicalPageProvenance,
       sectionBoundary: sectionBoundary?.audit ?? { state: "VISION_REQUIRES_SOURCE_REVIEW" },
+      questionInventory: questionInventoryAudits,
       pass2InputBlockCount,
     };
     logger.info(

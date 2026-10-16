@@ -1166,7 +1166,7 @@ Valid blockType values (pick the one that best describes each block):
   CAPTION     — a standalone caption for an image or table
   NOTE        — a side note, footnote, or informational callout box
   ACTIVITY    — a group activity, project, or in-class task
-  HOMEWORK    — a homework section or assignment header
+  HOMEWORK    — an actual homework task; never a section title or assignment header
 
 STRICT RULES — follow every one without exception:
 
