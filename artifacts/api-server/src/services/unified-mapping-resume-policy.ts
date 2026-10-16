@@ -10,6 +10,7 @@ export type JobState =
   | "none";
 export interface UnifiedResumeState {
   activeC1: JobState;
+  c1RetryConfirmed?: boolean;
   activeC2?: JobState;
   staleActiveJob?: boolean;
   invalidC2Count?: number;
@@ -42,7 +43,7 @@ export function decideUnifiedResume(
   if (s.activeC1 === "coverage_failed")
     return { action: "REVIEW", reason: "C1_SOURCE_COVERAGE_FAILED" };
   if (!s.hasCanonicalNodes) {
-    if (s.activeC1 === "failed")
+    if (s.activeC1 === "failed" && !s.c1RetryConfirmed)
       return {
         action: "REVIEW",
         reason: "C1_FAILED_RETRY_REQUIRES_CONFIRMATION",

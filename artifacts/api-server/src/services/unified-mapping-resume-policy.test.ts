@@ -139,3 +139,18 @@ describe("persisted recovery boundaries", () => {
       "START_C2",
     ));
 });
+
+it("allows C1 retry only after explicit fenced retirement", () => {
+  assert.equal(
+    decideUnifiedResume({
+      ...baseline(),
+      activeC1: "failed",
+      c1RetryConfirmed: true,
+    }).action,
+    "START_C1",
+  );
+  assert.equal(
+    decideUnifiedResume({ ...baseline(), activeC1: "failed" }).action,
+    "REVIEW",
+  );
+});

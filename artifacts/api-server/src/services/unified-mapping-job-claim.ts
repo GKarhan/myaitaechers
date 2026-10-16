@@ -13,8 +13,9 @@ import { and, eq, inArray } from "drizzle-orm";
 export async function claimMappingStage(
   lessonId: number,
   jobType: "map" | "generate_teaching_content",
+  database = db,
 ) {
-  return db.transaction(async (tx) => {
+  return database.transaction(async (tx) => {
     const [lesson] = await tx
       .select({ id: lessonsTable.id })
       .from(lessonsTable)
@@ -52,7 +53,12 @@ export async function claimMappingStage(
     }
     const [job] = await tx
       .insert(mappingJobsTable)
-      .values({ lessonId, jobType, status: "pending" })
+      .values({
+        lessonId,
+        jobType,
+        status: "pending",
+        result: { recoveryFenceVersion: 1 },
+      })
       .onConflictDoNothing()
       .returning();
     if (!job) return { error: "MAPPING_ALREADY_IN_PROGRESS" } as const;

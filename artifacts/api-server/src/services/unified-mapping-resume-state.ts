@@ -1,4 +1,8 @@
 import {
+  INTERRUPTED_JOB_RETIRED,
+  STALE_MAPPING_MS,
+} from "./unified-mapping-recovery.js";
+import {
   db,
   lessonsTable,
   lessonNodesTable,
@@ -74,11 +78,12 @@ export async function readUnifiedMappingResume(lessonId: number) {
       );
       const snapshot = {
         activeC1: state("map"),
+        c1RetryConfirmed: latest("map")?.error === INTERRUPTED_JOB_RETIRED,
         activeC2: state("generate_cognitive_paths"),
         activeTeaching: state("generate_teaching_content"),
         // Diagnostic only. No timeout-based unlocking or automatic destructive retry.
         staleActiveJob: active.some(
-          (j) => Date.now() - j.updatedAt.getTime() > 30 * 60_000,
+          (j) => Date.now() - j.updatedAt.getTime() > STALE_MAPPING_MS,
         ),
         hasCanonicalNodes: nodes.length > 0,
         c1SourceVerified:
@@ -115,6 +120,10 @@ export async function readUnifiedMappingResume(lessonId: number) {
           status: j.status,
           progress: j.progress,
           updatedAt: j.updatedAt,
+          recoverable:
+            (j.result as { recoveryFenceVersion?: number } | null)
+              ?.recoveryFenceVersion === 1 &&
+            Date.now() - j.updatedAt.getTime() > STALE_MAPPING_MS,
         })),
       };
     },

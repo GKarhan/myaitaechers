@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - "artifacts/api-server/**"
+      - "artifacts/myaiteacher/**"
+      - "lib/db/**"
+      - "lib/api-client-react/**"
+      - "scripts/mapping-browser-test.mjs"
       - ".github/workflows/c1-mapping-quality.yml"
   workflow_dispatch:
 
@@ -14,6 +18,18 @@ jobs:
   c1-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mapping_test
+          POSTGRES_PASSWORD: mapping_test_only
+          POSTGRES_DB: mapping_integration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mapping_test -d mapping_integration"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -32,3 +48,12 @@ jobs:
         run: pnpm --filter @workspace/api-server typecheck
       - name: Teacher UI TypeScript check
         run: pnpm --filter ./artifacts/myaiteacher typecheck
+
+      - name: PostgreSQL concurrent claims and fenced recovery
+        run: pnpm --filter @workspace/api-server exec tsx --test src/services/__tests__/unified-mapping-postgres.test.ts
+        env:
+          MAPPING_TEST_DATABASE_URL: postgresql://mapping_test:mapping_test_only@127.0.0.1:5432/mapping_integration
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Navigation and recovery browser scenarios
+        run: node scripts/mapping-browser-test.mjs

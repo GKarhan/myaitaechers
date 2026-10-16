@@ -11,7 +11,12 @@ type Resume = {
     | "START_TEACHING"
     | "QUALITY_CHECK";
   reason: string;
-  activeJobs: { progress: string | null }[];
+  activeJobs: {
+    jobId: number;
+    updatedAt: string;
+    recoverable: boolean;
+    progress: string | null;
+  }[];
   snapshot: { hasCanonicalNodes: boolean };
 };
 type Quality = {
@@ -37,6 +42,7 @@ export function UnifiedLessonMapButton({
   onRefresh: () => void;
 }) {
   const [running, setRunning] = useState(false);
+  const [confirmRecovery, setConfirmRecovery] = useState(false);
   const [message, setMessage] = useState("");
   const [resume, setResume] = useState<Resume | null>(null);
   const cancelled = useRef(false);
@@ -50,7 +56,10 @@ export function UnifiedLessonMapButton({
         const state = await customFetch<Resume>(
           `/api/lessons/${lessonId}/unified-resume-state`,
         );
-        if (!disposed) { observeActive = state.action === "WAIT"; setResume(state); }
+        if (!disposed) {
+          observeActive = state.action === "WAIT";
+          setResume(state);
+        }
       } catch {
         if (!disposed) setResume(null);
       }
@@ -66,6 +75,35 @@ export function UnifiedLessonMapButton({
     };
   }, [lessonId, token]);
 
+  async function recover() {
+    const job = resume?.activeJobs.find((j) => j.recoverable);
+    if (!job || runningRef.current) return;
+    runningRef.current = true;
+    setRunning(true);
+    try {
+      await customFetch(`/api/lessons/${lessonId}/recover-mapping-job`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token ?? ""}`,
+        },
+        body: JSON.stringify({
+          jobId: job.jobId,
+          observedUpdatedAt: job.updatedAt,
+          confirmed: true,
+        }),
+      });
+      setResume((await request("unified-resume-state")) as Resume);
+      setMessage("");
+      setConfirmRecovery(false);
+      onRefresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "անհայտ սխալ");
+    } finally {
+      runningRef.current = false;
+      if (!cancelled.current) setRunning(false);
+    }
+  }
   async function request(path: string, method: "GET" | "POST" = "GET") {
     if (cancelled.current) throw new Error("Գործողությունն ընդհատվել է։");
     return customFetch<any>(`/api/lessons/${lessonId}/${path}`, {
@@ -180,14 +218,53 @@ export function UnifiedLessonMapButton({
         }
         className="rounded-lg border border-indigo-400/40 bg-indigo-500/15 px-2.5 py-1 text-xs text-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {running ? "⏳ Քարտեզագրում…" : resume?.snapshot.hasCanonicalNodes || resume?.action === "WAIT" ? "Շարունակել" : "✨ Միասնական քարտեզագրում"}
+        {running
+          ? "⏳ Քարտեզագրում…"
+          : resume?.snapshot.hasCanonicalNodes || resume?.action === "WAIT"
+            ? "Շարունակել"
+            : "✨ Միասնական քարտեզագրում"}
       </button>
+      {resume?.activeJobs.some((j) => j.recoverable) && (
+        <div>
+          {!confirmRecovery ? (
+            <button
+              type="button"
+              disabled={running}
+              onClick={() => setConfirmRecovery(true)}
+            >
+              ↩ Վերականգնել
+            </button>
+          ) : (
+            <>
+              <p>Ընդհատված քարտեզագրման անվտանգ շարունակություն</p>
+              <button
+                type="button"
+                disabled={running}
+                onClick={() => void recover()}
+              >
+                Հաստատել
+              </button>
+              <button
+                type="button"
+                disabled={running}
+                onClick={() => setConfirmRecovery(false)}
+              >
+                Չեղարկել
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {!message && resume?.action === "REVIEW" && (
         <p role="status" className="text-xs text-amber-200">
           Քարտեզը ստեղծված է․ պահանջվում է ուսուցչի վերանայում
         </p>
       )}
-      {!message && resume?.action === "WAIT" && <p role="status">{resume.activeJobs[0]?.progress ?? "⏳ Քարտեզագրում…"}</p>}
+      {!message && resume?.action === "WAIT" && (
+        <p role="status">
+          {resume.activeJobs[0]?.progress ?? "⏳ Քարտեզագրում…"}
+        </p>
+      )}
       {message && (
         <p
           role="status"

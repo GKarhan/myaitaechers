@@ -1,3 +1,4 @@
+import { activeMappingJob, assertActiveMappingWriter, retireInterruptedMapping } from "../services/unified-mapping-recovery.js";
 import { claimMappingStage } from "../services/unified-mapping-job-claim.js";
 import { readUnifiedMappingResume } from "../services/unified-mapping-resume-state.js";
 import { logger } from "../lib/logger";
@@ -115,8 +116,11 @@ const router = Router();
 async function persistGeneratedTeachingContent(
   nodeId: number,
   candidate: TeachingContentFields,
+  lessonId?: number,
+  jobId?: number,
 ): Promise<{ updated: boolean; complete: boolean }> {
   return db.transaction(async (tx) => {
+    if (lessonId !== undefined && jobId !== undefined) await assertActiveMappingWriter(tx, lessonId, jobId);
     await tx.execute(sql`SELECT id FROM lesson_nodes WHERE id = ${nodeId} FOR UPDATE`);
     const [current] = await tx
       .select({
@@ -4790,7 +4794,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
   try {
     await db.update(mappingJobsTable)
       .set({ status: "running", progress: "Pass 1: Extracting content blocks from PDF...", updatedAt: new Date() })
-      .where(eq(mappingJobsTable.id, job.id));
+      .where(activeMappingJob(job.id));
 
     const filePath  = resolveUploadedFilePath(resource.fileUrl!);
     const extractedPages = await extractPdfPages(filePath, pageRange.pagesFrom, pageRange.pagesTo);
@@ -4977,7 +4981,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     }
     await db.update(mappingJobsTable)
       .set({ progress: `Pass 2: Organising ${pass1.blocks.length} blocks into topics and MicroNodes...`, updatedAt: new Date() })
-      .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
+      .where(activeMappingJob(job.id)).catch(() => {});
 
     // ── Pass 2: Topic grouping + MicroNode organisation (in-memory) ───────────
     const pass2 = await runPass2Pipeline(pass1.blocks, {
@@ -5096,7 +5100,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
 
     await db.update(mappingJobsTable)
       .set({ progress: "Saving results to database...", updatedAt: new Date() })
-      .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
+      .where(activeMappingJob(job.id)).catch(() => {});
 
     // ── Atomically replace the detailed mapping ───────────────────────────
     // The destructive clear, every child insert, the alignment rows, and the
@@ -5165,6 +5169,11 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     let coveragePercent = 0;
 
     await db.transaction(async (tx) => {
+      await assertActiveMappingWriter(tx, lessonId, job.id);
+      const [currentNode] = await tx.select({ id: lessonNodesTable.id }).from(lessonNodesTable)
+        .where(eq(lessonNodesTable.lessonId, lessonId)).limit(1);
+      if (currentNode) throw new Error("EXISTING_MAP_REQUIRES_EXPLICIT_REPLACEMENT");
+
       // Order matters: FK constraints → delete nodes before topics.
       await tx.delete(lessonNodeDependenciesTable).where(
         eq(lessonNodeDependenciesTable.lessonId, lessonId),
@@ -5800,7 +5809,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         } as any,
         updatedAt: new Date(),
       })
-      .where(eq(mappingJobsTable.id, job.id));
+      .where(activeMappingJob(job.id));
 
     logger.info(
       {
@@ -5970,7 +5979,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         } : {}),
         updatedAt: new Date(),
       })
-      .where(eq(mappingJobsTable.id, job.id))
+      .where(activeMappingJob(job.id))
       .catch(() => {});
   }
   }); // end setImmediate
@@ -6107,7 +6116,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
   try {
     await db.update(mappingJobsTable)
       .set({ status: "running", progress: `Generating teaching content for ${nodes.length} MicroNodes...`, updatedAt: new Date() })
-      .where(eq(mappingJobsTable.id, job.id));
+      .where(activeMappingJob(job.id));
 
     const BATCH_SIZE = 3;
     const summaryRows: {
@@ -6178,7 +6187,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       const processed = Math.min(i + BATCH_SIZE, nodes.length);
       await db.update(mappingJobsTable)
         .set({ progress: `Generating teaching content... (${processed}/${nodes.length} MicroNodes)`, updatedAt: new Date() })
-        .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
+        .where(activeMappingJob(job.id)).catch(() => {});
 
       for (const batchResult of batchResults) {
         const nodeTitle = nodes.find((n) => n.id === batchResult.nodeId)?.title ?? "";
@@ -6221,7 +6230,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         } else {
           // Persist from a locked, fresh row rather than the background job's
           // stale snapshot. A teacher edit while the provider was running wins.
-          await persistGeneratedTeachingContent(result.nodeId, result);
+          await persistGeneratedTeachingContent(result.nodeId, result, lessonId, job.id);
 
           // A provider response is not success. Count a node only after the
           // persisted record can be read back with all required fields.
@@ -6284,7 +6293,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         } as any,
         updatedAt: new Date(),
       })
-      .where(eq(mappingJobsTable.id, job.id));
+      .where(activeMappingJob(job.id));
 
     await invalidateLessonApproval(lessonId);
     logger.info(
@@ -6299,7 +6308,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         error: err instanceof Error ? err.message : "Teaching content generation failed",
         updatedAt: new Date(),
       })
-      .where(eq(mappingJobsTable.id, job.id))
+      .where(activeMappingJob(job.id))
       .catch(() => {});
   }
   }); // end setImmediate
@@ -6313,6 +6322,20 @@ router.get("/lessons/:lessonId/unified-resume-state", requireAuth, requireLesson
   }
   try { res.json(await readUnifiedMappingResume(lessonId)); }
   catch (error) { next(error); }
+});
+
+// Only the lesson author/admin may explicitly retire a stale worker.
+router.post("/lessons/:lessonId/recover-mapping-job", requireAuth, requireLessonAuthor, async (req: AuthRequest, res, next) => {
+  const lessonId = Number(req.params.lessonId);
+  const { jobId, observedUpdatedAt, confirmed } = req.body ?? {};
+  if (!Number.isSafeInteger(lessonId) || lessonId <= 0 || !Number.isSafeInteger(jobId) || jobId <= 0
+    || typeof observedUpdatedAt !== "string" || !Number.isFinite(Date.parse(observedUpdatedAt))) {
+    res.status(400).json({ error: "INVALID_RECOVERY_REQUEST" }); return;
+  }
+  try {
+    const result = await retireInterruptedMapping(lessonId, jobId, observedUpdatedAt, confirmed);
+    res.status("error" in result ? 409 : 200).json(result);
+  } catch (error) { next(error); }
 });
 
 // ── GET /lessons/:lessonId/map-status ─────────────────────────────────────────
