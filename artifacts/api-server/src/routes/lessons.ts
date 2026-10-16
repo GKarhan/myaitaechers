@@ -4772,6 +4772,32 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     .where(eq(subjectsTable.id, lesson.subjectId))
     .limit(1);
 
+  // Preflight: refuse a second C1 job and never silently replace a map.
+  // NOTE: This read-before-write guard is not an atomic distributed lock.
+  // A unique active-job claim is still required before production rollout.
+  const [activeMappingJob] = await db.select({ id: mappingJobsTable.id })
+    .from(mappingJobsTable)
+    .where(and(
+      eq(mappingJobsTable.lessonId, lessonId),
+      eq(mappingJobsTable.jobType, "map"),
+      inArray(mappingJobsTable.status, ["pending", "running"]),
+    ))
+    .limit(1);
+  if (activeMappingJob) {
+    res.status(409).json({ error: "MAPPING_ALREADY_IN_PROGRESS", jobId: activeMappingJob.id });
+    return;
+  }
+  const [existingMappedNode] = await db.select({ id: lessonNodesTable.id })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId)).limit(1);
+  if (existingMappedNode) {
+    res.status(409).json({
+      error: "EXISTING_MAP_REQUIRES_EXPLICIT_REPLACEMENT",
+      message: "Գոյություն ունեցող քարտեզը չի վերագրվում առանց ուսուցչի առանձին հաստատման։",
+    });
+    return;
+  }
+
   // ── Create background job and respond immediately ─────────────────────────
   // All slow work (AI calls, DB writes) runs inside setImmediate so the HTTP
   // connection is released without waiting 5+ minutes.
