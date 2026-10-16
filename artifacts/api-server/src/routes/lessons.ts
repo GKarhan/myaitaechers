@@ -1,3 +1,4 @@
+import { boundLessonSection } from "../lib/lesson-section-boundary.js";
 import { activeMappingJob, assertActiveMappingWriter, retireInterruptedMapping } from "../services/unified-mapping-recovery.js";
 import { claimMappingStage } from "../services/unified-mapping-job-claim.js";
 import { readUnifiedMappingResume } from "../services/unified-mapping-resume-state.js";
@@ -4797,7 +4798,18 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       .where(activeMappingJob(job.id));
 
     const filePath  = resolveUploadedFilePath(resource.fileUrl!);
-    const extractedPages = await extractPdfPages(filePath, pageRange.pagesFrom, pageRange.pagesTo);
+    const selectedPages = await extractPdfPages(filePath, pageRange.pagesFrom, pageRange.pagesTo);
+    const sectionBoundary = isGarbledText(formatExtractedPagesForPass1(selectedPages))
+      ? null : boundLessonSection(selectedPages, lesson.title);
+    if (sectionBoundary?.audit.state === "REVIEW_REQUIRED") {
+      physicalPageProvenance = { sectionBoundary: sectionBoundary.audit };
+      throw new MappingSourceScopeError({
+        valid: false, checkedBlockCount: 0, invalidBlockIndices: [],
+        invalidPageCount: 0, unverifiableTextCount: 0,
+        reasonCodes: ["SOURCE_TEXT_NOT_IN_SELECTED_PAGE"],
+      });
+    }
+    const extractedPages = sectionBoundary?.pages ?? selectedPages;
     const lessonText = formatExtractedPagesForPass1(extractedPages);
     let sourceSet = buildLessonSourceSet({
       resourceId: resource.id,
@@ -4949,6 +4961,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     const pass2InputBlockCount = pass1.blocks.length;
     physicalPageProvenance = {
       ...physicalPageProvenance,
+      sectionBoundary: sectionBoundary?.audit ?? { state: "VISION_REQUIRES_SOURCE_REVIEW" },
       pass2InputBlockCount,
     };
     logger.info(
