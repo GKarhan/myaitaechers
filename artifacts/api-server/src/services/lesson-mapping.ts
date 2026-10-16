@@ -1185,6 +1185,12 @@ STRICT RULES — follow every one without exception:
    Do NOT skip any. Do NOT sample only some. Do NOT merge multiple exercises into one block.
    If there are 20 exercises, produce 20 EXERCISE blocks.
 
+   Likewise, copy each distinct definition or independently stated rule into its
+   own source block, even when several appear in one paragraph. Use exact,
+   contiguous source spans; do not paraphrase, duplicate, or invent text. This
+   allows later nodes to own separate definitions without sharing one block.
+   If the source does not provide separable spans, preserve it intact for review.
+
 4. NO ORGANIZATION.
    Do NOT group blocks into topics, nodes, or sections.
    Do NOT reorder them.
@@ -4734,7 +4740,7 @@ Procedure:
   3. Produce one MicroNode per identified objective.
 
 A MicroNode is the smallest independently teachable and independently assessable unit.
-Typical topics contain 1–6 MicroNodes, but this is guidance only, NOT a hard limit.
+Do not target a typical node count; derive it from the source-backed knowledge targets.
 Do NOT merge distinct learning objectives merely to reduce the MicroNode count.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -4930,53 +4936,50 @@ LEARNING OBJECTIVE CONTRACT:
 • The objective must be expressible as: "Student can [one action] [one concept or skill]."
 • The objective must describe ONE independently teachable and assessable outcome.
 
-ABSOLUTE RULE — ONE ACTION PER LEARNING OBJECTIVE:
-Every learningObjective MUST contain exactly ONE independently assessable action.
-If an objective contains two independent actions, concepts, or outcomes connected by:
-  • and / կամ / ու / եւ
-  • or / or
-  • then / after that
-  • also / as well as
-  • comma-separated independent actions
-the objective MUST be split into separate MicroNodes.
+KNOWLEDGE IDENTITY — separate concepts, not cognitive operations:
+Each objective describes one knowledge target. Recognizing, explaining, giving
+examples, and applying the SAME target belong to its later Cognitive Path; do not
+create separate knowledge nodes merely because verbs or Bloom levels differ.
 
-ONE PROCEDURE WITH STEPS → ONE MicroNode (allowed):
-  A procedure may contain multiple steps when those steps form ONE inseparable procedure
-  with ONE final outcome. Example:
-  VALID: "Student can decompose a multi-digit number into classes by grouping digits
-          from right to left."
-  (Here "grouping from right to left" is the METHOD of ONE procedure — not a separate skill.)
+SPLIT when the source explicitly teaches distinct concepts, definitions, rules,
+or procedures whose knowledge can vary independently. A shared paragraph, heading,
+or prerequisite relation does not make them one knowledge target. Each child must
+have its own exact, direct source support. If source spans cannot safely be assigned,
+retain a review requirement rather than bundling them or inventing evidence.
 
-TWO INDEPENDENT OUTCOMES → TWO MicroNodes (required):
-  When two outcomes can each be assessed independently — a student could succeed at one
-  while failing the other — they are separate MicroNodes. Example:
-  INVALID: "Student can decompose a multi-digit number into classes and read it aloud."
-  (Decomposing and reading aloud are separately testable → must be split.)
+Example: a paragraph defining a physical object and a substance teaches two distinct
+concepts. A pupil may understand one but confuse the other. They are separate nodes
+when each definition has its own source span. Defining a substance and giving an
+example of that same substance are operations over the SAME knowledge target.
 
-DIAGNOSTIC TEST — apply before finalizing every MicroNode:
-  Ask: "Could two separate test questions be written such that a student answers one
-  correctly while failing the other?"
-  If YES → split into two MicroNodes.
-  If NO → one procedure, one MicroNode is correct.
-
-Do NOT treat a prerequisite relationship as permission to combine two independently
-assessable skills. Even if skill B requires skill A, if they are separately testable,
-they MUST be separate MicroNodes.
+SUMMARY AND RECAP RULE:
+A summary may repeat several concepts already taught elsewhere in this lesson.
+It is supplementary evidence for those existing knowledge targets, not a new
+"summary" or umbrella knowledge node. Do not create a second nature/phenomena node
+from a recap merely because the recap was assigned to another provisional topic.
+Keep mixed recap material intact as supporting context or review-required material
+when assigning it to one core target would hide other independent concepts.
 
 BEFORE FINALIZING — cross-check all MicroNode LOs in this topic:
   — No two MicroNodes may describe the same skill using different wording.
   — If two MicroNodes have essentially the same objective, merge them.
   — If one MicroNode contains multiple independent objectives, split it.
-  — Explicitly verify: does each LO have exactly one primary action and one concept?
+  — Explicitly verify: does each LO identify one independently assessable knowledge target?
+  — Do not split or merge based only on punctuation, connectors, or action verbs.
 
 VALID objective examples:
   "Student can define what a number class is."
   "Student can decompose a multi-digit number into classes from right to left."
   "Student can read a multi-digit number aloud by naming each class."
 
-INVALID objective examples (MUST be split into separate MicroNodes):
-  "Student can decompose numbers and read them aloud."      ← two independent outcomes
-  "Student can define classes, explain their meaning, and identify them."  ← three actions
+INVALID objective example (split only with separate source support):
+  "Student can define a physical object and define a substance."
+  These are distinct knowledge targets, not merely multiple verbs.
+
+SAME-TARGET EXAMPLE (do not split by verb count):
+  "Student can define number classes, explain their meaning, and identify them."
+  These operations concern one knowledge target; express the node objective clearly
+  and put the different operations into its later Cognitive Path.
 
 ABSOLUTE RULES:
 1. Every block index provided must appear exactly once across sourceBlockIndices, exercises,
@@ -5356,9 +5359,10 @@ Flag ONLY when: a student could correctly answer a test question for skill A whi
 failing a test question for skill B, and both skills are contained in one MicroNode.
 
 EXAMPLE — flag this:
-  LO: "Student can define a verb and identify verbs in text."
-  Reason: Defining (recall) and identifying in context (application) are separately testable.
-  → UNDER_SPLIT
+  LO: "Student can distinguish a physical object, a substance, and matter."
+  Reason: These are distinct source-taught concepts, each with its own definition
+  and independent success criterion, not merely Bloom levels of one concept.
+  → UNDER_SPLIT only when the supplied source supports those independent targets.
 
 DO NOT flag this:
   LO: "Student can decompose a multi-digit number by grouping digits from right to left."
@@ -5394,7 +5398,11 @@ owned by that candidate; exerciseReferences must be current exercise indices own
 by that candidate. Do not use text, IDs, or indices not supplied.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-2. OVER_SPLIT — two MicroNodes in the SAME TOPIC describe the same underlying objective.
+2. OVER_SPLIT — two MicroNodes anywhere in the SAME LESSON describe the same knowledge target.
+Topic boundaries are provisional and do not justify duplicate learner-state targets.
+Review cross-topic pairs as carefully as same-topic pairs, especially a concept
+repeated in a textbook summary. Use the existing candidate IDs for a merge/support
+or Cognitive Path variation decision; do not invent a replacement knowledge target.
 
 Flag ONLY when: two MicroNodes are covering the same learning skill — one as procedure
 and another as rule, or one as definition and another as immediate application of
