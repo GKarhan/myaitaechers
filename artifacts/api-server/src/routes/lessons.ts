@@ -5,6 +5,7 @@ import { Router, type NextFunction, type Response } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, lessonSourceMaterialsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, lessonNodeTeachingPackageItemsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { auditPersistableC1TaskCoverage } from "../services/c1-mapping-coverage-adapter.js";
+import { reviewC1MicroNodeIntegrity } from "../services/c1-micronode-integrity.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
@@ -5114,6 +5115,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     // Extra C1 completeness gate: a source record alone does not mean that a
     // textbook exercise was actually retained as an answerable task.
     // Do not replace the current map if any in-scope task silently disappears.
+    // Structural MicroNode diagnostics complement (do not replace) existing
+    // semantic atomicity/granularity review. Until integration tests pass,
+    // report findings without changing mapping acceptance behavior.
+    const nodeIntegrityFindings = reviewC1MicroNodeIntegrity(pass2.topics, pass1.blocks.length);
+    if (nodeIntegrityFindings.length > 0) {
+      logger.warn({ lessonId, nodeIntegrityFindings }, "C1 MicroNode integrity findings");
+    }
     const taskCoverage = auditPersistableC1TaskCoverage(durableSourceMaterials, pass2.topics);
     if (!taskCoverage.ok) {
       throw new Error(
