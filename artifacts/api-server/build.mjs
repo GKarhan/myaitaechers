@@ -9,13 +9,17 @@ import { rm } from "node:fs/promises";
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+const entryPoint = process.env.API_SERVER_ENTRYPOINT ?? "src/index.ts";
+if (!["src/index.ts", "src/mapping-pilot-server.ts"].includes(entryPoint)) {
+  throw new Error("Unsupported API server entry point");
+}
 
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    entryPoints: [path.resolve(artifactDir, entryPoint)],
     platform: "node",
     bundle: true,
     format: "esm",

@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.agents
+.cache
+.local
+**/.env
+**/.env.*
+**/*.log
+attached_assets
+reports
+screenshots
+tmp
+project_sources
+artifacts/api-server/uploads/*
+!artifacts/api-server/uploads/1786712221765-283472329.pdf
