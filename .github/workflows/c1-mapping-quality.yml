@@ -30,3 +30,5 @@ jobs:
         run: pnpm run typecheck:libs
       - name: API TypeScript check
         run: pnpm --filter @workspace/api-server typecheck
+      - name: Teacher UI TypeScript check
+        run: pnpm --filter ./artifacts/myaiteacher typecheck
