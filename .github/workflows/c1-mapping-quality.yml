@@ -1,0 +1,81 @@
+name: C1 Mapping Quality
+
+on:
+  pull_request:
+    paths:
+      - "artifacts/api-server/**"
+      - "artifacts/myaiteacher/**"
+      - "lib/db/**"
+      - "lib/api-client-react/**"
+      - "scripts/mapping-browser-test.mjs"
+      - "scripts/map01/**"
+      - ".github/workflows/c1-mapping-quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  map01-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deterministic PDF text reader
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: Verify hash-pinned real source and regression cases
+        run: python3 -m unittest discover -s scripts/map01 -v
+        env:
+          MAP01_SOURCE_PDF: artifacts/api-server/uploads/1786712221765-283472329.pdf
+  c1-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mapping_test
+          POSTGRES_PASSWORD: mapping_test_only
+          POSTGRES_DB: mapping_integration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mapping_test -d mapping_integration"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: C1 unit tests
+        run: pnpm --filter @workspace/api-server test:c1-quality
+      - name: Build shared TypeScript libraries
+        run: pnpm run typecheck:libs
+      - name: API TypeScript check
+        run: pnpm --filter @workspace/api-server typecheck
+      - name: Teacher UI TypeScript check
+        run: pnpm --filter ./artifacts/myaiteacher typecheck
+      - name: Isolated pilot UI routing
+        run: pnpm --filter @workspace/api-server exec tsx --test src/mapping-pilot-ui.test.ts
+      - name: Build isolated teacher UI
+        run: pnpm --filter @workspace/myaiteacher build
+        env:
+          PORT: "5173"
+          BASE_PATH: /
+          VITE_MAPPING_PILOT: "1"
+
+      - name: PostgreSQL concurrent claims and fenced recovery
+        run: pnpm --filter @workspace/api-server exec tsx --test src/services/__tests__/unified-mapping-postgres.test.ts
+        env:
+          MAPPING_TEST_DATABASE_URL: postgresql://mapping_test:mapping_test_only@127.0.0.1:5432/mapping_integration
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Navigation and recovery browser scenarios
+        run: node scripts/mapping-browser-test.mjs

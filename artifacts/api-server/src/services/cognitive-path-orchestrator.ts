@@ -1,3 +1,4 @@
+import { activeMappingJob, assertActiveMappingWriter } from "./unified-mapping-recovery.js";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
@@ -130,6 +131,7 @@ export type CognitivePathSummary = {
 };
 
 export type CognitivePathJobResult = {
+  recoveryFenceVersion?: 1;
   schemaVersion: 1;
   lessonId: number;
   trigger: "bulk" | "single";
@@ -463,6 +465,11 @@ async function claimCognitivePathJob(
 ): Promise<JobClaim> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
+    const [otherStage] = await tx.select({ id: mappingJobsTable.id }).from(mappingJobsTable)
+      .where(and(eq(mappingJobsTable.lessonId, lessonId),
+        inArray(mappingJobsTable.jobType, ["map", "generate_teaching_content"]),
+        inArray(mappingJobsTable.status, ["pending", "running"]))).limit(1);
+    if (otherStage) return { job: null, conflictingNodeIds: ledger.map(entry => entry.nodeId) };
     const activeJobs = await tx
       .select()
       .from(mappingJobsTable)
@@ -493,6 +500,7 @@ async function claimCognitivePathJob(
     if (!hasClaimedNodes) return { job: null, conflictingNodeIds };
 
     const initialResult: CognitivePathJobResult = {
+      recoveryFenceVersion: 1,
       schemaVersion: 1,
       lessonId,
       trigger,
@@ -523,7 +531,7 @@ async function updateCognitivePathJob(
   status?: "running" | "completed" | "failed",
   error?: string | null,
 ): Promise<void> {
-  await db.update(mappingJobsTable)
+  const updated = await db.update(mappingJobsTable)
     .set({
       result,
       progress,
@@ -531,7 +539,8 @@ async function updateCognitivePathJob(
       ...(error !== undefined ? { error } : {}),
       updatedAt: new Date(),
     })
-    .where(eq(mappingJobsTable.id, jobId));
+    .where(activeMappingJob(jobId)).returning({ id: mappingJobsTable.id });
+  if (!updated.length) throw new Error("MAPPING_WORKER_RETIRED");
 }
 
 async function persistCognitivePathAtomically(
@@ -540,8 +549,10 @@ async function persistCognitivePathAtomically(
   levels: CogPathGenerationResult["levels"],
   protection: CognitivePathProtectionSnapshot,
   force: boolean,
+  jobId: number,
 ): Promise<{ savedLevels: typeof levels; targetLevel: string | null }> {
   const result = await db.transaction(async (tx) => {
+    await assertActiveMappingWriter(tx, lessonId, jobId);
     await tx.execute(sql`
       SELECT id FROM lesson_nodes
       WHERE id = ${nodeId} AND lesson_id = ${lessonId}
@@ -808,6 +819,7 @@ export async function runCognitivePathOrchestrator(input: {
           generated.levels,
           node.protection,
           input.force,
+          claim.job.id,
         );
         const completedAt = new Date().toISOString();
         decisionTrace.push(buildCognitivePathAttemptTrace({

@@ -1,9 +1,17 @@
+import { reconcileTextbookQuestions } from "../lib/textbook-question-inventory.js";
+import { boundLessonSection } from "../lib/lesson-section-boundary.js";
+import { activeMappingJob, assertActiveMappingWriter, retireInterruptedMapping } from "../services/unified-mapping-recovery.js";
+import { claimMappingStage } from "../services/unified-mapping-job-claim.js";
+import { readUnifiedMappingResume } from "../services/unified-mapping-resume-state.js";
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { getLatestCompletedQuizScoreStats } from "../services/quiz-reporting.js";
 import { Router, type NextFunction, type Response } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, lessonSourceMaterialsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, lessonNodeTeachingPackageItemsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
+import { auditPersistableC1TaskCoverage } from "../services/c1-mapping-coverage-adapter.js";
+import { reviewC1MicroNodeIntegrity } from "../services/c1-micronode-integrity.js";
+import { reviewPersistedUnifiedMap } from "../services/unified-mapping-persisted-review.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
@@ -110,8 +118,11 @@ const router = Router();
 async function persistGeneratedTeachingContent(
   nodeId: number,
   candidate: TeachingContentFields,
+  lessonId?: number,
+  jobId?: number,
 ): Promise<{ updated: boolean; complete: boolean }> {
   return db.transaction(async (tx) => {
+    if (lessonId !== undefined && jobId !== undefined) await assertActiveMappingWriter(tx, lessonId, jobId);
     await tx.execute(sql`SELECT id FROM lesson_nodes WHERE id = ${nodeId} FOR UPDATE`);
     const [current] = await tx
       .select({
@@ -4332,6 +4343,22 @@ router.get("/lessons/:lessonId/topics", requireAuth, requireLessonAuthor, async 
 // POST /lessons/:lessonId/final-approve — authoritative assignment preflight.
 // Teachers may explicitly accept safe review findings in one delivery decision;
 // data-integrity and learner-safety errors remain hard blockers.
+// Read-only NEW unified-map quality report, available to the lesson author.
+// It does not approve, publish, remap or update canonical lesson data.
+router.get("/lessons/:lessonId/unified-quality-readiness", requireAuth, requireLessonAuthor, async (req: AuthRequest, res, next) => {
+  try {
+    const lessonId = Number(req.params.lessonId);
+    if (!Number.isSafeInteger(lessonId) || lessonId <= 0) {
+      res.status(400).json({ error: "Invalid lesson id" });
+      return;
+    }
+    const report = await reviewPersistedUnifiedMap(lessonId);
+    res.json({ lessonId, ...report });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/lessons/:lessonId/final-approval-readiness", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
@@ -4753,13 +4780,12 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     .where(eq(subjectsTable.id, lesson.subjectId))
     .limit(1);
 
-  // ── Create background job and respond immediately ─────────────────────────
-  // All slow work (AI calls, DB writes) runs inside setImmediate so the HTTP
-  // connection is released without waiting 5+ minutes.
-  const [job] = await db
-    .insert(mappingJobsTable)
-    .values({ lessonId, jobType: "map", status: "pending" })
-    .returning();
+  const claim = await claimMappingStage(lessonId, "map");
+  if ("error" in claim) {
+    res.status(claim.error === "LESSON_NOT_FOUND" ? 404 : 409).json(claim);
+    return;
+  }
+  const { job } = claim;
 
   res.json({ jobId: job.id, status: "pending" as const });
 
@@ -4770,10 +4796,21 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
   try {
     await db.update(mappingJobsTable)
       .set({ status: "running", progress: "Pass 1: Extracting content blocks from PDF...", updatedAt: new Date() })
-      .where(eq(mappingJobsTable.id, job.id));
+      .where(activeMappingJob(job.id));
 
     const filePath  = resolveUploadedFilePath(resource.fileUrl!);
-    const extractedPages = await extractPdfPages(filePath, pageRange.pagesFrom, pageRange.pagesTo);
+    const selectedPages = await extractPdfPages(filePath, pageRange.pagesFrom, pageRange.pagesTo);
+    const sectionBoundary = isGarbledText(formatExtractedPagesForPass1(selectedPages))
+      ? null : boundLessonSection(selectedPages, lesson.title);
+    if (sectionBoundary?.audit.state === "REVIEW_REQUIRED") {
+      physicalPageProvenance = { sectionBoundary: sectionBoundary.audit };
+      throw new MappingSourceScopeError({
+        valid: false, checkedBlockCount: 0, invalidBlockIndices: [],
+        invalidPageCount: 0, unverifiableTextCount: 0,
+        reasonCodes: ["SOURCE_TEXT_NOT_IN_SELECTED_PAGE"],
+      });
+    }
+    const extractedPages = sectionBoundary?.pages ?? selectedPages;
     const lessonText = formatExtractedPagesForPass1(extractedPages);
     let sourceSet = buildLessonSourceSet({
       resourceId: resource.id,
@@ -4823,6 +4860,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
 
     // ── Pass 1: Pure verbatim block extraction (in-memory, no DB write yet) ──
     let pass1: Pass1Result;
+    const questionInventoryAudits: Array<ReturnType<typeof reconcileTextbookQuestions>["audit"]> = [];
     let textPageBindingAudit: ReturnType<typeof bindTextBlocksToPhysicalPages>["audit"] | null = null;
     if (useVision) {
       logger.info(
@@ -4850,9 +4888,17 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           lessonText: formatExtractedPagesForPass1([page]),
         }, { sourcePageOverride: page.pageNumber });
         const bound = bindTextBlocksToPhysicalPages([page], result.blocks);
+        const reconciled = reconcileTextbookQuestions(page, filterVerifiedTextBlocks(bound.blocks));
+        questionInventoryAudits.push(reconciled.audit);
+        if (reconciled.audit.state === "AMBIGUOUS_NUMBERING") {
+          physicalPageProvenance = { questionInventory: questionInventoryAudits };
+          throw new MappingSourceScopeError({ questionInventory: questionInventoryAudits });
+        }
+        // Rebind server-sliced questions through the same provenance validator.
+        const reconciledBound = bindTextBlocksToPhysicalPages([page], reconciled.blocks);
         pageResults.push({
           result,
-          verifiedBlocks: filterVerifiedTextBlocks(bound.blocks),
+          verifiedBlocks: filterVerifiedTextBlocks(reconciledBound.blocks),
           audit: bound.audit,
         });
       }
@@ -4925,6 +4971,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     const pass2InputBlockCount = pass1.blocks.length;
     physicalPageProvenance = {
       ...physicalPageProvenance,
+      sectionBoundary: sectionBoundary?.audit ?? { state: "VISION_REQUIRES_SOURCE_REVIEW" },
+      questionInventory: questionInventoryAudits,
       pass2InputBlockCount,
     };
     logger.info(
@@ -4957,7 +5005,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     }
     await db.update(mappingJobsTable)
       .set({ progress: `Pass 2: Organising ${pass1.blocks.length} blocks into topics and MicroNodes...`, updatedAt: new Date() })
-      .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
+      .where(activeMappingJob(job.id)).catch(() => {});
 
     // ── Pass 2: Topic grouping + MicroNode organisation (in-memory) ───────────
     const pass2 = await runPass2Pipeline(pass1.blocks, {
@@ -5076,7 +5124,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
 
     await db.update(mappingJobsTable)
       .set({ progress: "Saving results to database...", updatedAt: new Date() })
-      .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
+      .where(activeMappingJob(job.id)).catch(() => {});
 
     // ── Atomically replace the detailed mapping ───────────────────────────
     // The destructive clear, every child insert, the alignment rows, and the
@@ -5110,6 +5158,23 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         pass2.semanticScope.records.map((record) => [record.blockIndex, record.scope]),
       ),
     });
+    // Extra C1 completeness gate: a source record alone does not mean that a
+    // textbook exercise was actually retained as an answerable task.
+    // Do not replace the current map if any in-scope task silently disappears.
+    // Structural MicroNode diagnostics complement (do not replace) existing
+    // semantic atomicity/granularity review. Until integration tests pass,
+    // report findings without changing mapping acceptance behavior.
+    const nodeIntegrityFindings = reviewC1MicroNodeIntegrity(pass2.topics, pass1.blocks.length);
+    if (nodeIntegrityFindings.length > 0) {
+      logger.warn({ lessonId, nodeIntegrityFindings }, "C1 MicroNode integrity findings");
+    }
+    const taskCoverage = auditPersistableC1TaskCoverage(durableSourceMaterials, pass2.topics);
+    if (!taskCoverage.ok) {
+      throw new Error(
+        "C1 source/task preservation failed before persistence: "
+        + JSON.stringify(taskCoverage.issues),
+      );
+    }
     const durableSourceDispositionCounts = durableSourceMaterials.reduce<
       Partial<Record<string, number>>
     >((counts, material) => {
@@ -5128,6 +5193,11 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     let coveragePercent = 0;
 
     await db.transaction(async (tx) => {
+      await assertActiveMappingWriter(tx, lessonId, job.id);
+      const [currentNode] = await tx.select({ id: lessonNodesTable.id }).from(lessonNodesTable)
+        .where(eq(lessonNodesTable.lessonId, lessonId)).limit(1);
+      if (currentNode) throw new Error("EXISTING_MAP_REQUIRES_EXPLICIT_REPLACEMENT");
+
       // Order matters: FK constraints → delete nodes before topics.
       await tx.delete(lessonNodeDependenciesTable).where(
         eq(lessonNodeDependenciesTable.lessonId, lessonId),
@@ -5763,7 +5833,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         } as any,
         updatedAt: new Date(),
       })
-      .where(eq(mappingJobsTable.id, job.id));
+      .where(activeMappingJob(job.id));
 
     logger.info(
       {
@@ -5933,7 +6003,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         } : {}),
         updatedAt: new Date(),
       })
-      .where(eq(mappingJobsTable.id, job.id))
+      .where(activeMappingJob(job.id))
       .catch(() => {});
   }
   }); // end setImmediate
@@ -6056,11 +6126,12 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
     cogLevelsByNode.set(level.lessonNodeId, levels);
   }
 
-  // ── Create job, respond immediately ──────────────────────────────────────
-  const [job] = await db
-    .insert(mappingJobsTable)
-    .values({ lessonId, jobType: "generate_teaching_content", status: "pending" })
-    .returning();
+  const claim = await claimMappingStage(lessonId, "generate_teaching_content");
+  if ("error" in claim) {
+    res.status(claim.error === "LESSON_NOT_FOUND" ? 404 : 409).json(claim);
+    return;
+  }
+  const { job } = claim;
 
   res.json({ jobId: job.id, status: "pending" as const });
 
@@ -6069,7 +6140,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
   try {
     await db.update(mappingJobsTable)
       .set({ status: "running", progress: `Generating teaching content for ${nodes.length} MicroNodes...`, updatedAt: new Date() })
-      .where(eq(mappingJobsTable.id, job.id));
+      .where(activeMappingJob(job.id));
 
     const BATCH_SIZE = 3;
     const summaryRows: {
@@ -6140,7 +6211,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       const processed = Math.min(i + BATCH_SIZE, nodes.length);
       await db.update(mappingJobsTable)
         .set({ progress: `Generating teaching content... (${processed}/${nodes.length} MicroNodes)`, updatedAt: new Date() })
-        .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
+        .where(activeMappingJob(job.id)).catch(() => {});
 
       for (const batchResult of batchResults) {
         const nodeTitle = nodes.find((n) => n.id === batchResult.nodeId)?.title ?? "";
@@ -6183,7 +6254,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         } else {
           // Persist from a locked, fresh row rather than the background job's
           // stale snapshot. A teacher edit while the provider was running wins.
-          await persistGeneratedTeachingContent(result.nodeId, result);
+          await persistGeneratedTeachingContent(result.nodeId, result, lessonId, job.id);
 
           // A provider response is not success. Count a node only after the
           // persisted record can be read back with all required fields.
@@ -6246,7 +6317,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         } as any,
         updatedAt: new Date(),
       })
-      .where(eq(mappingJobsTable.id, job.id));
+      .where(activeMappingJob(job.id));
 
     await invalidateLessonApproval(lessonId);
     logger.info(
@@ -6261,10 +6332,34 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         error: err instanceof Error ? err.message : "Teaching content generation failed",
         updatedAt: new Date(),
       })
-      .where(eq(mappingJobsTable.id, job.id))
+      .where(activeMappingJob(job.id))
       .catch(() => {});
   }
   }); // end setImmediate
+});
+
+// Read-only recovery snapshot. GET never starts or cancels generation.
+router.get("/lessons/:lessonId/unified-resume-state", requireAuth, requireLessonAuthor, async (req: AuthRequest, res, next) => {
+  const lessonId = Number(req.params.lessonId);
+  if (!Number.isSafeInteger(lessonId) || lessonId <= 0) {
+    res.status(400).json({ error: "Invalid lesson id" }); return;
+  }
+  try { res.json(await readUnifiedMappingResume(lessonId)); }
+  catch (error) { next(error); }
+});
+
+// Only the lesson author/admin may explicitly retire a stale worker.
+router.post("/lessons/:lessonId/recover-mapping-job", requireAuth, requireLessonAuthor, async (req: AuthRequest, res, next) => {
+  const lessonId = Number(req.params.lessonId);
+  const { jobId, observedUpdatedAt, confirmed } = req.body ?? {};
+  if (!Number.isSafeInteger(lessonId) || lessonId <= 0 || !Number.isSafeInteger(jobId) || jobId <= 0
+    || typeof observedUpdatedAt !== "string" || !Number.isFinite(Date.parse(observedUpdatedAt))) {
+    res.status(400).json({ error: "INVALID_RECOVERY_REQUEST" }); return;
+  }
+  try {
+    const result = await retireInterruptedMapping(lessonId, jobId, observedUpdatedAt, confirmed);
+    res.status("error" in result ? 409 : 200).json(result);
+  } catch (error) { next(error); }
 });
 
 // ── GET /lessons/:lessonId/map-status ─────────────────────────────────────────
