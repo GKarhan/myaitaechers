@@ -48,6 +48,14 @@ jobs:
         run: pnpm --filter @workspace/api-server typecheck
       - name: Teacher UI TypeScript check
         run: pnpm --filter ./artifacts/myaiteacher typecheck
+      - name: Isolated pilot UI routing
+        run: pnpm --filter @workspace/api-server exec tsx --test src/mapping-pilot-ui.test.ts
+      - name: Build isolated teacher UI
+        run: pnpm --filter @workspace/myaiteacher build
+        env:
+          PORT: "5173"
+          BASE_PATH: /
+          VITE_MAPPING_PILOT: "1"
 
       - name: PostgreSQL concurrent claims and fenced recovery
         run: pnpm --filter @workspace/api-server exec tsx --test src/services/__tests__/unified-mapping-postgres.test.ts

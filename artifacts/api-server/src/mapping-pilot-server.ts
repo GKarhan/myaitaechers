@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
+import { mountMappingPilotUi } from "./mapping-pilot-ui.js";
 
 // Dedicated pilot entry point. Never runs the legacy/demo seed or quiz worker.
 const databaseUrl = process.env.DATABASE_URL;
@@ -22,5 +24,6 @@ if (missing.length) {
   }).listen(port, "0.0.0.0");
 } else {
   const { default: app } = await import("./app.js");
+  mountMappingPilotUi(app, fileURLToPath(new URL("../../myaiteacher/dist/public/", import.meta.url)));
   app.listen(port, "0.0.0.0", () => console.info("Isolated mapping pilot listening"));
 }
