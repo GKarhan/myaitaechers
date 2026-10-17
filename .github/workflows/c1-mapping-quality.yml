@@ -8,6 +8,7 @@ on:
       - "lib/db/**"
       - "lib/api-client-react/**"
       - "scripts/mapping-browser-test.mjs"
+      - "scripts/map01/**"
       - ".github/workflows/c1-mapping-quality.yml"
   workflow_dispatch:
 
@@ -15,6 +16,19 @@ permissions:
   contents: read
 
 jobs:
+  map01-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deterministic PDF text reader
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: Verify hash-pinned real source and regression cases
+        run: python3 -m unittest discover -s scripts/map01 -v
+        env:
+          MAP01_SOURCE_PDF: artifacts/api-server/uploads/1786712221765-283472329.pdf
   c1-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15

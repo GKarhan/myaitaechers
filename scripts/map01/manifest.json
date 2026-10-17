@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "sourceId": "physics7-section1-v1",
+  "pdfSha256": "d8404d572f145d4afe924d0b8af900b3d9ed085a37893594667ab07a2ec12904",
+  "contentSha256": "7afb9f9353b7820c5ad3a908e366d43adea44b9d5e99ac5e9233c8b309f05b9d",
+  "fixtureSha256": "d2044b740286e21216ae34448beaf0374b0d7fd4b1fa528ff3c7e71bb9e9c5de",
+  "blocks": [
+    {
+      "id": "physics7-section1-v1/introduction",
+      "sha256": "bbce5091209442d54f9354bc5a0e94c8a16d5e49fb5e5171835bdfb9a2c6f1ae",
+      "physicalPages": [
+        6
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/theory-01",
+      "sha256": "5b77fbab14d7f5824507633ee098988085f11bdbb8e538dfbe0e442842bfb15c",
+      "physicalPages": [
+        6,
+        7
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/theory-02",
+      "sha256": "5756b534a2af544bd7cdcc2157c49442e3f7318b90f8227cab43d8cf7906723c",
+      "physicalPages": [
+        7
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/theory-03",
+      "sha256": "e44b6c63795e349f2852fe05c43b74ba587601206c824bc5e01c91c442ac8a52",
+      "physicalPages": [
+        7,
+        8
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/theory-04",
+      "sha256": "729001cc3eed0eacab9173db0247e706f57c9cf3caba1b97353c5ae04fe8611c",
+      "physicalPages": [
+        8
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/summary",
+      "sha256": "dbb80801aeac2454d9c06c9b0b453836d449a6bb86ba55e6f6c2ba194cbedf34",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-heading",
+      "sha256": "eeaef79041697241626a78949d075ae8f3ba39b2835b70a0d5e887c5332827b0",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-01",
+      "sha256": "72443176eb4fa62f36074b04ffa775425e6a53677cf0644961b729703849c297",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-02",
+      "sha256": "30837c9eb55592eb1365c770d164b6a091ff2984907106a347d90cf916a3c169",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-03",
+      "sha256": "9bcb0acc9ad6f31804bf1f51286e1b9b2b12f6165d91bd820a979217cd743f86",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-04",
+      "sha256": "c5d457e1aeb29e2e91a6ad2851eb0f92cbc2593a86e68385ca20010741c234a7",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-05",
+      "sha256": "81d938dcfb9f014ac1c2b25efd7abfb464fc4f714f951f46ffadeb0afc051ccc",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-06",
+      "sha256": "72c21f51ba907ce2bc74424b1eafcc71d1d4ca8328a9e2c11b6f970f4e47b156",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-07",
+      "sha256": "bf26c98575c3006eaee99c9c521d3f228c486d50e2487a88f55e3834aeca2421",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-08",
+      "sha256": "d48a6f603182b65c7347371aad44df7b08d6e6299a30cf79fdb3b0c924cf10f1",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-09",
+      "sha256": "8204abd43ed3c4912bb052a08078e588d7b6840a3bff464819ec209b655fb8e2",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-10",
+      "sha256": "1e9d9da0058d01e3be2b7c83b85c2c01bb0d4c30d36a099961c5eea8348f1c98",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-11",
+      "sha256": "c5c86440080f13cdcb6e8bf26ca7958e8497abd31c52bdc002dde440e90719f4",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-12",
+      "sha256": "12855b6ca5840d1c8df03921f5c40ded2daa703606e1a73335b8d4734057e13b",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/question-13",
+      "sha256": "a98263976e66bfe44fc2cc3e014b9a77d8195cd1ffbbdefccd1f36eec74d9b32",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/practical-heading",
+      "sha256": "c92b1ab1e2c37e98794bc8a728235138ab7e4b23648dab96990e628dbff27813",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/practical-01",
+      "sha256": "dc864c7f2402a93c3504f68271b50dd17e92c716d88cfa278bcc9299e1377575",
+      "physicalPages": [
+        9
+      ]
+    },
+    {
+      "id": "physics7-section1-v1/practical-02",
+      "sha256": "2c0b4c63013cf9e1ad0e87a542440e2d72e91154f415c13d0668bebafe8707db",
+      "physicalPages": [
+        9,
+        10
+      ]
+    }
+  ]
+}
