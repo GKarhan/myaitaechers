@@ -37,6 +37,7 @@ import QuickSwitch from "@/components/QuickSwitch";
 import ManualMappingEditor from "@/components/ManualMappingEditor";
 import CognitiveLevelForm, { type CognitiveLevelFormValue } from "@/components/CognitiveLevelForm";
 import {
+  customFetch,
   useGetTeacherClasses,
   useGetClassStudents,
   useAddStudentToClass,
@@ -121,25 +122,12 @@ async function uploadResource(
   if (form.author) fd.append("author", form.author);
   if (form.file) fd.append("file", form.file);
   const token = localStorage.getItem("myaiteacher_token") ?? "";
-  const res = await fetch(`/api/teacher/courses/${courseId}/resources`, {
+  return customFetch(`/api/teacher/courses/${courseId}/resources`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: fd,
+    responseType: "json",
   });
-  if (!res.ok) {
-    const ct = res.headers.get("content-type") ?? "";
-    if (ct.includes("application/json")) {
-      const data = await res.json().catch(() => null);
-      throw new Error(data?.error ?? "Upload failed");
-    }
-    // Non-JSON (e.g. raw HTML from Multer before route handler) — extract a clean message
-    const text = await res.text();
-    if (text.includes("File too large") || res.status === 413) {
-      throw new Error("File too large — maximum allowed size is 100 MB.");
-    }
-    throw new Error(`Upload failed (${res.status})`);
-  }
-  return res.json();
 }
 
 // ── Shared type for lesson-centric job status poll ────────────────────────────
