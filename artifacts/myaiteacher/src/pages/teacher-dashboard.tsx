@@ -3377,11 +3377,10 @@ function LessonGoalOutcomesPanel({
     queryKey: ["goal-outcome-review", lessonId],
     enabled: open && !!token,
     queryFn: async () => {
-      const response = await fetch(`/api/lessons/${lessonId}/goal-outcome-review`, {
+      return customFetch<ReviewState>(`/api/lessons/${lessonId}/goal-outcome-review`, {
         headers: { Authorization: `Bearer ${token}` },
+        responseType: "json",
       });
-      if (!response.ok) throw new Error("Չհաջողվեց բեռնել նպատակի վերանայումը։");
-      return response.json() as Promise<ReviewState>;
     },
   });
   const review = reviewQuery.data;
@@ -3408,14 +3407,12 @@ function LessonGoalOutcomesPanel({
     setEditingGoal(true);
   };
   const request = async (path: string, body?: Record<string, unknown>) => {
-    const response = await fetch(`/api/lessons/${lessonId}${path}`, {
+    return customFetch<{ error?: string; message?: string }>(`/api/lessons/${lessonId}${path}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
       body: JSON.stringify(body ?? {}),
+      responseType: "json",
     });
-    const data = await response.json().catch(() => ({})) as { error?: string; message?: string };
-    if (!response.ok) throw new Error(data.message ?? data.error ?? "Գործողությունը չհաջողվեց։");
-    return data;
   };
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true);
@@ -3446,7 +3443,7 @@ function LessonGoalOutcomesPanel({
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             Պահպանված նպատակն ու վերջնարդյունքները դասի ընթացիկ աշխատանքային սևագիրն են։ Դրանք կարող եք խմբագրել կամ հեռացնել։
           </p>
-          {error && <div className="rounded border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-200">{error}</div>}
+          {(error || reviewQuery.error) && <div role="alert" className="rounded border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-200">{error ?? (reviewQuery.error instanceof Error ? reviewQuery.error.message : String(reviewQuery.error))}</div>}
           {reviewQuery.isLoading && <p className="text-xs text-muted-foreground">Բեռնվում է…</p>}
           {review && (
             <>
