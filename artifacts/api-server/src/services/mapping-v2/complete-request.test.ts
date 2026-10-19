@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {fixture} from './contract.test.js';
 import {buildCompleteMapRequest} from './complete-request.js';
 import {generateCompleteMap} from './generate.js';
-import {validateCompleteMap,type SourceBlock} from './contract.js';
+import {validateCompleteMap,CompleteMapSchemaError,type SourceBlock} from './contract.js';
 import {SourceReferenceValidationError} from './source-references.js';
-const {blocks,map}=fixture();const context={subject:'Physics',grade:'7',lessonTitle:'Bodies',teacherGoal:null,outcomes:[{id:1,outcomeText:'Explain a body'}],legacyOutcomes:[]};
+const {blocks,map}=fixture();const providerMap:Record<string,unknown>={...map};delete providerMap.schemaVersion;const context={subject:'Physics',grade:'7',lessonTitle:'Bodies',teacherGoal:null,outcomes:[{id:1,outcomeText:'Explain a body'}],legacyOutcomes:[]};
 const {request}=buildCompleteMapRequest(blocks,context);
 assert.equal(request.response_format.type,'json_schema');assert.equal(request.response_format.json_schema.strict,true);assert.equal(request.provider.require_parameters,true);
 const schema=request.response_format.json_schema.schema;
@@ -15,8 +15,15 @@ assert.deepEqual(node.sourceBlockIndices.items.enum,[0]);assert.deepEqual(task.i
 assert.deepEqual(node.outcomeIds.items.enum,[1]);
 const input=JSON.parse(request.messages[1].content);assert.deepEqual(input.sourceRoles.theorySourceIndices,[0]);assert.ok(!('outputSchema' in input));
 let calls=0;
-const result=await generateCompleteMap(blocks,context,{complete:async received=>{calls++;assert.deepEqual(received,request);return {choices:[{finish_reason:'stop',message:{content:JSON.stringify(map)}}]};}});
-assert.equal(calls,1);assert.equal(result.map.exercises.length,15);
+const result=await generateCompleteMap(blocks,context,{complete:async received=>{calls++;assert.deepEqual(received,request);return {choices:[{finish_reason:'stop',message:{content:JSON.stringify(providerMap)}}]};}});
+assert.equal(calls,1);assert.equal(result.map.exercises.length,15);assert.equal(result.map.schemaVersion,'P1.2.2');
+assert.ok(!('schemaVersion' in schema.properties));assert.ok(!schema.required.includes('schemaVersion'));
+const wrongMetadata=await generateCompleteMap(blocks,context,{complete:async()=>({choices:[{finish_reason:'stop',message:{content:JSON.stringify({...providerMap,schemaVersion:'wrong-model-metadata'})}}]})});
+assert.equal(wrongMetadata.map.schemaVersion,'P1.2.2');
+const broken=structuredClone(providerMap) as any;delete broken.essentialQuestion;delete broken.topics[0].nodes[0].teaching.explanation;
+try{await generateCompleteMap(blocks,context,{complete:async()=>({choices:[{finish_reason:'stop',message:{content:JSON.stringify(broken)}}]})});assert.fail('must reject incomplete pedagogical content');}
+catch(e){assert.ok(e instanceof CompleteMapSchemaError);assert.equal(e.diagnostics.schemaIssues.length,2);assert.ok(e.diagnostics.schemaIssues.some(i=>i.path.join('.')==='essentialQuestion'));assert.ok(!JSON.stringify(e.diagnostics).includes(blocks[0].sourceText));}
+assert.throws(()=>validateCompleteMap({...map,schemaVersion:'unsupported'},blocks,[1]),/COMPLETE_MAP_SCHEMA_INVALID/);
 // A provider ignoring schema constraints is still rejected; diagnostics cover all bad source links.
 const bad=structuredClone(map);bad.topics[0].nodes[0].sourceBlockIndices.push(1,2);bad.exercises[0].sourceBlockIndices=[0];
 try{validateCompleteMap(bad,blocks,[1]);assert.fail('must reject source-role collisions');}
@@ -35,8 +42,10 @@ const client=openrouter.withOptions({fetch:async(_url,init)=>{
  assert.equal(body.provider.require_parameters,true);
  assert.equal(body.response_format.type,'json_schema');
  assert.deepEqual(body.response_format.json_schema.schema.properties.topics.items.properties.nodes.items.properties.sourceBlockIndices.items.enum,[0]);
- return new Response(JSON.stringify({id:'mock',object:'chat.completion',created:0,model:'mock',choices:[{index:0,finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(map)}}]}),{status:200,headers:{'Content-Type':'application/json'}});
+ return new Response(JSON.stringify({id:'mock',object:'chat.completion',created:0,model:'mock',choices:[{index:0,finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(providerMap)}}]}),{status:200,headers:{'Content-Type':'application/json'}});
 }});
 await generateCompleteMap(blocks,context,{complete:request=>client.chat.completions.create(request)});
 assert.equal(wireCalls,1);
 console.log('PASS: actual SDK HTTP body preserves strict source-role enums and provider routing; mocked transport only');
+
+console.log('PASS: server-owned schemaVersion, omitted/incorrect model metadata handled without changing pedagogy; all shape failures still rejected with redacted paths');

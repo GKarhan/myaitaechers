@@ -1,11 +1,12 @@
 import {assertSourceReferences} from './source-references.js';
 import {z} from 'zod/v4';
 import {createHash} from 'node:crypto';
+export const COMPLETE_MAP_VERSION='P1.2.2' as const;
 export const bloomLevels=['remember','understand','apply','analyze','evaluate','create'] as const;
 const text=z.string().trim().min(1),indices=z.array(z.number().int().nonnegative());
 const example=z.object({text,sourceStatus:z.enum(['SOURCE_DERIVED','AI_PROPOSED'])});
 export const completeMapSchema=z.object({
- schemaVersion:z.literal('P1.2.2'),essentialQuestion:text,boundaries:z.array(text),
+ schemaVersion:z.literal(COMPLETE_MAP_VERSION),essentialQuestion:text,boundaries:z.array(text),
  topics:z.array(z.object({id:text,title:text,bigIdea:text,nodes:z.array(z.object({
   id:text,title:text,knowledge:text,role:z.enum(['CORE','SUPPORTING','EXTENSION']),
   knowledgeType:z.enum(['CONCEPT','FACT','RULE','RELATIONSHIP','REPRESENTATION','PROCEDURE_KNOWLEDGE','PRINCIPLE','VOCABULARY','MODEL']),
@@ -21,8 +22,15 @@ export const completeMapSchema=z.object({
 export type CompleteMap=z.infer<typeof completeMapSchema>;
 export type SourceBlock={sourceText:string;sourcePage:number;blockType:string;sourceParagraph?:string|null;sourceBoundingBox?:unknown};
 export function sourceHash(blocks:SourceBlock[]){return createHash('sha256').update(JSON.stringify(blocks.map(b=>[b.sourcePage,b.blockType,b.sourceText]))).digest('hex');}
+export class CompleteMapSchemaError extends Error{
+ readonly diagnostics:{schemaIssues:{path:(string|number)[];code:string}[]};
+ constructor(issues:ReadonlyArray<{path:PropertyKey[];code:string}>){
+  super('COMPLETE_MAP_SCHEMA_INVALID');this.name='CompleteMapSchemaError';
+  this.diagnostics={schemaIssues:issues.map(i=>({path:i.path.map(p=>typeof p==='symbol'?String(p):p),code:i.code}))};
+ }
+}
 export function validateCompleteMap(value:unknown,blocks:SourceBlock[],outcomes:number[]):CompleteMap{
- const parsed=completeMapSchema.safeParse(value);if(!parsed.success)throw Error('COMPLETE_MAP_SCHEMA_INVALID:'+parsed.error.issues.map(i=>i.path.join('.')).slice(0,10).join(','));
+ const parsed=completeMapSchema.safeParse(value);if(!parsed.success)throw new CompleteMapSchemaError(parsed.error.issues);
  const m=parsed.data,nodes=m.topics.flatMap(t=>t.nodes),ids=new Set(nodes.map(n=>n.id)),topics=new Set(m.topics.map(t=>t.id));
  const unique=(values:unknown[],reason:string)=>{if(new Set(values).size!==values.length)throw Error(reason);};
  unique(nodes.map(n=>n.id),'DUPLICATE_NODE_ID');unique(m.topics.map(t=>t.id),'DUPLICATE_TOPIC_ID');unique(m.exercises.map(e=>e.id),'DUPLICATE_EXERCISE_ID');
