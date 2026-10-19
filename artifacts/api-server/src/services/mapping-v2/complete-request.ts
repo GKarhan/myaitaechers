@@ -7,6 +7,9 @@ export function buildCompleteMapRequest(blocks:SourceBlock[],context:CompleteMap
  const roles=sourceRoles(blocks),adapter=selectAdapter(context.subject),hash=sourceHash(blocks);
  if(!roles.theory.length)throw Error('COMPLETE_MAP_NO_THEORY_SOURCE');
  const schema=z.toJSONSchema(completeMapSchema) as Record<string,any>;delete schema.$schema;
+ // Protocol metadata belongs to the server, never to model generation.
+ delete schema.properties.schemaVersion;
+ schema.required=schema.required.filter((key:string)=>key!=='schemaVersion');
  const node=schema.properties.topics.items.properties.nodes.items.properties;
  node.sourceBlockIndices.items={type:'integer',enum:roles.theory};
  node.sourceBlockIndices.description='Theory-source indices only. Exercise links belong in exercises[].nodeIds.';
