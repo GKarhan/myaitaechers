@@ -27,6 +27,10 @@ try{
  const address=server.address();assert.ok(address&&typeof address!=='string');
  const url=`http://127.0.0.1:${address.port}/api/lessons/${lessonId}/final-approve`;
  const post=(body:object)=>fetch(url,{method:'POST',headers:{Authorization:`Bearer ${signToken(user.id,'teacher')}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const [generatedLevel]=await db.select().from(lessonNodeCognitiveLevelsTable).where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId,saved.id));
+ await db.update(lessonNodeCognitiveLevelsTable).set({performanceObjective:'Invalid non-Armenian path'}).where(eq(lessonNodeCognitiveLevelsTable.id,generatedLevel.id));
+ const blocked=await post({overrideWarnings:true});assert.equal(blocked.status,422);
+ await db.update(lessonNodeCognitiveLevelsTable).set({performanceObjective:armenian}).where(eq(lessonNodeCognitiveLevelsTable.id,generatedLevel.id));
  const initial=await post({});assert.equal(initial.status,409);assert.equal(((await initial.json()) as {confirmationRequired:boolean}).confirmationRequired,true);
  assert.equal((await db.select().from(lessonNodesTable).where(eq(lessonNodesTable.id,saved.id)))[0].status,'draft');
  const approved=await post({overrideWarnings:true});assert.equal(approved.status,200);assert.equal(((await approved.json()) as {approved:boolean}).approved,true);

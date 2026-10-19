@@ -62,7 +62,7 @@ export async function persistCompleteMap(input:{lessonId:number;resourceId:numbe
    const [row]=await tx.insert(lessonExercisesTable).values({lessonId,exerciseId:stableId,
     exerciseTextVerbatim:e.sourceType==='textbook'?source.map(b=>b.sourceText).join('\n'):e.generatedText,
     sourcePage:source.length?[...new Set(source.map(b=>b.sourcePage))].join(','):null,sourceBlockIndex:e.sourceBlockIndices[0]??null,
-    relatedNodeId:e.nodeIds.length===1?ids.get(e.nodeIds[0])!:null,sourceType:e.sourceType,exercisePurpose:e.purpose,
+    relatedNodeId:e.nodeIds.length>0?ids.get(e.nodeIds[0])!:null,sourceType:e.sourceType,exercisePurpose:e.purpose,
     successCriteria:e.successCriteria,sequence:i+1,assignment:'CLASS',status:'draft'}).returning();
    for(const id of e.nodeIds){const levelId=levels.get(`${id}:${e.cognitiveLevel}`);if(levelId)await tx.insert(lessonNodeCognitiveTasksTable).values({cognitiveLevelId:levelId,lessonExerciseId:row.id,taskProvenance:e.sourceType==='textbook'?'source_derived':'ai_generated'});}
    exerciseLinks.push({exerciseId:row.id,nodeIds:e.nodeIds.map(id=>ids.get(id)),topicId:e.topicId?topics.get(e.topicId):null,sourceBlockIndices:e.sourceBlockIndices,cognitiveLevel:e.cognitiveLevel,purpose:e.purpose});

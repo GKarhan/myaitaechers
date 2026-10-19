@@ -170,6 +170,11 @@ export async function validateLessonForFinalApproval(
     (node) => isLOValid(node.learningObjective) && isNodeContentPresent(node),
   );
   const metadata = (lesson.mappingMetadata ?? {}) as Record<string, any>;
+  if(metadata.pipeline === "P1.2.1+P1.2.2" && Array.isArray(metadata.reviewIssues)) {
+    for(const issue of metadata.reviewIssues)if(typeof issue === "string" && issue.trim()) {
+      warnings.push({code:"COMPLETE_MAP_REVIEW_REQUIRED",messageArm:issue});
+    }
+  }
   const instructionalCoverage = metadata?.quality?.instructionalCoverage;
   const sourceScope = metadata?.quality?.sourceAudit?.sourceScope;
   const sourceSet = metadata?.quality?.sourceAudit?.sourceSet;
