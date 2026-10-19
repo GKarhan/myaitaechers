@@ -170,6 +170,11 @@ export async function validateLessonForFinalApproval(
     (node) => isLOValid(node.learningObjective) && isNodeContentPresent(node),
   );
   const metadata = (lesson.mappingMetadata ?? {}) as Record<string, any>;
+  if(metadata.pipeline === "P1.2.1+P1.2.2" && Array.isArray(metadata.reviewIssues)) {
+    for(const issue of metadata.reviewIssues)if(typeof issue === "string" && issue.trim()) {
+      warnings.push({code:"COMPLETE_MAP_REVIEW_REQUIRED",messageArm:issue});
+    }
+  }
   const instructionalCoverage = metadata?.quality?.instructionalCoverage;
   const sourceScope = metadata?.quality?.sourceAudit?.sourceScope;
   const sourceSet = metadata?.quality?.sourceAudit?.sourceSet;
@@ -432,7 +437,7 @@ export async function validateLessonForFinalApproval(
       const levels = cognitiveLevels.filter((level) => level.lessonNodeId === node.id);
       if (levels.length === 0 || levels.filter((level) => level.isTargetCeiling).length !== 1) {
         warnings.push({
-          code: "COGNITIVE_PATH_INVALID",
+          code: metadata.pipeline === "P1.2.1+P1.2.2" ? "COMPLETE_MAP_COGNITIVE_PATH_INVALID" : "COGNITIVE_PATH_INVALID",
           messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին բացակայում է կամ ամբողջական չէ և խորհուրդ է տրվում վերանայել։`,
           nodeId: node.id,
           nodeTitle: node.title,
@@ -448,9 +453,9 @@ export async function validateLessonForFinalApproval(
           preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
         })),
       );
-      if (!grounding.valid) {
-        warnings.push({
-          code: "COGNITIVE_PATH_GROUNDING_INVALID",
+      if (!grounding.valid || (metadata.pipeline === "P1.2.1+P1.2.2" && grounding.status !== "GROUNDED")) {
+        (metadata.pipeline === "P1.2.1+P1.2.2" ? errors : warnings).push({
+          code: metadata.pipeline === "P1.2.1+P1.2.2" ? "COMPLETE_MAP_COGNITIVE_PATH_INVALID" : "COGNITIVE_PATH_GROUNDING_INVALID",
           messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին պահանջում է վերանայում՝ աղբյուրի սահմանների պատճառով։`,
           nodeId: node.id,
           nodeTitle: node.title,

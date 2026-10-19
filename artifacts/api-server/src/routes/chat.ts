@@ -1635,11 +1635,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       const allNodeIds = allNodes.map((n) => n.id);
       if (phase === 2 && session?.currentNodeId) {
+        const linkedTasks=await db.select({id:lessonNodeCognitiveTasksTable.lessonExerciseId}).from(lessonNodeCognitiveTasksTable)
+          .innerJoin(lessonNodeCognitiveLevelsTable,eq(lessonNodeCognitiveLevelsTable.id,lessonNodeCognitiveTasksTable.cognitiveLevelId))
+          .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId,session.currentNodeId));
+        const linkedIds=linkedTasks.map(t=>t.id).filter((id):id is number=>id!==null);
         classExercises = await db
           .select()
           .from(lessonExercisesTable)
           .where(and(
-            eq(lessonExercisesTable.relatedNodeId, session.currentNodeId),
+            or(eq(lessonExercisesTable.relatedNodeId,session.currentNodeId),...(linkedIds.length?[inArray(lessonExercisesTable.id,linkedIds)]:[])),
+            eq(lessonExercisesTable.lessonId,lessonId!),
             eq(lessonExercisesTable.assignment, "CLASS"),
             // Gate 1.4: only approved exercises reach AI Teacher. Fail-closed.
             eq(lessonExercisesTable.status, "approved"),

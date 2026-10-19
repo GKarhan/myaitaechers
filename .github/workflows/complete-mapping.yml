@@ -1,0 +1,52 @@
+name: Complete lesson mapping
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: complete-mapping-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  mapping:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: mapping
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/mapping
+      SESSION_SECRET: mapping-ci-only
+      AI_INTEGRATIONS_OPENROUTER_API_KEY: unused-no-ai-calls
+      AI_INTEGRATIONS_OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+      PORT: 5173
+      BASE_PATH: /
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --build
+      - run: pnpm --filter @workspace/db push-force
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f lib/db/ci-bootstrap.sql
+      - run: pnpm --filter @workspace/db push-force
+      - name: Verify composite ownership constraint
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'lntpi_node_lesson_fk') THEN RAISE EXCEPTION 'Missing ownership FK'; END IF; END \$\$;"
+      - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/contract.test.ts
+      - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/persist.test.ts
+      - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/approval.test.ts
+      - run: pnpm --filter @workspace/api-server typecheck
+      - run: pnpm --filter @workspace/myaiteacher typecheck
+      - run: pnpm --filter @workspace/api-server build
+      - run: pnpm --filter @workspace/myaiteacher build

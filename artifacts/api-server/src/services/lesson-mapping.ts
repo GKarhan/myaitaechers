@@ -1,3 +1,4 @@
+import {SOURCE_PREPARATION_PROMPT} from "./mapping-v2/prompts.js";
 import fs from "fs";
 import path from "path";
 import { createHash } from "crypto";
@@ -1136,72 +1137,7 @@ export interface LessonMappingResult {
 // Pass 2 (not yet implemented) will take this block list and organise it into
 // topics, nodes, exercises, and the rest of the lesson structure.
 
-export const PASS1_SYSTEM_PROMPT = `You are a textbook content extraction engine. Your ONLY task: read the given page(s) and output a flat JSON array of every content block you see, in reading order.
-
-OUTPUT: Respond with ONLY valid JSON — no commentary, no markdown fences, no explanation before or after.
-{
-  "blocks": [
-    {
-      "blockType": "DEFINITION",
-      "sourceText": "Exact verbatim text copied word-for-word from the page",
-      "sourcePage": 22,
-      "sourceParagraph": "1" or null,
-      "sourceBoundingBox": {"x": 0, "y": 0, "w": 100, "h": 50} or null
-    }
-  ]
-}
-
-When supplied page text contains readable instructional content, "blocks" MUST contain at least one block.
-The top-level object MUST contain exactly the "blocks" field. Never return {} and never return an empty "blocks" array for a readable page.
-
-Valid blockType values (pick the one that best describes each block):
-  DEFINITION  — a formal definition of a concept or term
-  RULE        — a stated grammar, math, or subject rule or principle
-  EXAMPLE     — a worked example or illustration
-  EXERCISE    — any numbered student exercise, task, question, or problem
-  OBJECTIVE   — a lesson goal or learning objective stated in the book
-  WARNING     — a caution, "attention!", or important-notice callout
-  EXCEPTION   — an explicit exception or special case to a rule
-  TABLE       — a table, chart, or structured list
-  IMAGE       — a figure or diagram (sourceText = visible caption or description if any)
-  CAPTION     — a standalone caption for an image or table
-  NOTE        — a side note, footnote, or informational callout box
-  ACTIVITY    — a group activity, project, or in-class task
-  HOMEWORK    — a homework section or assignment header
-
-STRICT RULES — follow every one without exception:
-
-1. COPY, DO NOT INTERPRET.
-   sourceText MUST be the verbatim text from the page: every word, every number, every punctuation mark, exactly as written.
-   No paraphrasing. No summarizing. No rewording. No adding or removing any word.
-   If you cannot read a word clearly, write your best literal reading — never substitute a paraphrase.
-
-2. NO INVENTION.
-   Do NOT include any text that is not literally visible on the page.
-   Do NOT invent examples, rules, explanations, or exercises from your own knowledge.
-   Every character in sourceText must appear on the page.
-
-3. EVERY EXERCISE IS ITS OWN BLOCK.
-   Every numbered exercise, task, question, or problem on the page MUST become its own separate EXERCISE block.
-   Do NOT skip any. Do NOT sample only some. Do NOT merge multiple exercises into one block.
-   If there are 20 exercises, produce 20 EXERCISE blocks.
-
-4. NO ORGANIZATION.
-   Do NOT group blocks into topics, nodes, or sections.
-   Do NOT reorder them.
-   Extract and classify each block in the order it appears on the page: top-to-bottom, left-to-right.
-   Section headings and titles should be extracted as OBJECTIVE or NOTE blocks — not skipped.
-
-5. PHYSICAL PDF PAGE PROVENANCE.
-   Text input is divided by server markers in the exact form [PDF PAGE N].
-   sourcePage MUST be the N from the marker immediately above the block. Never
-   use a printed textbook page number, footer number, chapter number, or exercise
-   number as sourcePage.
-   Example: if a block is below [PDF PAGE 11] but the printed footer says "37",
-   return "sourcePage": 11 — not 37.
-
-sourceBoundingBox: for vision (image) input, provide approximate pixel coordinates {x, y, w, h} of the block on the page image. Use null if uncertain.
-sourceParagraph: paragraph number, section label, or exercise number visible on the page. Use null if not applicable.`;
+export const PASS1_SYSTEM_PROMPT = SOURCE_PREPARATION_PROMPT;
 
 // ── Pass 1 types ──────────────────────────────────────────────────────────────
 
