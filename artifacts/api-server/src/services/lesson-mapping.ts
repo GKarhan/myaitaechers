@@ -818,6 +818,7 @@ export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingGranularityReviewError) return error.teacherMessage;
   if (error instanceof MappingAtomicityError) return error.teacherMessage;
   if (error instanceof MappingAtomicityReviewUnavailableError) return error.teacherMessage;
+  if (error instanceof MappingSemanticReviewUnavailablePrePersistenceError) return error.teacherMessage;
   if (error instanceof MappingSourceScopeError) return error.teacherMessage;
   if (error instanceof MappingPdfPageRangeError) return error.teacherMessage;
   if (error instanceof MappingPdfPageExtractionError) return error.teacherMessage;
@@ -6109,6 +6110,7 @@ export type AtomicityVerificationValidationState =
 
 export interface M32ProviderAttemptMetadata {
   model: string;
+  requestedOutputTokens?: number;
   startedAt: string;
   endedAt: string;
   durationMs: number;
@@ -6130,6 +6132,7 @@ export interface AtomicityVerificationAttemptDiagnostics {
   responseReceived: M32ProviderAttemptMetadata["responseReceived"];
   parseState: M32ProviderAttemptMetadata["parseState"];
   model?: M32ProviderAttemptMetadata["model"];
+  requestedOutputTokens?: M32ProviderAttemptMetadata["requestedOutputTokens"];
   startedAt?: M32ProviderAttemptMetadata["startedAt"];
   endedAt?: M32ProviderAttemptMetadata["endedAt"];
   durationMs?: M32ProviderAttemptMetadata["durationMs"];
@@ -6331,7 +6334,15 @@ export interface M32CompletionResponse {
   }>;
 }
 
-export type M32CompletionRequester = () => Promise<M32CompletionResponse>;
+export type M32CompletionRequester = (
+  request: Parameters<typeof openrouter.chat.completions.create>[0],
+) => Promise<M32CompletionResponse>;
+
+/** Budget for one decision per candidate plus cross-candidate review, bounded by the provider's 16K output limit. */
+export function getSemanticReviewOutputBudget(candidateCount: number, duplicatePairCount: number, expanded = false): number {
+  const base = Math.max(4096, Math.ceil((1024 + candidateCount * 768 + duplicatePairCount * 256) / 1024) * 1024);
+  return Math.min(16000, expanded ? base * 2 : base);
+}
 
 export async function runGranularityReviewOnce(
   topics: Pass2TopicResult[],
@@ -6339,6 +6350,7 @@ export async function runGranularityReviewOnce(
   sourceAlignment: Pass2SourceAlignment,
   duplicateSuspicions: ReadonlyArray<DuplicateSuspicion>,
   completionRequester?: M32CompletionRequester,
+  expandOutputBudget = false,
 ): Promise<SemanticReviewResult> {
   const duplicateReviewCandidates = buildDuplicateReviewCandidates(duplicateSuspicions);
   // Build compact topic representation with heuristic signals
@@ -6530,6 +6542,7 @@ by its own partitioned sourceBlockIndices: a heading, shared topic word, or broa
 Outcome wording is not enough. If you cannot write a one-action objective with
 direct support for every child, do not propose the split.`;
 
+  const requestedOutputTokens = getSemanticReviewOutputBudget(totalMicroNodes, duplicateReviewCandidates.length, expandOutputBudget);
   const startedAt = new Date().toISOString();
   const startedAtMs = Date.now();
   let responseReceived = false;
@@ -6543,6 +6556,7 @@ direct support for every child, do not propose the split.`;
     error?: unknown,
   ): M32ProviderAttemptMetadata => ({
     model: PASS2B_REVIEW_MODEL,
+    requestedOutputTokens,
     startedAt,
     endedAt: new Date().toISOString(),
     durationMs: Math.max(0, Date.now() - startedAtMs),
@@ -6571,23 +6585,31 @@ direct support for every child, do not propose the split.`;
 
   try {
     stage = "REQUEST";
+    const request = {
+      model: PASS2B_REVIEW_MODEL,
+      max_tokens: requestedOutputTokens,
+      temperature: 0,
+      messages: [
+        { role: "system" as const, content: PASS2B_REVIEW_SYSTEM },
+        { role: "user" as const, content: userPrompt },
+      ],
+    };
     const r = completionRequester
-      ? await completionRequester()
-      : await openrouter.chat.completions.create({
-        model:      PASS2B_REVIEW_MODEL,
-        max_tokens: 2000,
-        temperature: 0,
-        messages: [
-          { role: "system", content: PASS2B_REVIEW_SYSTEM },
-          { role: "user",   content: userPrompt },
-        ],
-      });
+      ? await completionRequester(request)
+      : await openrouter.chat.completions.create(request);
 
     const firstChoice = r.choices?.[0];
     const raw = firstChoice?.message?.content ?? "";
     responseContentLength = raw.length;
     responseReceived = !!raw.trim();
     finishReason = getM32FinishReason(r);
+    // Even a syntactically valid prefix is not a completed semantic review.
+    if (finishReason === "length") {
+      parseState = "INVALID_JSON";
+      logger.warn({ ...buildAttemptMetadata("INVALID_JSON") },
+        "pass2b granularity review: provider output truncated at token limit");
+      return unavailable("INVALID_JSON");
+    }
     if (!raw.trim()) {
       parseState = "EMPTY_RESPONSE";
       logger.warn({ totalMicroNodes }, "pass2b granularity review: empty response — returning no findings");
@@ -6952,16 +6974,20 @@ export async function runBoundedAtomicityVerification<T extends SemanticReviewRe
   };
 }
 
-async function runGranularityReview(
+export async function runGranularityReview(
   topics: Pass2TopicResult[],
   blocks: Pass1Block[],
   sourceAlignment: Pass2SourceAlignment,
   duplicateSuspicions: ReadonlyArray<DuplicateSuspicion>,
+  completionRequester?: M32CompletionRequester,
 ): Promise<SemanticReviewResult> {
   const generatedMicroNodeCount = topics.reduce((sum, topic) => sum + topic.microNodes.length, 0);
   let loggedRetry = false;
+  let expandOutputBudget = false;
   return runBoundedAtomicityVerification(async () => {
-    const result = await runGranularityReviewOnce(topics, blocks, sourceAlignment, duplicateSuspicions);
+    const result = await runGranularityReviewOnce(topics, blocks, sourceAlignment, duplicateSuspicions, completionRequester, expandOutputBudget);
+    // The existing single retry receives more room only after a truncated response.
+    expandOutputBudget = result.providerAttemptMetadata?.finishReason === "length";
     if (result.status === "UNAVAILABLE" && !loggedRetry) {
       loggedRetry = true;
       logger.warn(
