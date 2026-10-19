@@ -8,7 +8,7 @@ import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { getLatestCompletedQuizScoreStats } from "../services/quiz-reporting.js";
 import { Router, type NextFunction, type Response } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, lessonSourceMaterialsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, lessonNodeTeachingPackageItemsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
+import { db, classesTable, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, lessonSourceMaterialsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, lessonNodeTeachingPackageItemsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
@@ -4767,6 +4767,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     .where(eq(subjectsTable.id, lesson.subjectId))
     .limit(1);
 
+  const [courseContext]=lesson.courseId
+    ? await db.select({classId:coursesTable.classId}).from(coursesTable).where(eq(coursesTable.id,lesson.courseId)).limit(1)
+    : [];
+  const selectedClassId=lesson.classId??courseContext?.classId;
+  const [classContext]=selectedClassId
+    ? await db.select({grade:classesTable.grade}).from(classesTable).where(eq(classesTable.id,selectedClassId)).limit(1)
+    : [];
   const expectedSnapshot=await authoringSnapshot(lessonId);
   const job=await db.transaction(async tx=>{
     await tx.execute(sql`SELECT pg_advisory_xact_lock(120122,${lessonId})`);
@@ -4985,7 +4992,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     }
     if(pass1.skippedPageRanges?.length || Number(physicalPageProvenance.quarantinedBlockCount ?? 0)>0)throw Error('SOURCE_EXTRACTION_REVIEW_REQUIRED');
     await db.update(mappingJobsTable).set({progress:'P1.2.2: Generating complete lesson map...',updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
-    const generated=await generateCompleteMap(pass1.blocks,{subject:subject?.name??'',grade:subject?.grade??null,
+    const generated=await generateCompleteMap(pass1.blocks,{subject:subject?.name??'',grade:classContext?.grade||subject?.grade||null,
       lessonTitle:lesson.title,teacherGoal:lesson.lessonGoal??null,outcomes:workingOutcomes,
       legacyOutcomes:Array.isArray(lesson.lessonOutcomes)?lesson.lessonOutcomes as string[]:[]});
     const result=await persistCompleteMap({lessonId,resourceId:resource.id,map:generated.map,blocks:pass1.blocks,
@@ -5102,9 +5109,12 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
               },
             }
         : null;
+    const completeMapFailureCode=err instanceof Error && /^[A-Z][A-Z0-9_]+(?::[a-zA-Z0-9.,]+)?$/.test(err.message)
+      ? err.message.split(':')[0] : null;
     await db.update(mappingJobsTable)
       .set({
         status: "failed",
+        ...(completeMapFailureCode?{result:{reason:completeMapFailureCode,existingMapPreserved:true} as any}:{}),
         error: err instanceof UploadedFileMissingError ? err.message : getTeacherFacingMappingFailure(err),
         ...(preservedDiagnosticFailure ? {
           progress: preservedDiagnosticFailure.progress,
