@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import {
   assertSemanticReviewAvailabilityBeforePersistence,
+  getSemanticReviewOutputBudget,
+  getTeacherFacingMappingFailure,
+  MappingSemanticReviewUnavailablePrePersistenceError,
+  runGranularityReview,
   runBoundedAtomicityVerification,
   runGranularityReviewOnce,
   validatePass2SourceAlignment,
@@ -267,3 +271,46 @@ async function reviewWith(request: () => Promise<M32CompletionResponse>) {
 }
 
 console.log("\nM3-2 provider response diagnostics: 8 requested cases + safety regression passing");
+
+{
+  const input = topics();
+  const original = input[0].microNodes[0];
+  input[0].microNodes = Array.from({ length: 12 }, (_, index) => ({
+    ...structuredClone(original), candidateId: `t1:n${index}`,
+  }));
+  const before = structuredClone(input);
+  const budgets: number[] = [];
+  const content = JSON.stringify({
+    findings: [], sourceReallocations: [], atomicityRepairs: [], duplicateResolutions: [],
+    semanticDecisions: input[0].microNodes.map((node) => ({
+      candidateId: node.candidateId, decision: "KEEP_ATOMIC",
+      reason: "The source supports the objective.", evidenceSourceIndices: [0],
+      exerciseReferences: [], confidence: "HIGH",
+    })),
+  });
+  const review = await runGranularityReview(input, blocks, validatePass2SourceAlignment(input, blocks), [], async (request) => {
+    budgets.push(request.max_tokens!);
+    return completion(content, budgets.length === 1 ? "length" : "stop");
+  });
+  assert.equal(review.status, "COMPLETE");
+  assert.equal(review.semanticDecisions.length, 12);
+  assert.equal(budgets.length, 2);
+  assert.ok(budgets[0] > 2000);
+  assert.ok(budgets[1] > budgets[0]);
+  assert.ok(budgets.every((budget) => budget <= 16000));
+  assert.deepEqual(input, before);
+  assert.equal(getSemanticReviewOutputBudget(1000, 1000, true), 16000);
+  assert.equal(getSemanticReviewOutputBudget(0, 0), 4096);
+  console.log("  ✓ twelve-node review rejects truncated JSON, retries once with a larger bounded budget, and preserves candidates");
+}
+
+{
+  const unavailable = await reviewWith(async () => completion(validContent, "length"));
+  assert.equal(unavailable.status, "UNAVAILABLE");
+  assert.equal(unavailable.providerAttemptMetadata?.validationState, "NOT_RUN");
+  assert.equal(unavailable.semanticDecisions.length, 0);
+  assert.equal(unavailable.providerAttemptMetadata?.finishReason, "length");
+  const error = new MappingSemanticReviewUnavailablePrePersistenceError({} as never);
+  assert.equal(getTeacherFacingMappingFailure(error), error.teacherMessage);
+  console.log("  ✓ truncated responses never authorize promotion and semantic-review errors keep the specific teacher message");
+}
