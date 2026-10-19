@@ -45,6 +45,7 @@ jobs:
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'lntpi_node_lesson_fk') THEN RAISE EXCEPTION 'Missing ownership FK'; END IF; END \$\$;"
       - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/source-spans.test.ts
       - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/contract.test.ts
+      - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/complete-request.test.ts
       - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/persist.test.ts
       - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/approval.test.ts
       - run: pnpm --filter @workspace/api-server typecheck

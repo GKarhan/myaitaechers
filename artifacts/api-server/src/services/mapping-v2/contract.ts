@@ -1,3 +1,4 @@
+import {assertSourceReferences} from './source-references.js';
 import {z} from 'zod/v4';
 import {createHash} from 'node:crypto';
 export const bloomLevels=['remember','understand','apply','analyze','evaluate','create'] as const;
@@ -25,13 +26,10 @@ export function validateCompleteMap(value:unknown,blocks:SourceBlock[],outcomes:
  const m=parsed.data,nodes=m.topics.flatMap(t=>t.nodes),ids=new Set(nodes.map(n=>n.id)),topics=new Set(m.topics.map(t=>t.id));
  const unique=(values:unknown[],reason:string)=>{if(new Set(values).size!==values.length)throw Error(reason);};
  unique(nodes.map(n=>n.id),'DUPLICATE_NODE_ID');unique(m.topics.map(t=>t.id),'DUPLICATE_TOPIC_ID');unique(m.exercises.map(e=>e.id),'DUPLICATE_EXERCISE_ID');
- const used=new Set<number>(),exerciseUsed=new Set<number>(),excluded=new Set<number>();
- const check=(i:number)=>{if(!blocks[i])throw Error('INVALID_SOURCE_REFERENCE');};
- const activity=(i:number)=>['EXERCISE','ACTIVITY','HOMEWORK'].includes(blocks[i].blockType);
+ assertSourceReferences(m,blocks);
  for(const n of nodes){
   unique(n.cognitivePath.map(p=>p.level),'DUPLICATE_COGNITIVE_LEVEL');unique(n.prerequisiteNodeIds,'DUPLICATE_PREREQUISITE');unique(n.outcomeIds,'DUPLICATE_OUTCOME');
   const ranks=n.cognitivePath.map(p=>bloomLevels.indexOf(p.level));if(ranks.some((r,i)=>i>0&&r<=ranks[i-1])||n.cognitivePath.at(-1)?.level!==n.targetBloom)throw Error('INVALID_COGNITIVE_CEILING');
-  for(const i of n.sourceBlockIndices){check(i);if(activity(i))throw Error('ACTIVITY_USED_AS_THEORY');used.add(i);}
   if(n.outcomeIds.some(id=>!outcomes.includes(id)))throw Error('INVALID_OUTCOME_REFERENCE');
   if(n.prerequisiteNodeIds.some(id=>!ids.has(id)||id===n.id))throw Error('INVALID_PREREQUISITE');
  }
@@ -42,10 +40,7 @@ export function validateCompleteMap(value:unknown,blocks:SourceBlock[],outcomes:
   if(e.sourceType==='textbook'&&(!e.sourceBlockIndices.length||e.generatedText.trim()))throw Error('INVALID_TEXTBOOK_PROVENANCE');
   if(e.sourceType==='ai_generated'&&(e.sourceBlockIndices.length||!e.generatedText.trim()))throw Error('INVALID_AI_PROVENANCE');
   if(e.nodeIds.some(id=>!byId.get(id)!.cognitivePath.some(p=>p.level===e.cognitiveLevel)))throw Error('EXERCISE_LEVEL_NOT_IN_NODE_PATH');
-  for(const i of e.sourceBlockIndices){check(i);if(!activity(i)||exerciseUsed.has(i))throw Error('DUPLICATE_OR_INVALID_SOURCE_EXERCISE');exerciseUsed.add(i);used.add(i);}
  }
- for(const e of m.excludedBlocks){check(e.blockIndex);if(used.has(e.blockIndex)||excluded.has(e.blockIndex))throw Error('CONFLICTING_SOURCE_DISPOSITION');if(activity(e.blockIndex)&&e.kind!=='NEIGHBOR_SECTION')throw Error('LOST_SOURCE_EXERCISE');excluded.add(e.blockIndex);}
- if(blocks.some((_,i)=>!used.has(i)&&!excluded.has(i)))throw Error('UNCOVERED_SOURCE_BLOCKS');
  if(outcomes.some(id=>!nodes.some(n=>n.outcomeIds.includes(id))))throw Error('UNCOVERED_REQUIRED_OUTCOME');
  return m;
 }
