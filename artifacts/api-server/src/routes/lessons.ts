@@ -1,3 +1,5 @@
+import {prepareTextSource} from "../services/mapping-v2/prepare-text-source.js";
+import {TEXT_SOURCE_SPAN_PROMPT} from "../services/mapping-v2/source-spans.js";
 import {readFileSync} from "node:fs";
 import {SOURCE_PREPARATION_PROMPT} from "../services/mapping-v2/prompts.js";
 import {sourceHash} from "../services/mapping-v2/contract.js";
@@ -16,7 +18,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, assertSemanticReviewAvailabilityBeforePersistence, buildAutomaticOutcomeAlignmentPlan, buildDurableSourceMaterialRecords, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, MappingSemanticReviewUnavailablePrePersistenceError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, assertSemanticReviewAvailabilityBeforePersistence, buildAutomaticOutcomeAlignmentPlan, buildDurableSourceMaterialRecords, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, MappingSemanticReviewUnavailablePrePersistenceError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -4716,8 +4718,8 @@ router.get("/lessons/:lessonId/mapping-report", requireAuth, requireLessonAuthor
 //             lesson_nodes    (one row per MicroNode, FK → topic)
 //             lesson_exercises (one row per exercise, FK → MicroNode)
 //
-//   Old functions extractBlocksWithAI / extractBlocksWithVision are preserved
-//   below for reference but are no longer called from this route.
+//   Text preparation uses server-owned line spans. Scanned pages retain the
+//   vision extractor, followed by the same complete-map contract.
 router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) {
@@ -4843,7 +4845,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     };
 
     const sourceFingerprint=createHash('sha256').update(readFileSync(filePath))
-      .update(JSON.stringify([resource.id,pageRange.pagesFrom,pageRange.pagesTo,lesson.title,SOURCE_PREPARATION_PROMPT])).digest('hex');
+      .update(JSON.stringify([resource.id,pageRange.pagesFrom,pageRange.pagesTo,lesson.title,SOURCE_PREPARATION_PROMPT,TEXT_SOURCE_SPAN_PROMPT])).digest('hex');
     const priorMetadata=(lesson.mappingMetadata??{}) as Record<string,unknown>;
     const cachedMaterials=priorMetadata.sourceFingerprint===sourceFingerprint
       ? await db.select().from(lessonSourceMaterialsTable).where(eq(lessonSourceMaterialsTable.lessonId,lessonId)).orderBy(asc(lessonSourceMaterialsTable.sourceBlockIndex))
@@ -4878,12 +4880,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         audit: ReturnType<typeof bindTextBlocksToPhysicalPages>["audit"];
       }> = [];
       for (const page of extractedPages) {
-        const result = await extractBlocksWithAI({
-          ...baseInput,
-          pagesFrom: page.pageNumber,
-          pagesTo: page.pageNumber,
-          lessonText: formatExtractedPagesForPass1([page]),
-        }, { sourcePageOverride: page.pageNumber });
+        // Providers select line IDs only; the server owns every source character.
+        const result: Pass1Result = await prepareTextSource(page.text, page.pageNumber);
         const bound = bindTextBlocksToPhysicalPages([page], result.blocks);
         pageResults.push({
           result,
