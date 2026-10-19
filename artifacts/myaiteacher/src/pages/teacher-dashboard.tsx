@@ -111,6 +111,52 @@ const MONTHS_HY = [
   "Դեկտ.",
 ];
 
+function AuthenticatedResourceFile({ fileUrl, fileName }: { fileUrl: string; fileName?: string | null }) {
+  const { token } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const download = async () => {
+    setBusy(true);
+    setError(null);
+    let objectUrl: string | null = null;
+    let link: HTMLAnchorElement | null = null;
+    try {
+      if (!fileUrl.startsWith("/api/teacher/documents/files/")) {
+        throw new Error("Unsupported resource file URL");
+      }
+      const file = await customFetch<Blob>(fileUrl, {
+        headers: { Authorization: `Bearer ${token ?? ""}` },
+        responseType: "blob",
+      });
+      objectUrl = URL.createObjectURL(file);
+      link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = fileName || fileUrl.split("/").pop() || "document";
+      document.body.appendChild(link);
+      link.click();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      link?.remove();
+      if (objectUrl) {
+        const url = objectUrl;
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="min-w-0">
+      <button type="button" disabled={busy} onClick={() => void download()}
+        className="text-xs text-teal-400 hover:underline shrink-0 disabled:opacity-50"
+        aria-label={fileName || "Download document"}>{busy ? "…" : "⬇"}</button>
+      {error && <span role="alert" className="block text-xs text-destructive break-words">{error}</span>}
+    </span>
+  );
+}
+
 async function uploadResource(
   courseId: number,
   form: { type: string; title: string; description: string; author?: string; file: File | null },
@@ -5957,14 +6003,7 @@ export default function TeacherDashboard() {
                                 )}
                               </span>
                               {d.fileUrl && (
-                                <a
-                                  href={d.fileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-teal-400 hover:underline shrink-0"
-                                >
-                                  ⬇
-                                </a>
+                                <AuthenticatedResourceFile fileUrl={d.fileUrl} fileName={d.fileName} />
                               )}
                               <button
                                 onClick={() => {
