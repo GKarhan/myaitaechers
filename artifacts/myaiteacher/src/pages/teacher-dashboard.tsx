@@ -273,20 +273,19 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
   // ── Manual visual editor state ────────────────────────────────────────────
   const [manualOpen, setManualOpen] = useState(false);
 
-  const { data: mapStatus } = useQuery<LessonJobStatus>({
+  const { data: mapStatus, error: mapStatusError } = useQuery<LessonJobStatus>({
     queryKey: ['lesson-map-status', lessonId],
     queryFn: async () => {
-      const r = await fetch(`/api/lessons/${lessonId}/map-status`, {
+      return customFetch<LessonJobStatus>(`/api/lessons/${lessonId}/map-status`, {
         headers: { Authorization: `Bearer ${token ?? ''}` },
+        responseType: "json",
       });
-      if (!r.ok) return { jobId: null, status: 'none', progress: null, error: null };
-      return r.json();
     },
     enabled: !!token,
     staleTime: 0,
     refetchInterval: (query) => {
       const s = (query.state.data as LessonJobStatus | undefined)?.status;
-      return (s === 'pending' || s === 'running') ? 3000 : false;
+      return (postPending || s === 'pending' || s === 'running') ? 3000 : false;
     },
   });
 
@@ -378,11 +377,16 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         ✍️ Ձեռքով
       </button>
 
-      {(isActive || mapError || mapSummary) && (
+      {(isActive || mapError || mapStatusError || mapSummary) && (
         <div className="basis-full min-w-0 order-last pt-1">
           {isActive && (
             <div className="min-w-0 text-[10px] text-primary/70 animate-pulse break-words" title={statusLabel}>
               {statusLabel || 'Քարտեզագրում է...'}
+            </div>
+          )}
+          {mapStatusError && (
+            <div role="alert" className="min-w-0 text-xs text-destructive whitespace-normal break-words leading-relaxed">
+              {mapStatusError.message}
             </div>
           )}
           {mapError && (
