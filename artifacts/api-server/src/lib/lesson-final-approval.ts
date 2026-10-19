@@ -448,8 +448,8 @@ export async function validateLessonForFinalApproval(
           preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
         })),
       );
-      if (!grounding.valid) {
-        warnings.push({
+      if (!grounding.valid || (metadata.pipeline === "P1.2.1+P1.2.2" && grounding.status !== "GROUNDED")) {
+        (metadata.pipeline === "P1.2.1+P1.2.2" ? errors : warnings).push({
           code: "COGNITIVE_PATH_GROUNDING_INVALID",
           messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին պահանջում է վերանայում՝ աղբյուրի սահմանների պատճառով։`,
           nodeId: node.id,

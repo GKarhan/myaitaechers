@@ -34,6 +34,10 @@ try{
  assert.ok((await db.select().from(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId,lessonId))).every(e=>e.status==='approved'));
  const teaching=await db.select().from(lessonNodeTeachingPackageItemsTable).where(eq(lessonNodeTeachingPackageItemsTable.lessonId,lessonId));
  assert.equal(teaching.find(i=>i.itemType==='MAIN_EXPLANATION')?.content,'Teacher revised explanation');assert.ok(teaching.every(i=>i.status==='approved'));
+ await db.update(lessonNodesTable).set({childFriendlyExplanation:'Teacher edited after approval'}).where(eq(lessonNodesTable.id,current.id));
+ const reapproved=await post({overrideWarnings:true});assert.equal(reapproved.status,200);
+ const refreshed=await db.select().from(lessonNodeTeachingPackageItemsTable).where(eq(lessonNodeTeachingPackageItemsTable.lessonId,lessonId));
+ assert.equal(refreshed.find(i=>i.itemType==='MAIN_EXPLANATION')?.content,'Teacher edited after approval');
  const levels=await db.select().from(lessonNodeCognitiveLevelsTable).where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId,current.id));
  assert.equal(assessAcceptedCognitivePath({cogPathStatus:current.cogPathStatus,theoryContent:current.theoryContent,learningObjective:current.learningObjective,levels}).accepted,true);
  console.log('PASS: one teacher approval accepts C1+C2+teaching+exercises, preserves edits, and produces runtime-accepted cognitive paths');

@@ -1,3 +1,6 @@
+import {readFileSync} from "node:fs";
+import {SOURCE_PREPARATION_PROMPT} from "../services/mapping-v2/prompts.js";
+import {sourceHash} from "../services/mapping-v2/contract.js";
 import {generateCompleteMap} from "../services/mapping-v2/generate.js";
 import {authoringSnapshot,persistCompleteMap,syncGeneratedTeachingForApproval} from "../services/mapping-v2/persist.js";
 import { materializeUpload, UploadedFileMissingError } from "../lib/durable-uploads.js";
@@ -4832,10 +4835,24 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         : Array.isArray(lesson.lessonOutcomes) ? (lesson.lessonOutcomes as string[]) : null,
     };
 
+    const sourceFingerprint=createHash('sha256').update(readFileSync(filePath))
+      .update(JSON.stringify([resource.id,pageRange.pagesFrom,pageRange.pagesTo,lesson.title,SOURCE_PREPARATION_PROMPT])).digest('hex');
+    const priorMetadata=(lesson.mappingMetadata??{}) as Record<string,unknown>;
+    const cachedMaterials=priorMetadata.sourceFingerprint===sourceFingerprint
+      ? await db.select().from(lessonSourceMaterialsTable).where(eq(lessonSourceMaterialsTable.lessonId,lessonId)).orderBy(asc(lessonSourceMaterialsTable.sourceBlockIndex))
+      : [];
+    const cachedBlocks:Pass1Result['blocks']=cachedMaterials.map(m=>({blockType:m.blockType as Pass1Result['blocks'][number]['blockType'],sourceText:m.sourceText,sourcePage:m.physicalPage,sourceParagraph:m.sourceParagraph,sourceBoundingBox:m.sourceBoundingBox as Pass1Result['blocks'][number]['sourceBoundingBox']}));
+    const useSourceCache=cachedBlocks.length>0 && cachedMaterials.every(m=>m.verificationStatus==='VERIFIED_READABLE')
+      && sourceHash(cachedBlocks)===priorMetadata.sourceHash;
     // ── Pass 1: Pure verbatim block extraction (in-memory, no DB write yet) ──
     let pass1: Pass1Result;
     let textPageBindingAudit: ReturnType<typeof bindTextBlocksToPhysicalPages>["audit"] | null = null;
-    if (useVision) {
+    if(useSourceCache){
+      pass1={blocks:cachedBlocks};
+      if(!useVision){const bound=bindTextBlocksToPhysicalPages(extractedPages,cachedBlocks);
+        if(bound.audit.quarantinedBlockCount>0)throw Error('CACHED_SOURCE_VERIFICATION_FAILED');
+        textPageBindingAudit=bound.audit;}
+    } else if (useVision) {
       logger.info(
         { lessonId, pagesFrom: lesson.pagesFrom, pagesTo: lesson.pagesTo },
         "lesson mapping: garbled text — using vision-based Pass 1"
@@ -4972,7 +4989,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       lessonTitle:lesson.title,teacherGoal:lesson.lessonGoal??null,outcomes:workingOutcomes,
       legacyOutcomes:Array.isArray(lesson.lessonOutcomes)?lesson.lessonOutcomes as string[]:[]});
     const result=await persistCompleteMap({lessonId,resourceId:resource.id,map:generated.map,blocks:pass1.blocks,
-      hash:generated.hash,adapter:generated.adapter,expectedSnapshot,sourceSet,sourceScope,provenance:physicalPageProvenance});
+      hash:generated.hash,sourceFingerprint,adapter:generated.adapter,expectedSnapshot,sourceSet,sourceScope,provenance:physicalPageProvenance});
     await db.update(mappingJobsTable).set({status:'completed',progress:null,result:{...result,usage:generated.usage} as any,updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
   } catch (err) {
     logger.error({ err, lessonId, jobId: job.id }, "lesson mapping job failed");

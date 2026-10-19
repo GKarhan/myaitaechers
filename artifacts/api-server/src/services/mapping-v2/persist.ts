@@ -13,7 +13,7 @@ export async function authoringSnapshot(lessonId:number,executor:typeof db=db){
   executor.select().from(lessonNodeTeachingPackageItemsTable).where(eq(lessonNodeTeachingPackageItemsTable.lessonId,lessonId)).orderBy(asc(lessonNodeTeachingPackageItemsTable.id)),
  ]);return createHash('sha256').update(JSON.stringify(data)).digest('hex');
 }
-export async function persistCompleteMap(input:{lessonId:number;resourceId:number|null;map:CompleteMap;blocks:SourceBlock[];hash:string;adapter:string;expectedSnapshot:string;sourceSet:unknown;sourceScope:unknown;provenance:unknown}){
+export async function persistCompleteMap(input:{lessonId:number;resourceId:number|null;map:CompleteMap;blocks:SourceBlock[];hash:string;sourceFingerprint?:string;adapter:string;expectedSnapshot:string;sourceSet:unknown;sourceScope:unknown;provenance:unknown}){
  const {lessonId,map,blocks}=input;
  return db.transaction(async tx=>{
   await tx.execute(sql`SELECT id FROM lessons WHERE id=${lessonId} FOR UPDATE`);
@@ -67,7 +67,7 @@ export async function persistCompleteMap(input:{lessonId:number;resourceId:numbe
    for(const id of e.nodeIds){const levelId=levels.get(`${id}:${e.cognitiveLevel}`);if(levelId)await tx.insert(lessonNodeCognitiveTasksTable).values({cognitiveLevelId:levelId,lessonExerciseId:row.id,taskProvenance:e.sourceType==='textbook'?'source_derived':'ai_generated'});}
    exerciseLinks.push({exerciseId:row.id,nodeIds:e.nodeIds.map(id=>ids.get(id)),topicId:e.topicId?topics.get(e.topicId):null,sourceBlockIndices:e.sourceBlockIndices,cognitiveLevel:e.cognitiveLevel,purpose:e.purpose});
   }
-  const metadata={pipeline:'P1.2.1+P1.2.2',sourceHash:input.hash,adapter:input.adapter,sourceExerciseCount:map.exercises.filter(e=>e.sourceType==='textbook').length,
+  const metadata={pipeline:'P1.2.1+P1.2.2',sourceFingerprint:input.sourceFingerprint??null,sourceHash:input.hash,adapter:input.adapter,sourceExerciseCount:map.exercises.filter(e=>e.sourceType==='textbook').length,
    completeMap:map,nodeIdMap:Object.fromEntries(ids),topicIdMap:Object.fromEntries(topics),exerciseLinks,
    quality:{sourceAudit:{sourceSet:input.sourceSet,sourceScope:input.sourceScope,physicalPageProvenance:input.provenance},instructionalCoverage:{valid:true,unresolvedInstructionalIndices:[]},sourceAlignment:{nodes:[...ids.values()].map(nodeId=>({nodeId,status:'PARTIAL',reviewStatus:'REQUIRES_TEACHER_REVIEW'}))}},reviewIssues:map.reviewIssues,teacherApprovalRequired:true};
   await tx.update(lessonsTable).set({mappingMetadata:metadata,essentialQuestion:map.essentialQuestion,coreIdea:map.topics.map(t=>t.bigIdea).join('\n'),knowledgeBoundaries:map.boundaries,status:'draft'}).where(eq(lessonsTable.id,lessonId));
@@ -81,7 +81,7 @@ export async function syncGeneratedTeachingForApproval(lessonId:number,executor:
  const items=await executor.select().from(lessonNodeTeachingPackageItemsTable).where(eq(lessonNodeTeachingPackageItemsTable.lessonId,lessonId));
  const rebuiltTypes=new Set(['MAIN_EXPLANATION','EXAMPLE','COUNTEREXAMPLE','MISCONCEPTION']);
  for(const node of nodes){
-  const own=items.filter(i=>i.lessonNodeId===node.id),generated=own.filter(i=>i.provenance==='ai_generated'&&rebuiltTypes.has(i.itemType));
+  const own=items.filter(i=>i.lessonNodeId===node.id),generated=own.filter(i=>['ai_generated','ai_generated_teacher_approved'].includes(i.provenance)&&rebuiltTypes.has(i.itemType));
   for(const item of generated)await executor.delete(lessonNodeTeachingPackageItemsTable).where(eq(lessonNodeTeachingPackageItemsTable.id,item.id));
   const retained=own.filter(i=>!generated.some(g=>g.id===i.id));let sequence=Math.max(0,...retained.map(i=>i.sequence));
   const strings=(value:unknown)=>Array.isArray(value)?value.filter((v):v is string=>typeof v==='string'&&!!v.trim()):[];
