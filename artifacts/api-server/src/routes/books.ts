@@ -1,3 +1,4 @@
+import { persistUpload, materializeUpload } from "../lib/durable-uploads.js";
 import { Router } from "express";
 import multer from "multer";
 import path from "node:path";
@@ -111,6 +112,7 @@ router.post(
     const subjectId = req.body.subjectId ? parseInt(String(req.body.subjectId), 10) : null;
     const name = String(req.body.name || req.file.originalname);
 
+    await persistUpload(req.file.filename, req.file.path, req.file.mimetype);
     const [book] = await db
       .insert(booksTable)
       .values({
@@ -209,7 +211,7 @@ router.post(
 
     let text = "";
     try {
-      text = await extractText(book.filePath, book.mimeType);
+      text = await extractText(await materializeUpload(book.filePath), book.mimeType);
     } catch (err) {
       logger.error({ err }, "File text extraction failed");
       res.status(500).json({ error: "Ֆայլի մշակումն անհնար է" });
