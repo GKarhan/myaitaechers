@@ -74,3 +74,18 @@ export async function persistCompleteMap(input:{lessonId:number;resourceId:numbe
   return {coverageValid:true,microNodesCreated:ids.size,topicsCreated:topics.size,exercisesCreated:map.exercises.length,readyMicroNodes:ids.size,reviewRequiredMicroNodes:0,unmappedReviewBlocks:0,pass1BlocksExtracted:blocks.length,instructionalCoverageValid:true,teacherReviewRequired:ids.size,assignmentReadiness:'CONFIRMATION_REQUIRED',sourceHash:input.hash,reviewIssues:map.reviewIssues};
  },{isolationLevel:'serializable'});
 }
+
+/** Legacy node editors remain canonical. Never approve stale generated copies over a teacher edit. */
+export async function syncGeneratedTeachingForApproval(lessonId:number,executor:typeof db){
+ const nodes=await executor.select().from(lessonNodesTable).where(eq(lessonNodesTable.lessonId,lessonId));
+ const items=await executor.select().from(lessonNodeTeachingPackageItemsTable).where(eq(lessonNodeTeachingPackageItemsTable.lessonId,lessonId));
+ const rebuiltTypes=new Set(['MAIN_EXPLANATION','EXAMPLE','COUNTEREXAMPLE','MISCONCEPTION']);
+ for(const node of nodes){
+  const own=items.filter(i=>i.lessonNodeId===node.id),generated=own.filter(i=>i.provenance==='ai_generated'&&rebuiltTypes.has(i.itemType));
+  for(const item of generated)await executor.delete(lessonNodeTeachingPackageItemsTable).where(eq(lessonNodeTeachingPackageItemsTable.id,item.id));
+  const retained=own.filter(i=>!generated.some(g=>g.id===i.id));let sequence=Math.max(0,...retained.map(i=>i.sequence));
+  const strings=(value:unknown)=>Array.isArray(value)?value.filter((v):v is string=>typeof v==='string'&&!!v.trim()):[];
+  const rebuilt=[{itemType:'MAIN_EXPLANATION',content:node.childFriendlyExplanation??''},...strings(node.basicExamples).map(content=>({itemType:'EXAMPLE',content})),...strings(node.nonExamples).map(content=>({itemType:'COUNTEREXAMPLE',content})),{itemType:'MISCONCEPTION',content:node.commonMisconception??''}].filter(i=>i.content.trim());
+  if(rebuilt.length)await executor.insert(lessonNodeTeachingPackageItemsTable).values(rebuilt.map(item=>({...item,lessonId,lessonNodeId:node.id,sequence:++sequence,status:'draft',provenance:'ai_generated',isPrimary:item.itemType==='MAIN_EXPLANATION'&&!retained.some(i=>i.itemType==='MAIN_EXPLANATION'&&i.isPrimary)})));
+ }
+}

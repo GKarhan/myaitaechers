@@ -38,6 +38,7 @@ jobs:
       - run: pnpm --filter @workspace/db push-force
       - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/contract.test.ts
       - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/persist.test.ts
+      - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/approval.test.ts
       - run: pnpm --filter @workspace/api-server typecheck
       - run: pnpm --filter @workspace/myaiteacher typecheck
       - run: pnpm --filter @workspace/api-server build

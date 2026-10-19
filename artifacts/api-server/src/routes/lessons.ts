@@ -1,5 +1,5 @@
 import {generateCompleteMap} from "../services/mapping-v2/generate.js";
-import {authoringSnapshot,persistCompleteMap} from "../services/mapping-v2/persist.js";
+import {authoringSnapshot,persistCompleteMap,syncGeneratedTeachingForApproval} from "../services/mapping-v2/persist.js";
 import { materializeUpload, UploadedFileMissingError } from "../lib/durable-uploads.js";
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
@@ -4512,6 +4512,7 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
       };
 
     if(currentMetadata.pipeline==='P1.2.1+P1.2.2'){
+      await syncGeneratedTeachingForApproval(lessonId,tx as unknown as typeof db);
       await tx.update(lessonNodesTable).set({status:'approved',cogPathStatus:'confirmed',reviewedBy:req.userId??null}).where(eq(lessonNodesTable.lessonId,lessonId));
       await tx.update(lessonExercisesTable).set({status:'approved'}).where(eq(lessonExercisesTable.lessonId,lessonId));
       await tx.update(lessonNodeTeachingPackageItemsTable).set({status:'approved'}).where(eq(lessonNodeTeachingPackageItemsTable.lessonId,lessonId));
