@@ -3146,7 +3146,7 @@ function LessonAssignmentAction({
   const readinessQuery = useQuery<AssignmentReadinessResponse>({
     queryKey: ["lesson-final-approval-readiness", lessonId],
     queryFn: async () => {
-      const response = await fetch(`/api/lessons/${lessonId}/final-approval-readiness`, {
+      const response = await mappingApiResponse(`/api/lessons/${lessonId}/final-approval-readiness`, {
         headers: { Authorization: `Bearer ${token ?? ""}` },
       });
       if (!response.ok) throw new Error("Չհաջողվեց ստուգել հանձնարարելու պատրաստ լինելը։");
@@ -3165,7 +3165,7 @@ function LessonAssignmentAction({
   };
 
   const activateLesson = async () => {
-    const response = await fetch(`/api/teacher/lessons/${lessonId}/status`, {
+    const response = await mappingApiResponse(`/api/teacher/lessons/${lessonId}/status`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
       body: JSON.stringify({ status: "active" }),
@@ -3184,7 +3184,7 @@ function LessonAssignmentAction({
         await activateLesson();
         return;
       }
-      const response = await fetch(`/api/lessons/${lessonId}/final-approve`, {
+      const response = await mappingApiResponse(`/api/lessons/${lessonId}/final-approve`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
         body: JSON.stringify(overrideWarnings ? { overrideWarnings: true } : {}),

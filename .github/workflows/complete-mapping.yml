@@ -2,7 +2,10 @@ name: Complete lesson mapping
 on:
   pull_request:
   push:
-    branches: [main, 'feat/complete-mapping-*']
+    branches: [main]
+concurrency:
+  group: complete-mapping-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   mapping:
     runs-on: ubuntu-latest
