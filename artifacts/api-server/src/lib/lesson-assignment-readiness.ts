@@ -17,6 +17,7 @@ export interface LessonAssignmentReadinessResult {
 
 const HARD_BLOCKER_CODES = new Set([
   "NO_MICRONODES",
+  "COMPLETE_MAP_COGNITIVE_PATH_INVALID",
   "NO_USABLE_MICRONODES",
   "LOST_SOURCE_IDENTITY",
   "LOST_SOURCE_EXERCISES",
