@@ -1,3 +1,4 @@
+import { materializeUpload, UploadedFileMissingError } from "../lib/durable-uploads.js";
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { getLatestCompletedQuizScoreStats } from "../services/quiz-reporting.js";
@@ -1986,7 +1987,7 @@ router.post("/lessons/:lessonId/goal-outcome-review/proposal", requireAuth, requ
 
   try {
     const sourceText = await extractPdfPageRange(
-      resolveUploadedFilePath(resource.fileUrl), lesson.pagesFrom, lesson.pagesTo,
+      await materializeUpload(resource.fileUrl), lesson.pagesFrom, lesson.pagesTo,
     );
     if (!sourceText.trim()) { res.status(422).json({ error: "SOURCE_TEXT_UNAVAILABLE" }); return; }
     const existingOutcomes = await db.select({
@@ -4772,7 +4773,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       .set({ status: "running", progress: "Pass 1: Extracting content blocks from PDF...", updatedAt: new Date() })
       .where(eq(mappingJobsTable.id, job.id));
 
-    const filePath  = resolveUploadedFilePath(resource.fileUrl!);
+    const filePath = await materializeUpload(resource.fileUrl!);
     const extractedPages = await extractPdfPages(filePath, pageRange.pagesFrom, pageRange.pagesTo);
     const lessonText = formatExtractedPagesForPass1(extractedPages);
     let sourceSet = buildLessonSourceSet({
@@ -5920,7 +5921,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     await db.update(mappingJobsTable)
       .set({
         status: "failed",
-        error: getTeacherFacingMappingFailure(err),
+        error: err instanceof UploadedFileMissingError ? err.message : getTeacherFacingMappingFailure(err),
         ...(preservedDiagnosticFailure ? {
           progress: preservedDiagnosticFailure.progress,
           result: {

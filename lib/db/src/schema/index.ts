@@ -37,3 +37,5 @@ export * from "./lesson-node-cognitive-levels";
 export * from "./lesson-node-cognitive-tasks";
 // Phase 2B — Cognitive Evidence Model schema
 export * from "./help-events";
+
+export * from "./uploaded-files";

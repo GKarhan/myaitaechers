@@ -9,6 +9,8 @@ import { requireTeacher, requireAuth, type AuthRequest } from "../middlewares/au
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 import { validateOptionalLessonPageRange } from "../lib/lesson-page-range.js";
 
+import { persistUpload, readUpload, deleteUpload, uploadFilename, UploadedFileMissingError } from "../lib/durable-uploads.js";
+
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
@@ -588,6 +590,7 @@ router.post("/teacher/courses/:courseId/resources", requireTeacher, singleUpload
   const { type, title, description, author } = req.body as { type: string; title: string; description?: string; author?: string };
   if (!type || !title) { res.status(400).json({ error: "type, title partadir en" }); return; }
   const file = req.file;
+  if (file) await persistUpload(file.filename, file.path, file.mimetype);
   const [resource] = await db.insert(resourcesTable).values({
     courseId, teacherId: req.userId!, type, title,
     description: description ?? "",
@@ -603,10 +606,11 @@ router.post("/teacher/courses/:courseId/resources/:resourceId/delete", requireTe
   const courseId = parseInt(String(req.params.courseId));
   const resourceId = parseInt(String(req.params.resourceId));
   if (isNaN(courseId) || isNaN(resourceId)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [resource] = await db.select().from(resourcesTable).where(eq(resourcesTable.id, resourceId)).limit(1);
-  if (resource?.fileUrl) {
+  const [resource] = await db.select().from(resourcesTable).where(and(eq(resourcesTable.id, resourceId), eq(resourcesTable.courseId, courseId), eq(resourcesTable.teacherId, req.userId!))).limit(1);
+  if (!resource) { res.status(404).json({ error: "Resource not found" }); return; }
+  if (resource.fileUrl) {
     const fname = resource.fileUrl.split("/").pop();
-    if (fname) { try { fs.unlinkSync(path.join(uploadsDir, fname)); } catch { /* ignore */ } }
+    if (fname) await deleteUpload(fname);
   }
   await db.delete(resourcesTable).where(and(eq(resourcesTable.id, resourceId), eq(resourcesTable.courseId, courseId)));
   res.json({ message: "Njujy djnjvec" });
@@ -781,6 +785,7 @@ router.post("/teacher/classes/:classId/documents", requireTeacher, singleUpload,
   const { type, title, description } = req.body as { type: string; title: string; description?: string };
   if (!type || !title) { res.status(400).json({ error: "type, title partadir en" }); return; }
   const file = req.file;
+  if (file) await persistUpload(file.filename, file.path, file.mimetype);
   const [doc] = await db.insert(classDocumentsTable).values({
     classId, teacherId: req.userId!, type, title,
     description: description ?? "",
@@ -795,20 +800,64 @@ router.post("/teacher/classes/:classId/documents/:docId/delete", requireTeacher,
   const classId = parseInt(String(req.params.classId));
   const docId = parseInt(String(req.params.docId));
   if (isNaN(classId) || isNaN(docId)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [doc] = await db.select().from(classDocumentsTable).where(eq(classDocumentsTable.id, docId)).limit(1);
-  if (doc?.fileUrl) {
+  const [doc] = await db.select().from(classDocumentsTable).where(and(eq(classDocumentsTable.id, docId), eq(classDocumentsTable.classId, classId), eq(classDocumentsTable.teacherId, req.userId!))).limit(1);
+  if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+  if (doc.fileUrl) {
     const fname = doc.fileUrl.split("/").pop();
-    if (fname) { try { fs.unlinkSync(path.join(uploadsDir, fname)); } catch { /* ignore */ } }
+    if (fname) await deleteUpload(fname);
   }
   await db.delete(classDocumentsTable).where(and(eq(classDocumentsTable.id, docId), eq(classDocumentsTable.classId, classId)));
   res.json({ message: "Njujy djnjvec" });
 });
 
+// Recover missing bytes without changing resource ID, URL, lesson links or outcomes.
+router.post("/teacher/courses/:courseId/resources/:resourceId/restore-file", requireTeacher, singleUpload, async (req: AuthRequest, res) => {
+  const file = req.file;
+  try {
+    const [resource] = await db.select().from(resourcesTable).where(and(
+      eq(resourcesTable.id, Number(req.params.resourceId)),
+      eq(resourcesTable.courseId, Number(req.params.courseId)),
+      eq(resourcesTable.teacherId, req.userId!),
+    )).limit(1);
+    if (!resource?.fileUrl) { res.status(404).json({ error: "Resource not found" }); return; }
+    if (!file) { res.status(400).json({ error: "Original file required" }); return; }
+    if (file.size !== resource.fileSize || file.originalname !== resource.fileName) {
+      res.status(409).json({ error: "Select the original file: its name and size must match the saved textbook." }); return;
+    }
+    const filename = uploadFilename(resource.fileUrl.split("/").pop() ?? "");
+    try {
+      await readUpload(filename);
+      res.status(409).json({ error: "File already exists; restoration is unnecessary." }); return;
+    } catch (err) { if (!(err instanceof UploadedFileMissingError)) throw err; }
+    // The original upload predates checksums. Size is a guard, not proof of identity.
+    await persistUpload(filename, file.path, file.mimetype);
+    res.json({ restored: true, resourceId: resource.id, fileUrl: resource.fileUrl });
+  } finally { if (file) await fs.promises.unlink(file.path).catch(() => {}); }
+});
+
 router.get("/teacher/documents/files/:filename", requireAuth, async (req: AuthRequest, res) => {
-  const filename = String(req.params.filename).replace(/\.\./g, "");
-  const filePath = path.join(uploadsDir, filename);
-  if (!fs.existsSync(filePath)) { res.status(404).json({ error: "File not found" }); return; }
-  res.sendFile(filePath);
+  let filename: string;
+  try { filename = uploadFilename(String(req.params.filename)); }
+  catch { res.status(400).json({ error: "Invalid filename" }); return; }
+  const fileUrl = `/api/teacher/documents/files/${filename}`;
+  const [resource] = await db.select({ id: resourcesTable.id }).from(resourcesTable).where(and(
+    eq(resourcesTable.fileUrl, fileUrl), eq(resourcesTable.teacherId, req.userId!),
+  )).limit(1);
+  const [doc] = resource ? [] : await db.select({ id: classDocumentsTable.id }).from(classDocumentsTable).where(and(
+    eq(classDocumentsTable.fileUrl, fileUrl), eq(classDocumentsTable.teacherId, req.userId!),
+  )).limit(1);
+  if (!resource && !doc) { res.status(404).json({ error: "File not found" }); return; }
+  try {
+    const file = await readUpload(filename);
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(file.data);
+  } catch (err) {
+    if (err instanceof UploadedFileMissingError) { res.status(404).json({ error: err.message, code: err.code }); return; }
+    throw err;
+  }
 });
 
 // ─── PROFILE ──────────────────────────────────────────────────────────────────

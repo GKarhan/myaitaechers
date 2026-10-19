@@ -111,9 +111,10 @@ const MONTHS_HY = [
   "Դեկտ.",
 ];
 
-function AuthenticatedResourceFile({ fileUrl, fileName }: { fileUrl: string; fileName?: string | null }) {
+function AuthenticatedResourceFile({ fileUrl, fileName, courseId, resourceId }: { fileUrl: string; fileName?: string | null; courseId: number; resourceId: number }) {
   const { token } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [restored, setRestored] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const download = async () => {
@@ -147,12 +148,34 @@ function AuthenticatedResourceFile({ fileUrl, fileName }: { fileUrl: string; fil
     }
   };
 
+  const restore = async (file: File) => {
+    if (!window.confirm("Confirm this is the original textbook file. Existing lesson links will be preserved.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      await customFetch(`/api/teacher/courses/${courseId}/resources/${resourceId}/restore-file`, {
+        method: "POST", body, responseType: "json",
+        headers: { Authorization: `Bearer ${token ?? ""}` },
+      });
+      setRestored(true);
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+    finally { setBusy(false); }
+  };
+
   return (
     <span className="min-w-0">
       <button type="button" disabled={busy} onClick={() => void download()}
         className="text-xs text-teal-400 hover:underline shrink-0 disabled:opacity-50"
         aria-label={fileName || "Download document"}>{busy ? "…" : "⬇"}</button>
+      {restored && <span role="status" className="block text-xs">File restored. Use the download button to verify.</span>}
       {error && <span role="alert" className="block text-xs text-destructive break-words">{error}</span>}
+      {error && /404/.test(error) && <label className="block text-xs cursor-pointer">
+        Restore original file
+        <input type="file" disabled={busy} className="block max-w-48"
+          onChange={(event) => { const file = event.target.files?.[0]; if (file) void restore(file); event.target.value = ""; }} />
+      </label>}
     </span>
   );
 }
@@ -6003,7 +6026,7 @@ export default function TeacherDashboard() {
                                 )}
                               </span>
                               {d.fileUrl && (
-                                <AuthenticatedResourceFile fileUrl={d.fileUrl} fileName={d.fileName} />
+                                <AuthenticatedResourceFile fileUrl={d.fileUrl} fileName={d.fileName} courseId={selectedCourse!.id} resourceId={d.id} />
                               )}
                               <button
                                 onClick={() => {
