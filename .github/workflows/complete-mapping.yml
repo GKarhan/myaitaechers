@@ -1,0 +1,44 @@
+name: Complete lesson mapping
+on:
+  pull_request:
+  push:
+    branches: [main, 'feat/complete-mapping-*']
+jobs:
+  mapping:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: mapping
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/mapping
+      SESSION_SECRET: mapping-ci-only
+      AI_INTEGRATIONS_OPENROUTER_API_KEY: unused-no-ai-calls
+      AI_INTEGRATIONS_OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+      PORT: 5173
+      BASE_PATH: /
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --build
+      - run: pnpm --filter @workspace/db push-force
+      - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/contract.test.ts
+      - run: pnpm --filter @workspace/api-server exec tsx src/services/mapping-v2/persist.test.ts
+      - run: pnpm --filter @workspace/api-server typecheck
+      - run: pnpm --filter @workspace/myaiteacher typecheck
+      - run: pnpm --filter @workspace/api-server build
+      - run: pnpm --filter @workspace/myaiteacher build

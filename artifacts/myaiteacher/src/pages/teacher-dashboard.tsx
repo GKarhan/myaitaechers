@@ -331,6 +331,25 @@ function getLessonPageRangeInputError(pagesFrom: string, pagesTo: string): strin
   return null;
 }
 
+async function mappingApiResponse(url:string,options:RequestInit={}):Promise<Response>{
+  try {const data=await customFetch(url,{...options,responseType:'json'});return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});}
+  catch(error){const e=error as {status?:number;data?:unknown};if(!e.status)throw error;return new Response(JSON.stringify(e.data),{status:e.status,headers:{'Content-Type':'application/json'}});}
+}
+function CompleteMapApproval({lessonId,courseId,status}:{lessonId:number;courseId:number;status:string}){
+ const {token}=useAuth(),qc=useQueryClient();const [busy,setBusy]=useState(false),[issues,setIssues]=useState<string[]>([]);
+ async function approve(accepted=false){setBusy(true);setIssues([]);
+  try {const r=await mappingApiResponse(`/api/lessons/${lessonId}/final-approve`,{method:'POST',headers:{Authorization:`Bearer ${token??''}`,'Content-Type':'application/json'},body:JSON.stringify({overrideWarnings:accepted})});const d=await r.json();
+   if(d.approved){await qc.invalidateQueries({queryKey:getGetCourseLessonsQueryKey(courseId)});await qc.invalidateQueries({queryKey:getGetLessonNodesQueryKey(lessonId)});return;}
+   const messages=(d.reviewIssues??d.hardBlockers??d.errors??[]).map((i:{messageArm?:string;message?:string})=>i.messageArm??i.message??'').filter(Boolean);setIssues(messages);
+   if(d.confirmationRequired&&!accepted&&window.confirm(messages.join('\n')))await approve(true);
+  }catch(e){setIssues([e instanceof Error?e.message:String(e)]);}finally{setBusy(false);}
+ }
+ return <div className="rounded-lg border border-primary/20 p-3 space-y-2">
+  <button disabled={busy||status==='approved'} onClick={()=>void approve()} className="px-3 py-1 rounded-lg text-xs bg-primary/20 text-primary disabled:opacity-50">{status==='approved'?'✓':busy?'…':'Հաստատել քարտեզը'}</button>
+  {issues.map((issue,i)=><p key={i} className="text-xs text-amber-300">{issue}</p>)}
+ </div>;
+}
+
 function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; courseId: number; isMapped: boolean }) {
   const qc = useQueryClient();
   const { token } = useAuth();
@@ -962,7 +981,7 @@ function LessonNodesPanel({
     setCogPathLoading((l) => ({ ...l, [nodeId]: true }));
     setCogPathError((e) => { const n = { ...e }; delete n[nodeId]; return n; });
     try {
-      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-path`, { headers: { Authorization: `Bearer ${authToken ?? ""}` } });
+      const r = await mappingApiResponse(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-path`, { headers: { Authorization: `Bearer ${authToken ?? ""}` } });
       const data: CogPathData = await r.json();
       setCogPathData((d) => ({ ...d, [nodeId]: data }));
     } catch { setCogPathError((e) => ({ ...e, [nodeId]: "Կаpу sхаl" })); }
@@ -984,7 +1003,7 @@ function LessonNodesPanel({
     if (!cogLevelEditForm || cogLevelSaving) return;
     setCogLevelSaving(true);
     try {
-      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}/update`, {
+      const r = await mappingApiResponse(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}/update`, {
         method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...cogLevelEditForm, performanceObjective: cogLevelEditForm.performanceObjective || null, successCriterion: cogLevelEditForm.successCriterion || null }),
       });
@@ -994,7 +1013,7 @@ function LessonNodesPanel({
   };
 
   const setCogCeiling = async (levelId: number, nodeId: number) => {
-    const response = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}/update`, {
+    const response = await mappingApiResponse(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}/update`, {
       method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ isTargetCeiling: true }),
     });
@@ -1003,12 +1022,12 @@ function LessonNodesPanel({
 
   const deleteCogLevel = async (levelId: number, nodeId: number, levelKey: string) => {
     if (!confirm(`Hetаrzhkel «${COG_LEVEL_LABELS[levelKey] ?? levelKey}» macardaky?`)) return;
-    const response = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${authToken ?? ""}` } });
+    const response = await mappingApiResponse(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${authToken ?? ""}` } });
     if (response.ok) await refreshCognitivePathViews(nodeId);
   };
 
   const linkExercise = async (cognitiveLevelId: number, lessonExerciseId: number, nodeId: number) => {
-    const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-tasks`, {
+    const r = await mappingApiResponse(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-tasks`, {
       method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ cognitiveLevelId, lessonExerciseId }),
     });
@@ -1016,7 +1035,7 @@ function LessonNodesPanel({
   };
 
   const unlinkTask = async (taskId: number, nodeId: number) => {
-    await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-tasks/${taskId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${authToken ?? ""}` } });
+    await mappingApiResponse(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-tasks/${taskId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${authToken ?? ""}` } });
     await loadCogPath(nodeId);
   };
 
@@ -1026,7 +1045,7 @@ function LessonNodesPanel({
     setCogPathConfirming((c) => ({ ...c, [nodeId]: true }));
     setCogPathError((e) => { const n = { ...e }; delete n[nodeId]; return n; });
     try {
-      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/confirm-cognitive-path`, {
+      const r = await mappingApiResponse(`/api/lessons/${lessonId}/nodes/${nodeId}/confirm-cognitive-path`, {
         method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
       });
       const data = await r.json() as { cogPathStatus?: string; error?: string; message?: string };
@@ -1049,7 +1068,7 @@ function LessonNodesPanel({
     if (!form?.cognitiveLevel) return;
     setAddLevelSaving((s) => ({ ...s, [nodeId]: true }));
     try {
-      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels`, {
+      const r = await mappingApiResponse(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels`, {
         method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, performanceObjective: form.performanceObjective || null, successCriterion: form.successCriterion || null }),
       });
@@ -1072,7 +1091,7 @@ function LessonNodesPanel({
     if (swapIdx < 0 || swapIdx >= levels.length) return;
     const newLevels = [...levels];
     [newLevels[idx], newLevels[swapIdx]] = [newLevels[swapIdx], newLevels[idx]];
-    const response = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/reorder`, {
+    const response = await mappingApiResponse(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/reorder`, {
       method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderedLevelIds: newLevels.map((l) => l.id) }),
     });
@@ -1201,7 +1220,7 @@ function LessonNodesPanel({
     });
 
     try {
-      const response = await fetch(`/api/lessons/${lessonId}/generate-cognitive-paths`, {
+      const response = await mappingApiResponse(`/api/lessons/${lessonId}/generate-cognitive-paths`, {
         method: "POST",
         headers: { Authorization: `Bearer ${authToken ?? ""}`, "Content-Type": "application/json" },
         body: JSON.stringify({ force: false }),
@@ -1502,7 +1521,7 @@ function LessonNodesPanel({
   const handleDeleteAllMapping = useCallback(async () => {
     setDeleteAllPending(true);
     try {
-      const r = await fetch(`/api/lessons/${lessonId}/mapping`, {
+      const r = await mappingApiResponse(`/api/lessons/${lessonId}/mapping`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token ?? ""}` },
       });
@@ -1539,7 +1558,7 @@ function LessonNodesPanel({
     if (!editingTopicTitle.trim()) return;
     setTopicSaving(true);
     try {
-      const r = await fetch(`/api/lessons/${lessonId}/topics/${topicId}/update`, {
+      const r = await mappingApiResponse(`/api/lessons/${lessonId}/topics/${topicId}/update`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token ?? ""}` },
         body: JSON.stringify({ title: editingTopicTitle.trim() }),
@@ -1634,7 +1653,7 @@ function LessonNodesPanel({
   const approveAll = async () => {
     setApprovingAll(true);
     try {
-      await fetch(`/api/lessons/${lessonId}/nodes/approve-all`, {
+      await mappingApiResponse(`/api/lessons/${lessonId}/nodes/approve-all`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token ?? ""}` },
       });
@@ -1650,7 +1669,7 @@ function LessonNodesPanel({
   const { data: topics = [] } = useQuery<{ id: number; sequence: number; title: string }[]>({
     queryKey: ['lesson-topics', lessonId],
     queryFn: async () => {
-      const r = await fetch(`/api/lessons/${lessonId}/topics`, {
+      const r = await mappingApiResponse(`/api/lessons/${lessonId}/topics`, {
         headers: { Authorization: `Bearer ${token ?? ''}` },
       });
       return r.ok ? r.json() : [];
@@ -2344,147 +2363,7 @@ function LessonNodesPanel({
               Թեմա → MicroNode → աղբյուրային կոնտեքստ → ճանաչողական ուղի → կցված վարժություններ։ Չկցված վարժությունները պահպանվում են առանձին՝ առանց կրկնօրինակելու։
             </p>
           </div>
-          {nodes.length > 0 && (
-            <section className="rounded-xl border border-primary/20 bg-primary/[0.045] px-3 py-3 space-y-2.5">
-              <p className="text-[11px] font-semibold text-white">Դասի քարտեզագրման քայլեր</p>
-              <div className="grid grid-cols-1 items-stretch gap-2 md:grid-cols-3">
-                <div className="min-w-0 rounded-lg border border-indigo-400/20 bg-black/15 p-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-400/15 text-[10px] font-semibold text-indigo-200">1</span>
-                    <p className="text-[10px] font-semibold text-white">Ճանաչողական ուղիներ</p>
-                  </div>
-                  <div className="mt-2 min-h-8">
-                    {allCognitivePathsCreated ? (
-                      <span className={"inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium " + (
-                        allCognitivePathsConfirmed
-                          ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
-                          : "border-amber-400/25 bg-amber-400/10 text-amber-200"
-                      )}>
-                        {allCognitivePathsConfirmed ? `✓ ${cognitivePathsCreated}/${nodes.length} ստեղծված` : "⚠ Վերանայում է պետք"}
-                      </span>
-                    ) : (
-                      <button
-                        onClick={generateAllCogPaths}
-                        disabled={bulkCogPathRunning}
-                        className="flex items-center gap-1.5 rounded-lg border border-indigo-400/35 bg-indigo-500/20 px-2.5 py-1.5 text-[10px] font-medium text-indigo-100 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/30 disabled:opacity-50"
-                      >
-                        {bulkCogPathRunning ? (
-                          <span className="inline-block h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        ) : cognitivePathsCreated > 0 ? `✨ Լրացնել բացակայող ${cognitivePathsMissing}-ը` : "✨ Ստեղծել"}
-                      </button>
-                    )}
-                  </div>
-                  {cognitivePathsCreated > 0 && (
-                    <p className={"mt-1 text-[9px] " + (
-                      allCognitivePathsConfirmed ? "text-emerald-300/70" : "text-amber-200/75"
-                    )}>
-                      {cognitivePathsCreated} / {nodes.length} ստեղծված
-                      {cognitivePathsMissing > 0 && ` · ${cognitivePathsMissing}-ը դեռ չի ստեղծվել`}
-                      {cognitivePathsAwaitingReview > 0 && ` · ⚠ ${cognitivePathsAwaitingReview}-ը պահանջում է վերանայում`}
-                    </p>
-                  )}
-                </div>
-
-                <div className="min-w-0 rounded-lg border border-indigo-400/20 bg-black/15 p-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-400/15 text-[10px] font-semibold text-indigo-200">2</span>
-                    <p className="text-[10px] font-semibold text-white">Ուսուցման բովանդակություն · անկախ</p>
-                  </div>
-                  <div className="mt-2 flex min-h-8 min-w-0 flex-col items-start gap-1">
-                    <GenerateTeachingContentButton
-                      lessonId={lessonId}
-                      hasNodes={nodes.length > 0}
-                      completedCount={teachingContentComplete}
-                      totalCount={nodes.length}
-                      hasTeachingContentForAllNodes={allTeachingContentComplete}
-                      onInspectNode={openCogPathFromBulkResult}
-                    />
-                  </div>
-                  {teachingContentComplete > 0 && (
-                    <p className={"mt-1 text-[9px] " + (
-                       allTeachingContentComplete ? "text-white/55" : "text-amber-200/75"
-                    )}>
-                      {teachingContentComplete} / {nodes.length} պատրաստ է
-                      {!allTeachingContentComplete && ` · ⚠ ${nodes.length - teachingContentComplete}-ը պատրաստ չէ`}
-                    </p>
-                  )}
-                </div>
-
-                <div className="min-w-0 rounded-lg border border-emerald-400/20 bg-black/15 p-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/15 text-[10px] font-semibold text-emerald-200">3</span>
-                    <p className="text-[10px] font-semibold text-white">Հանձնարարում</p>
-                  </div>
-                  <div className="mt-2 min-h-8">
-                    <LessonAssignmentAction
-                      lessonId={lessonId}
-                      courseId={courseId}
-                      authoringStatus={authoringStatus}
-                    />
-                  </div>
-                </div>
-              </div>
-              {bulkCogPathRunning && bulkCogPathProgress && (
-                <p className="text-[10px] text-indigo-200/80">
-                  Ստեղծվում է {bulkCogPathProgress.current}/{bulkCogPathProgress.total} · {bulkCogPathProgress.title}
-                </p>
-              )}
-              {bulkCogPathSummary && (
-                <div className="rounded-lg border border-white/8 bg-black/15 px-2.5 py-2 space-y-1.5">
-                  <p className="text-[10px] font-medium text-white/75">Ճանաչողական ուղիների ամփոփում</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      { key: "generated", label: "Ստեղծված", entries: bulkCogPathSummary.generated, className: "border-emerald-400/20 bg-emerald-400/10 text-emerald-300" },
-                      { key: "existing", label: "Արդեն կար", entries: bulkCogPathSummary.existing, className: "border-sky-400/20 bg-sky-400/10 text-sky-200" },
-                      { key: "inProgress", label: "Ընթացքի մեջ", entries: bulkCogPathSummary.inProgress, className: "border-violet-400/20 bg-violet-400/10 text-violet-200" },
-                      { key: "c1Review", label: "C1 վերանայում", entries: bulkCogPathSummary.c1Review, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
-                      { key: "targetReview", label: "Թիրախի վերանայում", entries: bulkCogPathSummary.targetReview, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
-                      { key: "progressionReview", label: "Ուղու վերանայում", entries: bulkCogPathSummary.progressionReview, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
-                      { key: "validationFailed", label: "Վավերացում", entries: bulkCogPathSummary.validationFailed, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
-                      { key: "failed", label: "Սխալ", entries: bulkCogPathSummary.failed, className: "border-red-400/20 bg-red-400/10 text-red-200" },
-                    ].filter((item) => item.entries.length > 0).map((item) => (
-                      <span
-                        key={item.key}
-                        title={item.entries.map((entry) => entry.detail ? `${entry.title}: ${entry.detail}` : entry.title).join("\n")}
-                        className={"rounded-full border px-2 py-0.5 text-[9px] font-medium cursor-help " + item.className}
-                      >
-                        {item.label}: {item.entries.length}
-                      </span>
-                    ))}
-                  </div>
-                  {[
-                    ...bulkCogPathSummary.c1Review.map((entry) => ({ entry, label: "C1 վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
-                    ...bulkCogPathSummary.targetReview.map((entry) => ({ entry, label: "Թիրախի վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
-                    ...bulkCogPathSummary.progressionReview.map((entry) => ({ entry, label: "Ուղու վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
-                    ...bulkCogPathSummary.validationFailed.map((entry) => ({ entry, label: "Վավերացում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
-                    ...bulkCogPathSummary.failed.map((entry) => ({ entry, label: "Սխալ", className: "border-red-400/25 bg-red-400/10 text-red-200" })),
-                  ].length > 0 && (
-                    <div className="border-t border-white/8 pt-1.5">
-                      <p className="mb-1 text-[9px] text-white/55">Ուշադրություն պահանջող հանգույցներ՝</p>
-                      <div className="flex flex-wrap gap-1">
-                        {[
-                          ...bulkCogPathSummary.c1Review.map((entry) => ({ entry, label: "C1 վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
-                          ...bulkCogPathSummary.targetReview.map((entry) => ({ entry, label: "Թիրախի վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
-                          ...bulkCogPathSummary.progressionReview.map((entry) => ({ entry, label: "Ուղու վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
-                          ...bulkCogPathSummary.validationFailed.map((entry) => ({ entry, label: "Վավերացում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
-                          ...bulkCogPathSummary.failed.map((entry) => ({ entry, label: "Սխալ", className: "border-red-400/25 bg-red-400/10 text-red-200" })),
-                        ].map(({ entry, label, className }) => (
-                          <button
-                            key={`${label}-${entry.nodeId}`}
-                            onClick={() => openCogPathFromBulkResult(entry.nodeId)}
-                            title={entry.detail}
-                            className={"rounded border px-1.5 py-0.5 text-left text-[9px] font-medium hover:brightness-125 " + className}
-                          >
-                            {entry.title} · {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
+          {nodes.length > 0 && <CompleteMapApproval lessonId={lessonId} courseId={courseId} status={authoringStatus} />}
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center justify-between">
@@ -2519,7 +2398,7 @@ function LessonNodesPanel({
                         // Allow clearing
                         setRsmSaving(true);
                         try {
-                          const r = await fetch(`/api/teacher/lessons/${lessonId}`, {
+                          const r = await mappingApiResponse(`/api/teacher/lessons/${lessonId}`, {
                             method: "PUT",
                             headers: { Authorization: `Bearer ${authToken ?? ""}`, "Content-Type": "application/json" },
                             body: JSON.stringify({ requiredSessionMinutes: null }),
@@ -2535,7 +2414,7 @@ function LessonNodesPanel({
                       }
                       setRsmSaving(true);
                       try {
-                        const r = await fetch(`/api/teacher/lessons/${lessonId}`, {
+                        const r = await mappingApiResponse(`/api/teacher/lessons/${lessonId}`, {
                           method: "PUT",
                           headers: { Authorization: `Bearer ${authToken ?? ""}`, "Content-Type": "application/json" },
                           body: JSON.stringify({ requiredSessionMinutes: parsed }),
@@ -3174,7 +3053,7 @@ function LessonNodesPanel({
                         <button
                           onClick={async () => {
                             const tok = authToken ?? localStorage.getItem("myaiteacher_token") ?? "";
-                            const r = await fetch(`/api/quizzes/${q.id}/assign`, {
+                            const r = await mappingApiResponse(`/api/quizzes/${q.id}/assign`, {
                               method: "POST",
                               headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
                               body: JSON.stringify({ classId: effectiveClassId }),
@@ -6846,8 +6725,6 @@ export default function TeacherDashboard() {
                                     : []
                                 }
                               />
-                              <MappingAuditPanel lessonId={l.id} />
-                              <CanonicalOutcomesPanel lessonId={l.id} />
                               <LessonNodesPanel
                                 lessonId={l.id}
                                 courseId={selectedCourse!.id}
@@ -6863,8 +6740,6 @@ export default function TeacherDashboard() {
                                 requiredSessionMinutes={(l as any).requiredSessionMinutes ?? null}
                                 onOpenResults={(quizId) => { setResultsFrom("allQuizzes"); setResultsQuizId(quizId); }}
                               />
-                              <TeachingPackagePanel lessonId={l.id} />
-                              <ValidationApprovalSummaryPanel lessonId={l.id} />
                             </div>
                           </div>
                         );
