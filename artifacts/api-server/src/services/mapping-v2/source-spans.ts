@@ -1,6 +1,7 @@
 import {z} from 'zod/v4';
 
 export const TEXT_SOURCE_SPAN_PROMPT = `P1.2.1 text-source preparation. The server supplies one physical PDF page as numbered lines.
+An optional precedingPageTail is reference-only context for recognizing a continued task. Return ranges ONLY for the current page lines; never emit ranges or text from that context.
 Return ONLY JSON matching the supplied schema. Classify and group the lines; NEVER transcribe, correct, summarize or generate source text.
 Each block is an inclusive consecutive range firstLine..lastLine. Cover EVERY supplied line exactly once, in original order, without gaps or overlaps, including headings, page numbers, captions and neighboring sections. The next stage decides lesson scope.
 Keep each numbered question/exercise as its own EXERCISE block, including all of its wrapped lines. Practical assignments are ACTIVITY. A continuation at the top of a page remains the same activity type; never merge separate numbered tasks. Preserve section headings separately as NOTE. Theory is NOTE, RULE or DEFINITION. Examples are EXAMPLE, instructions HOMEWORK where explicitly homework, objectives OBJECTIVE, other visible text NOTE/CAPTION as appropriate.

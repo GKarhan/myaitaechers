@@ -4881,7 +4881,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       }> = [];
       for (const page of extractedPages) {
         // Providers select line IDs only; the server owns every source character.
-        const result: Pass1Result = await prepareTextSource(page.text, page.pageNumber);
+        const precedingPage=extractedPages.find(p=>p.pageNumber===page.pageNumber-1);
+        const result: Pass1Result = await prepareTextSource(page.text, page.pageNumber, precedingPage?.text.slice(-2000)??null);
         const bound = bindTextBlocksToPhysicalPages([page], result.blocks);
         pageResults.push({
           result,
