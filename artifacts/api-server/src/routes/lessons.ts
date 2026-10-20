@@ -5696,7 +5696,7 @@ router.post("/lessons/:lessonId/map-draft/stage",requireAuth,requireLessonAuthor
        staging:{jobId:job.id,stagedAt:new Date().toISOString(),stagedBy:req.userId??null,
          missingSourceVerification:true,sourceExerciseCount:map.exercises.filter(x=>x.sourceType==="textbook").length,
          textbookExercisesPending:map.exercises.filter(x=>x.sourceType==="textbook"),
-         originalDraft:map,sourceBlockIndicesAreUnverified:true},
+         originalDraft:map,nodeIdMap:Object.fromEntries(ids),sourceBlockIndicesAreUnverified:true},
        reviewIssues:[...map.reviewIssues,"Աղբյուրային հղումները չեն ստուգվել, և դասագրքային վարժությունները սպասում են վերականգնման։"]
      } as any
    }).where(eq(lessonsTable.id,lessonId));
@@ -5743,6 +5743,77 @@ router.get("/lessons/:lessonId/source-recovery-preview",requireAuth,requireLesso
  }catch(error){
   logger.error({err:error,lessonId},"Textbook source recovery preview failed");
   res.status(422).json({error:"SOURCE_RECOVERY_FAILED"});
+ }
+});
+
+// Match a teacher-selected original exercise against the linked PDF text,
+// then retain its exact source excerpt and location in the canonical table.
+// The selected text is never treated as an AI-created textbook quotation.
+router.post("/lessons/:lessonId/recover-source-exercise",requireAuth,requireLessonAuthor,async(req:AuthRequest,res)=>{
+ const lessonId=Number(req.params.lessonId), exerciseKey=String(req.body?.exerciseId??"");
+ const page=Number(req.body?.physicalPage), originalText=req.body?.sourceText;
+ if(!Number.isSafeInteger(lessonId)||lessonId<1||!/^E[0-9]+$/.test(exerciseKey)||
+   !Number.isSafeInteger(page)||typeof originalText!=="string"||!originalText.trim()||
+   originalText.length>8000){
+   res.status(400).json({error:"INVALID_SOURCE_SELECTION"});return;
+ }
+ const [lesson]=await db.select().from(lessonsTable).where(eq(lessonsTable.id,lessonId)).limit(1);
+ const meta=lesson?.mappingMetadata as Record<string,any>|undefined;
+ if(!lesson||meta?.pipeline!=="STAGED_UNVERIFIED_MAP"){
+   res.status(409).json({error:"STAGED_DRAFT_REQUIRED"});return;
+ }
+ const range=validateRequiredLessonPageRange(lesson.pagesFrom,lesson.pagesTo);
+ if(!range.valid||page<range.pagesFrom||page>range.pagesTo){res.status(422).json({error:"PAGE_OUTSIDE_LESSON"});return;}
+ const pending=Array.isArray(meta.staging?.textbookExercisesPending)?meta.staging.textbookExercisesPending:[];
+ const item=pending.find((e:Record<string,any>)=>e.id===exerciseKey);
+ if(!item){res.status(404).json({error:"PENDING_EXERCISE_NOT_FOUND"});return;}
+ const [resource]=await db.select({fileUrl:resourcesTable.fileUrl}).from(resourcesTable)
+  .where(eq(resourcesTable.id,lesson.textbookResourceId!)).limit(1);
+ if(!resource?.fileUrl){res.status(409).json({error:"SOURCE_FILE_MISSING"});return;}
+ try{
+  const pages=await extractPdfPages(await materializeUpload(resource.fileUrl),page,page);
+  const pageText=pages[0]?.text??"";
+  const normalized=(value:string)=>value.replace(/\s+/g," ").trim();
+  const candidate=normalized(originalText);
+  if(candidate.length<12||!normalized(pageText).includes(candidate)){
+   res.status(422).json({error:"SOURCE_TEXT_NOT_FOUND_ON_PAGE",
+     message:"Ընտրված բնագիրը պետք է ամբողջությամբ գտնվի նշված PDF էջում՝ նույն հերթականությամբ։"});return;
+  }
+  const saved=await db.transaction(async tx=>{
+    await tx.execute(sql`SELECT id FROM lessons WHERE id=${lessonId} FOR UPDATE`);
+    const [current]=await tx.select({status:lessonsTable.status,mappingMetadata:lessonsTable.mappingMetadata})
+      .from(lessonsTable).where(eq(lessonsTable.id,lessonId)).limit(1);
+    const currentMeta=current?.mappingMetadata as Record<string,any>|undefined;
+    if(current?.status==="approved"||currentMeta?.pipeline!=="STAGED_UNVERIFIED_MAP")
+      return {status:409 as const,error:"STAGED_DRAFT_CHANGED"};
+    const already=Array.isArray(currentMeta.staging?.recoveredExercises)?currentMeta.staging.recoveredExercises:[];
+    if(already.some((v:Record<string,any>)=>v.id===exerciseKey))
+      return {status:409 as const,error:"EXERCISE_ALREADY_RECOVERED"};
+    const nodeMap=currentMeta.staging?.nodeIdMap as Record<string,number>|undefined;
+    const targetId=item.nodeIds?.[0] && nodeMap?.[item.nodeIds[0]];
+    if(!targetId)return {status:422 as const,error:"NODE_LINK_MISSING"};
+    const [node]=await tx.select({id:lessonNodesTable.id}).from(lessonNodesTable)
+     .where(and(eq(lessonNodesTable.lessonId,lessonId),eq(lessonNodesTable.id,targetId))).limit(1);
+    if(!node)return {status:422 as const,error:"NODE_LINK_INVALID"};
+    const [row]=await tx.insert(lessonExercisesTable).values({
+      lessonId,exerciseId:`RECOVERED-${lessonId}-${exerciseKey}`,
+      exerciseTextVerbatim:originalText,sourcePage:String(page),
+      relatedNodeId:node.id,sourceType:"textbook",exercisePurpose:item.purpose,
+      successCriteria:item.successCriteria,sequence:1000+Number(exerciseKey.slice(1)),
+      assignment:"CLASS",status:"draft",
+    }).returning({id:lessonExercisesTable.id});
+    await tx.update(lessonsTable).set({mappingMetadata:{
+      ...currentMeta,staging:{...currentMeta.staging,
+        recoveredExercises:[...already,{id:exerciseKey,physicalPage:page,lessonExerciseId:row.id,
+          sourceText:originalText,reviewedBy:req.userId??null,reviewedAt:new Date().toISOString()}]}
+    } as any}).where(eq(lessonsTable.id,lessonId));
+    return {status:200 as const,recovered:true,exerciseKey,exerciseId:row.id,
+      recoveredCount:already.length+1,totalPending:pending.length};
+  });
+  res.status(saved.status).json(saved);
+ }catch(error){
+   logger.error({err:error,lessonId,exerciseKey},"Textbook exercise recovery failed");
+   res.status(422).json({error:"SOURCE_RECOVERY_FAILED"});
  }
 });
 
