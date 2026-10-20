@@ -881,6 +881,7 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
   const [editSuccess,setEditSuccess]=useState("");
   const [publishing,setPublishing]=useState(false);
   const [staging,setStaging]=useState(false);
+  const [showSource,setShowSource]=useState(false);
   const [publishNote,setPublishNote]=useState("");
   const {data}=useQuery<{status:string;jobId:number|null;updatedAt?:string;result?:{previewKind?:string;draft?:PreviewMap;reason?:string;editedByTeacher?:boolean;manualStaging?:{stagedAt:string}|null}|null}>({
     queryKey:['lesson-map-status',lessonId],
@@ -891,6 +892,17 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
       const state=(query.state.data as {status?:string}|undefined)?.status;
       return state==='pending'||state==='running'?3000:false;
     },
+  });
+  const {data:recovery,error:recoveryError,isFetching:recoveryLoading}=useQuery<{
+    pages:{physicalPage:number;text:string}[];
+    pendingExercises:{id:string;nodeIds?:string[];successCriteria?:string;unverifiedIndices?:number[]}[];
+  }>({
+    queryKey:["lesson-source-recovery",lessonId],
+    queryFn:()=>customFetch(`/api/lessons/${lessonId}/source-recovery-preview`,{
+      headers:{Authorization:`Bearer ${token??""}`},responseType:"json"
+    }),
+    enabled:!!token&&showSource&&!!data?.result?.manualStaging,
+    staleTime:60000,
   });
   const draft=data?.result?.previewKind==='UNVALIDATED_PROVIDER_DRAFT'?data.result.draft:null;
   if(!draft)return null;
@@ -970,6 +982,31 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
         </button>
         {data?.result?.editedByTeacher&&<span className="text-xs text-amber-200">Ուսուցչի խմբագրած նախագիծ</span>}
       </div>
+      {!!data?.result?.manualStaging&&<div className="rounded border border-sky-500/30 p-2 space-y-2">
+        <button type="button" onClick={()=>setShowSource(value=>!value)}
+          className="text-xs text-sky-200 underline">
+          {showSource?"Փակել դասագրքի աղբյուրային էջերը":"Բացել դասագրքի իրական էջերն ու չկապված առաջադրանքները"}
+        </button>
+        {showSource&&<>
+          <p className="text-xs text-amber-100">Սա կցված PDF-ի իրական տեքստն է։ JSON-ի հին բլոկների համարները դեռ ստուգված չեն. այս բաժինը միայն համեմատության համար է։</p>
+          {recoveryLoading&&<p className="text-xs">Դասագրքի էջերը բացվում են…</p>}
+          {recoveryError&&<p role="alert" className="text-xs text-red-300">PDF-ի էջերը չհաջողվեց կարդալ։</p>}
+          {!!recovery&&<div className="space-y-2">
+            <details className="rounded border border-white/15 p-2" open>
+              <summary className="cursor-pointer text-xs font-semibold">Աղբյուրի ստուգման սպասող առաջադրանքներ ({recovery.pendingExercises.length})</summary>
+              {recovery.pendingExercises.map((e,index)=><div key={e.id??index} className="border-t border-white/10 p-2 text-xs space-y-1">
+                <p className="font-semibold">{e.id} · MicroNode-եր՝ {(e.nodeIds??[]).join(", ")}</p>
+                <p>Նպատակ՝ {e.successCriteria}</p>
+                <p className="text-amber-200">Նախկին բլոկների ինդեքսները ստուգված չեն՝ {(e.unverifiedIndices??[]).join(", ")}</p>
+              </div>)}
+            </details>
+            {recovery.pages.map(page=><details key={page.physicalPage} className="rounded border border-white/15 p-2">
+              <summary className="cursor-pointer text-xs font-semibold">PDF ֆիզիկական էջ {page.physicalPage}</summary>
+              <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words p-2 text-xs">{page.text}</pre>
+            </details>)}
+          </div>}
+        </>}
+      </div>}
       {editSuccess&&<p className="text-xs text-emerald-300">{editSuccess}</p>}
       {publishNote&&<p className="text-xs text-amber-200" role="status">{publishNote}</p>}
       {editing&&<div className="space-y-2 rounded border border-amber-400/30 p-3">
