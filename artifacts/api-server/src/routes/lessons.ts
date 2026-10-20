@@ -4998,14 +4998,20 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       onDraft:async draft=>{
         unvalidatedDraft=draft;
         await db.update(mappingJobsTable).set({
-          result:{previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft,existingMapPreserved:true} as any,
+          result:{previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft,existingMapPreserved:true,
+            verifiedSourceSnapshot:{blocks:pass1.blocks,resourceId:resource.id,hash:sourceHash(pass1.blocks),
+              sourceFingerprint,adapter:'P1.2.2-verified-pass1',expectedSnapshot,sourceSet,sourceScope,
+              provenance:physicalPageProvenance}} as any,
           updatedAt:new Date(),
         }).where(eq(mappingJobsTable.id,job.id));
       },
     });
     const result=await persistCompleteMap({lessonId,resourceId:resource.id,map:generated.map,blocks:pass1.blocks,
       hash:generated.hash,sourceFingerprint,adapter:generated.adapter,expectedSnapshot,sourceSet,sourceScope,provenance:physicalPageProvenance});
-    await db.update(mappingJobsTable).set({status:'completed',progress:null,result:{...result,usage:generated.usage,previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft:unvalidatedDraft} as any,updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
+    await db.update(mappingJobsTable).set({status:'completed',progress:null,result:{...result,usage:generated.usage,previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft:unvalidatedDraft,
+      verifiedSourceSnapshot:{blocks:pass1.blocks,resourceId:resource.id,hash:sourceHash(pass1.blocks),
+        sourceFingerprint,adapter:'P1.2.2-verified-pass1',expectedSnapshot,sourceSet,sourceScope,
+        provenance:physicalPageProvenance}} as any,updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
   } catch (err) {
     logger.error({ err, lessonId, jobId: job.id }, "lesson mapping job failed");
     const preservedDiagnosticFailure = err instanceof MappingSourceTruncatedError
