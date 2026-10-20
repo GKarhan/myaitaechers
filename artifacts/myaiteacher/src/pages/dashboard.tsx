@@ -44,6 +44,8 @@ export default function Dashboard() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [allLessons, setAllLessons] = useState<AssignedLesson[] | undefined>(undefined);
+  const [lessonLoadError, setLessonLoadError] = useState<string | null>(null);
+  const [lessonLoadRetry, setLessonLoadRetry] = useState(0);
   const [assignedQuizzes, setAssignedQuizzes] = useState<AssignedQuiz[] | undefined>(undefined);
   const [lessonQuizzes, setLessonQuizzes] = useState<Record<number, LinkedQuiz[]>>({});
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -68,29 +70,50 @@ export default function Dashboard() {
     query: { queryKey: getGetStudentHomeworkSummaryQueryKey(), enabled: !!token },
   });
 
-  // Fetch assigned lessons directly from enrolled courses. A lesson must
-  // appear even when the schedule is empty or a dashboard subjects call is stale.
+  // Assigned lessons are loaded directly from enrollment; an HTTP failure is
+  // displayed as an actionable error, never as an infinite loading spinner.
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
+    const controller = new AbortController();
     setAllLessons(undefined);
+    setLessonLoadError(null);
+    const timeout = setTimeout(() => controller.abort(), 20000);
     fetch("/api/student/assigned-lessons", {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
+      signal: controller.signal,
     })
       .then(async response => {
-        if (!response.ok) throw new Error("Դասերի բեռնումը չհաջողվեց");
-        return response.json() as Promise<AssignedLesson[]>;
+        if (!response.ok) throw new Error(`Դասերի բեռնումը չհաջողվեց (HTTP ${response.status})`);
+        const body: unknown = await response.json();
+        if (!Array.isArray(body)) throw new Error("Դասերի տվյալների ձևաչափը սխալ է");
+        return body as AssignedLesson[];
       })
       .then(lessons => {
-        if (!cancelled) setAllLessons(lessons);
+        if (!cancelled) { setAllLessons(lessons); setLessonLoadError(null); }
       })
-      .catch(() => {
-        // Keep undefined on failure: never report "no lessons" for API failures.
-        if (!cancelled) setAllLessons(undefined);
-      });
-    return () => { cancelled = true; };
-  }, [token]);
+      .catch(error => {
+        if (!cancelled) {
+          setLessonLoadError(error instanceof Error && error.name === "AbortError"
+            ? "Հարցումն ուշացավ։ Փորձիր կրկին։"
+            : error instanceof Error ? error.message : "Դասերը չհաջողվեց բեռնել");
+        }
+      })
+      .finally(() => clearTimeout(timeout));
+    return () => { cancelled = true; controller.abort(); clearTimeout(timeout); };
+  }, [token, lessonLoadRetry]);
+
+  const retryAssignedLessons = () => setLessonLoadRetry(value => value + 1);
+  const lessonErrorView = lessonLoadError ? (
+    <div className="flex flex-col items-center gap-3 text-sm text-amber-200" role="alert">
+      <span>{lessonLoadError}</span>
+      <button type="button" onClick={retryAssignedLessons}
+        className="rounded-lg border border-amber-400/40 px-3 py-2 text-xs text-amber-100">
+        Կրկին բեռնել դասերը
+      </button>
+    </div>
+  ) : null;
 
   // ── Fetch linked quizzes for each assigned lesson via student-package ──────
   useEffect(() => {
@@ -317,7 +340,7 @@ export default function Dashboard() {
         <h2 className="text-xs font-semibold tracking-widest text-muted-foreground mb-4">
           📝 Իմ դասերը
         </h2>
-        {allLessons === undefined ? (
+        {lessonLoadError ? lessonErrorView : allLessons === undefined ? (
           <div className="rounded-2xl border border-white/10 bg-card/40 p-8 flex items-center justify-center gap-3 text-muted-foreground text-sm">
             <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
@@ -501,7 +524,7 @@ export default function Dashboard() {
         </span>
       </div>
 
-      {allLessons === undefined ? (
+      {lessonLoadError ? lessonErrorView : allLessons === undefined ? (
         <div className="flex items-center justify-center py-24 gap-3 text-muted-foreground">
           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
