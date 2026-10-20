@@ -5715,6 +5715,37 @@ router.post("/lessons/:lessonId/map-draft/stage",requireAuth,requireLessonAuthor
  }
 });
 
+// Read-only original PDF recovery preview for legacy staged maps.
+// The PDF's physical page text is the source of truth; this does not label
+// unverified JSON source indices as verified or approve any student content.
+router.get("/lessons/:lessonId/source-recovery-preview",requireAuth,requireLessonAuthor,async(req:AuthRequest,res)=>{
+ const lessonId=Number(req.params.lessonId);
+ if(!Number.isSafeInteger(lessonId)||lessonId<1){res.status(400).json({error:"INVALID_LESSON"});return;}
+ const [lesson]=await db.select().from(lessonsTable).where(eq(lessonsTable.id,lessonId)).limit(1);
+ if(!lesson){res.status(404).json({error:"LESSON_NOT_FOUND"});return;}
+ const meta=lesson.mappingMetadata as Record<string,any>|null;
+ if(meta?.pipeline!=="STAGED_UNVERIFIED_MAP"){res.status(409).json({error:"NOT_A_STAGED_MAP"});return;}
+ const range=validateRequiredLessonPageRange(lesson.pagesFrom,lesson.pagesTo);
+ if(!range.valid){res.status(422).json({error:"INVALID_PAGE_RANGE"});return;}
+ const [resource]=await db.select({fileUrl:resourcesTable.fileUrl}).from(resourcesTable)
+  .where(eq(resourcesTable.id,lesson.textbookResourceId!)).limit(1);
+ if(!resource?.fileUrl){res.status(409).json({error:"SOURCE_FILE_MISSING"});return;}
+ try{
+  const pages=await extractPdfPages(await materializeUpload(resource.fileUrl),range.pagesFrom,range.pagesTo);
+  if(!pages.length||pages.every(page=>!page.text.trim())){res.status(422).json({error:"SOURCE_TEXT_UNREADABLE"});return;}
+  const pending=Array.isArray(meta.staging?.textbookExercisesPending)?meta.staging.textbookExercisesPending:[];
+  res.json({lessonId,source:"LINKED_TEXTBOOK_PDF",pages:pages.map(page=>({
+    physicalPage:page.pageNumber,text:page.text
+  })),pendingExercises:pending.map((e:Record<string,any>)=>({
+    id:e.id,nodeIds:e.nodeIds,purpose:e.purpose,cognitiveLevel:e.cognitiveLevel,
+    successCriteria:e.successCriteria,unverifiedIndices:e.sourceBlockIndices
+  })),requiresTeacherSourceReview:true});
+ }catch(error){
+  logger.error({err:error,lessonId},"Textbook source recovery preview failed");
+  res.status(422).json({error:"SOURCE_RECOVERY_FAILED"});
+ }
+});
+
 // ── GET /lessons/:lessonId/map-status ─────────────────────────────────────────
 // Lesson-centric poll endpoint: returns the most recent 'map' job for this
 // lesson so the teacher UI can resume progress display after navigation-away.
