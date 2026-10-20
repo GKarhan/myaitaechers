@@ -123,6 +123,16 @@ export async function validateLessonForFinalApproval(
     .limit(1);
   if (!lesson) throw new Error(`Lesson ${lessonId} not found`);
 
+  // Legacy JSON can be staged for teacher editing, but has no verified source
+  // attachment. This remains a non-overrideable learner-delivery blocker.
+  const metadata=lesson.mappingMetadata as {pipeline?:string}|null;
+  if(metadata?.pipeline==="STAGED_UNVERIFIED_MAP"){
+    errors.push({
+      code:"LOST_SOURCE_IDENTITY",
+      messageArm:"Քարտեզը տեղափոխված է խմբագրման համար, սակայն դասագրքի աղբյուրային կապերը դեռ չեն ստուգվել։ Հաստատումն ու հանձնարարումը հնարավոր չեն մինչև աղբյուրների վերականգնումը։"
+    });
+  }
+
   const nodes = await db
     .select()
     .from(lessonNodesTable)
