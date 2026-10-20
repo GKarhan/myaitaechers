@@ -102,3 +102,12 @@ assert.equal([...practicalPageOne.blocks,...practicalPageTwo.blocks].map(b=>b.so
  ['Practical work 1','Observe melting ice','Practical work 2','Research Aristotle and prepare a report',
  'Continue the report using reference books.','§2. Next lesson','New lesson text'].join('\n'));
 console.log('PASS: distinct practicals, next-page continuation and neighboring lesson remain separate source spans');
+
+
+const actualBulletPracticals='Գործնական աշխատանքներ\n Սառույցը դնել ափսեի մեջ:\nՆկարագրել հալումը:\n Արիստոտելի մասին գրել:\nՇարունակել հաջորդ էջում:';
+const bulletResult=materializeSourceSpans(actualBulletPracticals,9,{firstBlockType:'ACTIVITY',blocks:[]});
+assert.equal(bulletResult.blocks.length,2);
+assert.equal(bulletResult.blocks[0].sourceParagraph,'lines:1-3');
+assert.equal(bulletResult.blocks[1].sourceParagraph,'lines:4-5');
+assert.equal(bulletResult.blocks.map(b=>b.sourceText).join('\n'),actualBulletPracticals);
+console.log('PASS: two Armenian bullet-led practical assignments survive as distinct source spans');
