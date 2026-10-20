@@ -79,26 +79,26 @@ assert.ok(lessonBlocks.blocks.find(b=>b.sourceText.startsWith('5.'))?.sourceText
 assert.ok(lessonBlocks.blocks.find(b=>b.sourceText.startsWith('10.'))?.sourceText.includes('4. Water warms'));
 console.log('PASS: full 13-question lesson fixture preserves question options, separate table, activity and all source text');
 
-const separateTable=materializeSourceSpans('9. Describe the change\\nTABLE 1\\nBody | Substance',9,{
+const separateTable=materializeSourceSpans('9. Describe the change\nTABLE 1\nBody | Substance',9,{
  firstBlockType:'EXERCISE',blocks:[{blockType:'TABLE',firstLine:2}]});
 assert.equal(separateTable.blocks.length,2);
-const adjacentTable=materializeSourceSpans('9. Complete table 1\\nTABLE 1\\nBody | Substance',9,{
+const adjacentTable=materializeSourceSpans('9. Complete table 1\nTABLE 1\nBody | Substance',9,{
  firstBlockType:'EXERCISE',blocks:[{blockType:'TABLE',firstLine:2}]});
 assert.equal(adjacentTable.blocks.length,1);
 assert.equal(adjacentTable.blocks[0].sourceParagraph,'lines:1-3');
-assert.equal(adjacentTable.blocks[0].sourceText,'9. Complete table 1\\nTABLE 1\\nBody | Substance');
+assert.equal(adjacentTable.blocks[0].sourceText,'9. Complete table 1\nTABLE 1\nBody | Substance');
 console.log('PASS: only immediately adjacent referenced tables attach to question source');
 
 
-const practicalPageOne=materializeSourceSpans('Practical work 1\\nObserve melting ice\\nPractical work 2\\nResearch Aristotle and prepare a report',9,{
+const practicalPageOne=materializeSourceSpans('Practical work 1\nObserve melting ice\nPractical work 2\nResearch Aristotle and prepare a report',9,{
  firstBlockType:'ACTIVITY',blocks:[{blockType:'ACTIVITY',firstLine:3}]});
-const practicalPageTwo=materializeSourceSpans('Continue the report using reference books.\\n§2. Next lesson\\nNew lesson text',10,{
+const practicalPageTwo=materializeSourceSpans('Continue the report using reference books.\n§2. Next lesson\nNew lesson text',10,{
  firstBlockType:'ACTIVITY',blocks:[{blockType:'NOTE',firstLine:2}]});
 assert.equal(practicalPageOne.blocks.filter(b=>b.blockType==='ACTIVITY').length,2);
 assert.equal(practicalPageTwo.blocks[0].blockType,'ACTIVITY');
 assert.equal(practicalPageTwo.blocks[0].sourceParagraph,'lines:1-1');
 assert.equal(practicalPageTwo.blocks[1].blockType,'NOTE');
-assert.equal([...practicalPageOne.blocks,...practicalPageTwo.blocks].map(b=>b.sourceText).join('\\n'),
+assert.equal([...practicalPageOne.blocks,...practicalPageTwo.blocks].map(b=>b.sourceText).join('\n'),
  ['Practical work 1','Observe melting ice','Practical work 2','Research Aristotle and prepare a report',
- 'Continue the report using reference books.','§2. Next lesson','New lesson text'].join('\\n'));
+ 'Continue the report using reference books.','§2. Next lesson','New lesson text'].join('\n'));
 console.log('PASS: distinct practicals, next-page continuation and neighboring lesson remain separate source spans');
