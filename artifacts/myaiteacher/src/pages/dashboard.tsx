@@ -68,43 +68,29 @@ export default function Dashboard() {
     query: { queryKey: getGetStudentHomeworkSummaryQueryKey(), enabled: !!token },
   });
 
+  // Fetch assigned lessons directly from enrolled courses. A lesson must
+  // appear even when the schedule is empty or a dashboard subjects call is stale.
   useEffect(() => {
-    if (!token || !dashboard) return;
-    // Derive subjects from enrolled dashboard.subjects — NOT from the weekly
-    // schedule — so lessons show up even when the schedule is empty.
-    const subjects = (dashboard.subjects ?? []).map((s) => s.subject);
-    if (subjects.length === 0) {
-      setAllLessons([]);
-      return;
-    }
+    if (!token) return;
     let cancelled = false;
-    Promise.all(
-      subjects.map((subject) =>
-        fetch(`/api/student/course-lessons?subject=${encodeURIComponent(subject)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((r) => (r.ok ? r.json() : []))
-          .then((lessons: any[]) => {
-            const entry = schedule.find(
-              (s) => s.subject.toLowerCase() === subject.toLowerCase()
-            );
-            return lessons.map((l) => ({ ...l, subject, teacherName: entry?.teacherName ?? "" }));
-          })
-          .catch(() => [])
-      )
-    ).then((results) => {
-      if (!cancelled) {
-        const order: Record<string, number> = { active: 0, assigned: 1, completed: 2 };
-        setAllLessons(
-          results.flat().sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9))
-        );
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [token, dashboard]);
-
+    setAllLessons(undefined);
+    fetch("/api/student/assigned-lessons", {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    })
+      .then(async response => {
+        if (!response.ok) throw new Error("Դասերի բեռնումը չհաջողվեց");
+        return response.json() as Promise<AssignedLesson[]>;
+      })
+      .then(lessons => {
+        if (!cancelled) setAllLessons(lessons);
+      })
+      .catch(() => {
+        // Keep undefined on failure: never report "no lessons" for API failures.
+        if (!cancelled) setAllLessons(undefined);
+      });
+    return () => { cancelled = true; };
+  }, [token]);
 
   // ── Fetch linked quizzes for each assigned lesson via student-package ──────
   useEffect(() => {

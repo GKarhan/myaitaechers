@@ -214,6 +214,32 @@ router.get("/student/homework-summary", requireAuth, async (req: AuthRequest, re
 });
 
 
+// Student's directly assigned/active lessons across enrolled courses.
+// Do not infer subjects from schedules or rely on a course-name string match.
+router.get("/student/assigned-lessons", requireAuth, async (req: AuthRequest,res)=>{
+ const userId=req.userId!;
+ const enrolled=await db.select({classId:classStudentsTable.classId})
+  .from(classStudentsTable).where(eq(classStudentsTable.studentId,userId));
+ if(!enrolled.length){res.json([]);return;}
+ const rows=await db.select({
+  id:lessonsTable.id,courseId:lessonsTable.courseId,title:lessonsTable.title,
+  lessonNumber:lessonsTable.lessonNumber,paragraphNumber:lessonsTable.paragraphNumber,
+  textbookTitle:lessonsTable.textbookTitle,textbookAuthor:lessonsTable.textbookAuthor,
+  chapterTitle:lessonsTable.chapterTitle,pagesFrom:lessonsTable.pagesFrom,
+  pagesTo:lessonsTable.pagesTo,status:lessonsTable.status,
+  assignedAt:lessonsTable.assignedAt,completedAt:lessonsTable.completedAt,
+  subject:subjectsTable.name,mySessionStatus:lessonSessionsTable.status,
+ })
+ .from(lessonsTable)
+ .innerJoin(coursesTable,eq(lessonsTable.courseId,coursesTable.id))
+ .innerJoin(subjectsTable,eq(coursesTable.subjectId,subjectsTable.id))
+ .leftJoin(lessonSessionsTable,and(eq(lessonSessionsTable.lessonId,lessonsTable.id),
+   eq(lessonSessionsTable.userId,userId)))
+ .where(and(inArray(coursesTable.classId,enrolled.map(e=>e.classId)),eq(lessonsTable.status,"active")))
+ .orderBy(lessonsTable.assignedAt,lessonsTable.id);
+ res.json(rows.map(r=>({...r,teacherName:""})));
+});
+
 // GET /api/student/course-lessons?subject=name — get visible teacher lessons for student's class course
 router.get("/student/course-lessons", requireAuth, async (req: AuthRequest, res) => {
   const userId = req.userId!;
