@@ -4790,6 +4790,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
   // ── Process asynchronously after HTTP response is sent ────────────────────
   setImmediate(async () => {
   let physicalPageProvenance: Record<string, unknown> | null = null;
+  let unvalidatedDraft:unknown=null;
   try {
     await db.update(mappingJobsTable)
       .set({ status: "running", progress: "Pass 1: Extracting content blocks from PDF...", updatedAt: new Date() })
@@ -4993,10 +4994,18 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     await db.update(mappingJobsTable).set({progress:'P1.2.2: Generating complete lesson map...',updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
     const generated=await generateCompleteMap(pass1.blocks,{subject:subject?.name??'',grade:classContext?.grade||subject?.grade||null,
       lessonTitle:lesson.title,teacherGoal:lesson.lessonGoal??null,outcomes:workingOutcomes,
-      legacyOutcomes:Array.isArray(lesson.lessonOutcomes)?lesson.lessonOutcomes as string[]:[]});
+      legacyOutcomes:Array.isArray(lesson.lessonOutcomes)?lesson.lessonOutcomes as string[]:[]},{
+      onDraft:async draft=>{
+        unvalidatedDraft=draft;
+        await db.update(mappingJobsTable).set({
+          result:{previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft,existingMapPreserved:true} as any,
+          updatedAt:new Date(),
+        }).where(eq(mappingJobsTable.id,job.id));
+      },
+    });
     const result=await persistCompleteMap({lessonId,resourceId:resource.id,map:generated.map,blocks:pass1.blocks,
       hash:generated.hash,sourceFingerprint,adapter:generated.adapter,expectedSnapshot,sourceSet,sourceScope,provenance:physicalPageProvenance});
-    await db.update(mappingJobsTable).set({status:'completed',progress:null,result:{...result,usage:generated.usage} as any,updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
+    await db.update(mappingJobsTable).set({status:'completed',progress:null,result:{...result,usage:generated.usage,previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft:unvalidatedDraft} as any,updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
   } catch (err) {
     logger.error({ err, lessonId, jobId: job.id }, "lesson mapping job failed");
     const preservedDiagnosticFailure = err instanceof MappingSourceTruncatedError
@@ -5114,6 +5123,10 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       .set({
         status: "failed",
         ...(completeMapFailureCode?{result:{reason:completeMapFailureCode,existingMapPreserved:true} as any}:{}),
+        ...(unvalidatedDraft!==null?{result:{
+          previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft:unvalidatedDraft,
+          existingMapPreserved:true,reason:completeMapFailureCode??'MAPPING_VALIDATION_FAILED',
+        } as any}:{}),
         error: err instanceof UploadedFileMissingError ? err.message : getTeacherFacingMappingFailure(err),
         ...(preservedDiagnosticFailure ? {
           progress: preservedDiagnosticFailure.progress,
