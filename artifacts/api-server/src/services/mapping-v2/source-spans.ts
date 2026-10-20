@@ -60,15 +60,15 @@ export function materializeSourceSpans(text:string,pageNumber:number,value:unkno
  // returned the entire practical-work section as one ACTIVITY span.
  const distinctActivities=separated.flatMap(block=>{
   if(block.blockType!=='ACTIVITY')return [block];
-  const match=/^lines:(\\d+)-(\\d+)$/.exec(block.sourceParagraph??'');
+  const match=/^lines:(\d+)-(\d+)$/.exec(block.sourceParagraph??'');
   if(!match)return [block];
-  const rows=block.sourceText.split('\\n');
-  const bullets=rows.flatMap((row,i)=>/^\\s*[■▪●•]\\s*/u.test(row)?[i]:[]);
+  const rows=block.sourceText.split('\n');
+  const bullets=rows.flatMap((row,i)=>/^\s*[■▪●•]\s*/u.test(row)?[i]:[]);
   if(bullets.length<2)return [block];
   const starts=[0,...bullets.slice(1)];
   return starts.map((start,i)=>{
    const end=starts[i+1]??rows.length;
-   return {...block,sourceText:rows.slice(start,end).join('\\n'),
+   return {...block,sourceText:rows.slice(start,end).join('\n'),
     sourceParagraph:'lines:'+(Number(match[1])+start)+'-'+(Number(match[1])+end-1)};
   });
  });
