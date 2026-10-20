@@ -5474,6 +5474,51 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
   }); // end setImmediate
 });
 
+// Teacher-only editing of the preserved provider candidate. This does not publish,
+// approve or change the normalized map. Preserve the original provider draft for audit.
+router.put("/lessons/:lessonId/map-draft", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = Number(req.params.lessonId);
+  if (!Number.isSafeInteger(lessonId) || lessonId < 1) { res.status(400).json({error:"Invalid lesson id"});return; }
+  const edited = req.body?.draft;
+  const expectedUpdatedAt = req.body?.expectedUpdatedAt;
+  if (!edited || typeof edited !== "object" || Array.isArray(edited) ||
+      typeof expectedUpdatedAt !== "string" || !Number.isFinite(Date.parse(expectedUpdatedAt)) ||
+      JSON.stringify(edited).length > 400000) {
+    res.status(400).json({error:"INVALID_MAP_DRAFT_EDIT"});return;
+  }
+  // Validate the JSON shape without pretending the source references are approved.
+  const {completeMapSchema} = await import("../services/mapping-v2/contract.js");
+  const parsed = completeMapSchema.safeParse(edited);
+  if (!parsed.success) {
+    res.status(422).json({error:"MAP_DRAFT_SCHEMA_INVALID",
+      issues:parsed.error.issues.slice(0,15).map(issue=>({path:issue.path.join("."),message:issue.message}))});return;
+  }
+  const saved = await db.transaction(async tx => {
+    // Lock the lesson so editing cannot compete with mapping publication.
+    await tx.execute(sql`SELECT id FROM lessons WHERE id=${lessonId} FOR UPDATE`);
+    const [job]=await tx.select().from(mappingJobsTable)
+      .where(and(eq(mappingJobsTable.lessonId,lessonId),eq(mappingJobsTable.jobType,"map")))
+      .orderBy(desc(mappingJobsTable.id)).limit(1);
+    if (!job) return {status:404 as const};
+    const current=job.result as Record<string,unknown>|null;
+    if (current?.previewKind!=="UNVALIDATED_PROVIDER_DRAFT" || !current.draft) return {status:409 as const};
+    if (job.status==="running" || job.status==="pending") return {status:409 as const};
+    if (job.updatedAt.toISOString()!==new Date(expectedUpdatedAt).toISOString()) return {status:412 as const};
+    const result={...current,originalProviderDraft:current.originalProviderDraft??current.draft,
+      draft:parsed.data,editedByTeacher:true,editedAt:new Date().toISOString()};
+    const [updated]=await tx.update(mappingJobsTable).set({result:result as any,updatedAt:new Date()})
+      .where(and(eq(mappingJobsTable.id,job.id),eq(mappingJobsTable.updatedAt,job.updatedAt)))
+      .returning({id:mappingJobsTable.id,updatedAt:mappingJobsTable.updatedAt});
+    if (!updated) return {status:412 as const};
+    return {status:200 as const,jobId:updated.id,updatedAt:updated.updatedAt};
+  });
+  if (saved.status!==200) {
+    res.status(saved.status).json({error:saved.status===412?"MAP_DRAFT_CHANGED_RELOAD":"MAP_DRAFT_NOT_EDITABLE"});return;
+  }
+  res.json({saved:true,jobId:saved.jobId,updatedAt:saved.updatedAt,
+    approvalState:"UNVALIDATED_DRAFT_ONLY"});
+});
+
 // ── GET /lessons/:lessonId/map-status ─────────────────────────────────────────
 // Lesson-centric poll endpoint: returns the most recent 'map' job for this
 // lesson so the teacher UI can resume progress display after navigation-away.
