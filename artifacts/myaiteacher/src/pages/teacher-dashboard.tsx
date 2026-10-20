@@ -854,6 +854,111 @@ function SortableTopicItem({
   );
 }
 
+
+type PreviewNode = {
+  id?: string; title?: string; role?: string; knowledge?: string; knowledgeType?: string;
+  learningObjective?: string; targetBloom?: string; estimatedMinutes?: number;
+  sourceBlockIndices?: number[]; prerequisiteNodeIds?: string[];
+  cognitivePath?: Array<{level?:string;performanceObjective?:string;successCriterion?:string;minimumIndependentEvidence?:number;interactionTypes?:string[]}>;
+  teaching?: {explanation?:string;explanationSteps?:string[];examples?:Array<{text?:string;sourceStatus?:string}>;
+    nonExamples?:Array<{text?:string;sourceStatus?:string}>;misconception?:string;guidingQuestion?:string;hint?:string};
+};
+type PreviewMap = {
+  essentialQuestion?: string; boundaries?: string[];
+  topics?: Array<{id?:string;title?:string;bigIdea?:string;nodes?:PreviewNode[]}>;
+  exercises?: Array<{id?:string;nodeIds?:string[];topicId?:string|null;purpose?:string;
+    sourceType?:string;generatedText?:string;sourceBlockIndices?:number[];cognitiveLevel?:string;successCriteria?:string}>;
+  excludedBlocks?:Array<{blockIndex?:number;reason?:string;kind?:string}>;
+  reviewIssues?:string[];
+};
+function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
+  const {token}=useAuth();
+  const {data}=useQuery<{status:string;jobId:number|null;result?:{previewKind?:string;draft?:PreviewMap;reason?:string}|null}>({
+    queryKey:['lesson-map-status',lessonId],
+    queryFn:()=>customFetch(`/api/lessons/${lessonId}/map-status`,{
+      headers:{Authorization:`Bearer ${token??''}`},responseType:'json'
+    }),
+    enabled:!!token,refetchInterval:(query)=>{
+      const state=(query.state.data as {status?:string}|undefined)?.status;
+      return state==='pending'||state==='running'?3000:false;
+    },
+  });
+  const draft=data?.result?.previewKind==='UNVALIDATED_PROVIDER_DRAFT'?data.result.draft:null;
+  if(!draft)return null;
+  const topics=Array.isArray(draft.topics)?draft.topics:[];
+  const exercises=Array.isArray(draft.exercises)?draft.exercises:[];
+  const item=(label:string,value:unknown)=>value!==null&&value!==undefined&&value!==''?(
+    <p className="text-xs leading-relaxed break-words"><span className="text-muted-foreground">{label}՝ </span>{String(value)}</p>
+  ):null;
+  return <section className="rounded-lg border border-amber-500/30 bg-amber-500/[0.04] p-3 space-y-3" data-testid="unvalidated-map-preview">
+    <div className="space-y-1">
+      <h3 className="text-sm font-semibold text-amber-300">Փորձնական քարտեզ՝ բազայում պահպանված JSON-ից</h3>
+      <p className="text-xs text-amber-100/80">
+        Սա ԱԲ-ի ամբողջական, չստուգված արդյունքն է (աշխատանք №{data?.jobId})։
+        Ոչինչ չի խմբագրվել կամ ջնջվել։ Դասի հաստատված քարտեզը չի փոխվել։
+        Այս տեսքը միայն դիտման համար է։
+      </p>
+      <p className="text-xs">Թեմաներ՝ {topics.length} · MicroNode-եր՝ {topics.reduce((n,t)=>n+(t.nodes?.length??0),0)} · Առաջադրանքներ՝ {exercises.length}</p>
+      {item('Առանցքային հարց',draft.essentialQuestion)}
+    </div>
+    {topics.map((topic,i)=><details key={topic.id??i} className="rounded border border-white/10 bg-black/20 p-2" open>
+      <summary className="cursor-pointer text-sm font-semibold">{topic.id} — {topic.title}</summary>
+      {item('Հիմնական գաղափար',topic.bigIdea)}
+      <div className="mt-2 space-y-2">
+        {(topic.nodes??[]).map((node,j)=><details key={node.id??j} className="rounded border border-white/10 bg-white/[0.03] p-2">
+          <summary className="cursor-pointer text-xs font-semibold">{node.id} — {node.title} · {node.targetBloom}</summary>
+          <div className="mt-2 space-y-1.5">
+            {item('Գիտելիք',node.knowledge)}
+            {item('Ուսումնական նպատակ',node.learningObjective)}
+            {item('Տեսակ',node.knowledgeType)}
+            {item('Դեր',node.role)}
+            {item('Ժամանակ',node.estimatedMinutes)}
+            {item('Աղբյուրի բլոկներ',(node.sourceBlockIndices??[]).join(', '))}
+            {item('Նախապայմաններ',(node.prerequisiteNodeIds??[]).join(', '))}
+            {item('Բացատրություն',node.teaching?.explanation)}
+            {(node.teaching?.explanationSteps??[]).map((v,k)=><p key={k} className="text-xs">Բացատրության քայլ {k+1}․ {v}</p>)}
+            {(node.teaching?.examples??[]).map((v,k)=><p key={k} className="text-xs">Օրինակ {k+1} ({v.sourceStatus})․ {v.text}</p>)}
+            {(node.teaching?.nonExamples??[]).map((v,k)=><p key={k} className="text-xs">Հակաօրինակ {k+1} ({v.sourceStatus})․ {v.text}</p>)}
+            {item('Թյուրըմբռնում',node.teaching?.misconception)}
+            {item('Ուղղորդող հարց',node.teaching?.guidingQuestion)}
+            {item('Հուշում',node.teaching?.hint)}
+            {(node.cognitivePath??[]).map((p,k)=><div key={k} className="rounded bg-black/20 p-2 space-y-1">
+              <p className="text-xs font-semibold">Bloom — {p.level}</p>
+              {item('Կատարողական նպատակ',p.performanceObjective)}
+              {item('Հաջողության չափանիշ',p.successCriterion)}
+              {item('Անկախ ապացույցի նվազագույն քանակ',p.minimumIndependentEvidence)}
+              {item('Առաջադրանքի տեսակներ',(p.interactionTypes??[]).join(', '))}
+            </div>)}
+          </div>
+        </details>)}
+      </div>
+    </details>)}
+    <details className="rounded border border-white/10 p-2" open>
+      <summary className="cursor-pointer text-sm font-semibold">Առաջադրանքներ ({exercises.length})</summary>
+      <div className="mt-2 space-y-2">
+      {exercises.map((e,i)=><div key={e.id??i} className="rounded bg-black/20 p-2 space-y-1">
+        <p className="text-xs font-semibold">{e.id} · {e.purpose} · {e.cognitiveLevel}</p>
+        {item('MicroNode կապեր',(e.nodeIds??[]).join(', '))}
+        {item('Թեմա',e.topicId)}
+        {item('Աղբյուր',e.sourceType)}
+        {item('Աղբյուրի բլոկներ',(e.sourceBlockIndices??[]).join(', '))}
+        {item('Ստեղծված տեքստ',e.generatedText)}
+        {item('Հաջողության չափանիշ',e.successCriteria)}
+      </div>)}
+      </div>
+    </details>
+    <details className="rounded border border-white/10 p-2">
+      <summary className="cursor-pointer text-xs">Բացառված բլոկներ ({draft.excludedBlocks?.length??0}) և ստուգման հարցեր</summary>
+      {(draft.excludedBlocks??[]).map((v,i)=><p key={i} className="text-xs mt-1">{v.blockIndex} · {v.kind} — {v.reason}</p>)}
+      {(draft.reviewIssues??[]).map((v,i)=><p key={i} className="text-xs mt-1">{v}</p>)}
+    </details>
+    <details className="rounded border border-white/10 p-2">
+      <summary className="cursor-pointer text-xs">Ամբողջ սկզբնական JSON-ը՝ անփոփոխ</summary>
+      <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words text-[10px]">{JSON.stringify(draft,null,2)}</pre>
+    </details>
+  </section>;
+}
+
 function LessonNodesPanel({
   lessonId,
   courseId,
@@ -2381,6 +2486,7 @@ function LessonNodesPanel({
               Թեմա → MicroNode → աղբյուրային կոնտեքստ → ճանաչողական ուղի → կցված վարժություններ։ Չկցված վարժությունները պահպանվում են առանձին՝ առանց կրկնօրինակելու։
             </p>
           </div>
+          <UnvalidatedMappingDraftPanel lessonId={lessonId} />
           {nodes.length > 0 && <CompleteMapApproval lessonId={lessonId} courseId={courseId} status={authoringStatus} />}
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
