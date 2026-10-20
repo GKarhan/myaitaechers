@@ -95,7 +95,7 @@ export default function LessonPage() {
   }, [token, authLoading, setLocation]);
 
   const lessonKey = getGetLessonDetailQueryKey(lessonId);
-  const { data: lesson, isLoading: lessonLoading } = useGetLessonDetail(lessonId, {
+  const { data: lesson, isLoading: lessonLoading, isError: lessonError, refetch: retryLesson } = useGetLessonDetail(lessonId, {
     query: { queryKey: lessonKey, enabled: !!token && !!lessonId },
   });
 
@@ -457,6 +457,21 @@ export default function LessonPage() {
     );
   }
 
+  if (lessonError || (user && !lesson)) {
+    return (
+      <div className="min-h-[100dvh] bg-background text-white flex items-center justify-center px-4">
+        <div className="max-w-md w-full rounded-2xl border border-amber-500/30 p-6 space-y-4">
+          <h1 className="text-lg font-semibold">ԱԲ ուսուցչի դասը չհաջողվեց բացել</h1>
+          <p className="text-sm text-muted-foreground">Դասի տվյալները չհաջողվեց ստանալ։ Դասի հանձնարարումը պահպանված է։ Կարող ես կրկին փորձել կամ վերադառնալ առարկայի էջ։</p>
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={() => void retryLesson()}
+              className="rounded-lg bg-primary px-4 py-2 text-sm text-white">Կրկին բացել</button>
+            <Link href="/dashboard" className="rounded-lg border border-white/20 px-4 py-2 text-sm">Վերադառնալ</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!user || !lesson) return null;
 
   const progressPct = hasSession ? Math.round(((currentPhase - 1) / 4) * 100) : 0;
