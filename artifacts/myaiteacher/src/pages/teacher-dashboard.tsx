@@ -857,14 +857,14 @@ function SortableTopicItem({
 
 type PreviewNode = {
   id?: string; title?: string; role?: string; knowledge?: string; knowledgeType?: string;
-  learningObjective?: string; targetBloom?: string; estimatedMinutes?: number;
+  learningObjective?: string; targetBloom?: string; estimatedMinutes?: number; outcomeIds?: number[];
   sourceBlockIndices?: number[]; prerequisiteNodeIds?: string[];
   cognitivePath?: Array<{level?:string;performanceObjective?:string;successCriterion?:string;minimumIndependentEvidence?:number;interactionTypes?:string[]}>;
   teaching?: {explanation?:string;explanationSteps?:string[];examples?:Array<{text?:string;sourceStatus?:string}>;
     nonExamples?:Array<{text?:string;sourceStatus?:string}>;misconception?:string;guidingQuestion?:string;hint?:string};
 };
 type PreviewMap = {
-  essentialQuestion?: string; boundaries?: string[];
+  essentialQuestion?: string; boundaries?: string[]; schemaVersion?: string;
   topics?: Array<{id?:string;title?:string;bigIdea?:string;nodes?:PreviewNode[]}>;
   exercises?: Array<{id?:string;nodeIds?:string[];topicId?:string|null;purpose?:string;
     sourceType?:string;generatedText?:string;sourceBlockIndices?:number[];cognitiveLevel?:string;successCriteria?:string}>;
@@ -900,6 +900,8 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
       </p>
       <p className="text-xs">Թեմաներ՝ {topics.length} · MicroNode-եր՝ {topics.reduce((n,t)=>n+(t.nodes?.length??0),0)} · Առաջադրանքներ՝ {exercises.length}</p>
       {item('Առանցքային հարց',draft.essentialQuestion)}
+      {item('Քարտեզագրման սխեմա',draft.schemaVersion)}
+      {item('Ստուգման հարցերի քանակ',draft.reviewIssues?.length??0)}
     </div>
     {topics.map((topic,i)=><details key={topic.id??i} className="rounded border border-white/10 bg-black/20 p-2" open>
       <summary className="cursor-pointer text-sm font-semibold">{topic.id} — {topic.title}</summary>
@@ -912,9 +914,10 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
             {item('Ուսումնական նպատակ',node.learningObjective)}
             {item('Տեսակ',node.knowledgeType)}
             {item('Դեր',node.role)}
+            {item('Կապված վերջնարդյունքների ID-ներ',(node.outcomeIds??[]).join(', ')||'նշված չեն')}
             {item('Ժամանակ',node.estimatedMinutes)}
             {item('Աղբյուրի բլոկներ',(node.sourceBlockIndices??[]).join(', '))}
-            {item('Նախապայմաններ',(node.prerequisiteNodeIds??[]).join(', '))}
+            {item('Նախապայմաններ',(node.prerequisiteNodeIds??[]).join(', ')||'չկան')}
             {item('Բացատրություն',node.teaching?.explanation)}
             {(node.teaching?.explanationSteps??[]).map((v,k)=><p key={k} className="text-xs">Բացատրության քայլ {k+1}․ {v}</p>)}
             {(node.teaching?.examples??[]).map((v,k)=><p key={k} className="text-xs">Օրինակ {k+1} ({v.sourceStatus})․ {v.text}</p>)}
@@ -934,6 +937,10 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
       </div>
     </details>)}
     <details className="rounded border border-white/10 p-2" open>
+      <summary className="cursor-pointer text-sm font-semibold">Գիտելիքային սահմաններ ({draft.boundaries?.length??0})</summary>
+      {(draft.boundaries??[]).map((v,i)=><p key={i} className="text-xs mt-2">{i+1}. {v}</p>)}
+    </details>
+    <details className="rounded border border-white/10 p-2" open>
       <summary className="cursor-pointer text-sm font-semibold">Առաջադրանքներ ({exercises.length})</summary>
       <div className="mt-2 space-y-2">
       {exercises.map((e,i)=><div key={e.id??i} className="rounded bg-black/20 p-2 space-y-1">
@@ -942,7 +949,7 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
         {item('Թեմա',e.topicId)}
         {item('Աղբյուր',e.sourceType)}
         {item('Աղբյուրի բլոկներ',(e.sourceBlockIndices??[]).join(', '))}
-        {item('Ստեղծված տեքստ',e.generatedText)}
+        {item('Առաջադրանքի բառացի/ստեղծված տեքստ',e.generatedText?.trim()||'JSON-ում բացակայում է. դասագրքային բնագիրը պետք է ստացվի աղբյուրային բլոկից')}
         {item('Հաջողության չափանիշ',e.successCriteria)}
       </div>)}
       </div>
@@ -950,6 +957,7 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
     <details className="rounded border border-white/10 p-2">
       <summary className="cursor-pointer text-xs">Բացառված բլոկներ ({draft.excludedBlocks?.length??0}) և ստուգման հարցեր</summary>
       {(draft.excludedBlocks??[]).map((v,i)=><p key={i} className="text-xs mt-1">{v.blockIndex} · {v.kind} — {v.reason}</p>)}
+      {(draft.reviewIssues??[]).length===0&&<p className="text-xs mt-2 text-amber-200">ԱԲ-ն ստուգման հարցեր չի նշել (դա չի նշանակում, որ քարտեզը սխալներից ազատ է)։</p>}
       {(draft.reviewIssues??[]).map((v,i)=><p key={i} className="text-xs mt-1">{v}</p>)}
     </details>
     <details className="rounded border border-white/10 p-2">
