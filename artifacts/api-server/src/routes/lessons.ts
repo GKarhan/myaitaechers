@@ -5525,6 +5525,54 @@ router.put("/lessons/:lessonId/map-draft", requireAuth, requireLessonAuthor, asy
     approvalState:"UNVALIDATED_DRAFT_ONLY"});
 });
 
+// Publish a saved candidate only with its exact server-verified source snapshot.
+// No AI call. Standard source, outcome and cognitive validators remain mandatory.
+router.post("/lessons/:lessonId/map-draft/publish",requireAuth,requireLessonAuthor,async(req:AuthRequest,res)=>{
+  const lessonId=Number(req.params.lessonId);
+  if(!Number.isSafeInteger(lessonId)||lessonId<1){res.status(400).json({error:"INVALID_LESSON"});return;}
+  const [job]=await db.select().from(mappingJobsTable)
+    .where(and(eq(mappingJobsTable.lessonId,lessonId),eq(mappingJobsTable.jobType,"map")))
+    .orderBy(desc(mappingJobsTable.id)).limit(1);
+  const result=job?.result as Record<string,any>|undefined;
+  if(!job||result?.previewKind!=="UNVALIDATED_PROVIDER_DRAFT"||!result?.draft){
+    res.status(404).json({error:"NO_MAP_DRAFT"});return;
+  }
+  if(job.status==="running"||job.status==="pending"){
+    res.status(409).json({error:"MAP_JOB_IN_PROGRESS"});return;
+  }
+  const source=result.verifiedSourceSnapshot;
+  if(!source||!Array.isArray(source.blocks)||!source.blocks.length||
+    typeof source.expectedSnapshot!=="string"||typeof source.hash!=="string"||
+    source.hash!==sourceHash(source.blocks)){
+    res.status(409).json({error:"VERIFIED_SOURCE_SNAPSHOT_MISSING",
+      message:"Այս փորձի աղբյուրային բլոկները չեն պահպանվել։ Պետք է դրանք վերականգնել դասագրքից՝ առանց չստուգված հղումներ հաստատելու։"});return;
+  }
+  const {validateCompleteMap}=await import("../services/mapping-v2/contract.js");
+  const outcomeRows=await db.select({id:lessonOutcomesTable.id}).from(lessonOutcomesTable)
+    .where(eq(lessonOutcomesTable.lessonId,lessonId));
+  let map;
+  try{map=validateCompleteMap(result.draft,source.blocks,outcomeRows.map(o=>o.id));}
+  catch(e){
+    res.status(422).json({error:"MAP_VALIDATION_FAILED",reason:e instanceof Error?e.message:String(e),
+      diagnostics:e&&typeof e==="object"&&"diagnostics" in e?(e as any).diagnostics:null});
+    return;
+  }
+  try{
+    const publication=await persistCompleteMap({lessonId,resourceId:source.resourceId,
+      map,blocks:source.blocks,hash:source.hash,sourceFingerprint:source.sourceFingerprint,
+      adapter:source.adapter,expectedSnapshot:source.expectedSnapshot,
+      sourceSet:source.sourceSet,sourceScope:source.sourceScope,provenance:source.provenance});
+    // Preserve draft and job failure history; explicitly track successful manual publication.
+    await db.update(mappingJobsTable).set({result:{...result,manualPublication:{
+      publishedAt:new Date().toISOString(),publishedBy:req.userId??null,publication}} as any,
+      updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
+    res.json({published:true,lessonId,publication,approvalRequired:true});
+  }catch(e){
+    const reason=e instanceof Error?e.message:String(e);
+    res.status(reason==="MAPPING_AUTHORING_CHANGED"?409:422).json({error:"MAP_PUBLICATION_FAILED",reason});
+  }
+});
+
 // ── GET /lessons/:lessonId/map-status ─────────────────────────────────────────
 // Lesson-centric poll endpoint: returns the most recent 'map' job for this
 // lesson so the teacher UI can resume progress display after navigation-away.
