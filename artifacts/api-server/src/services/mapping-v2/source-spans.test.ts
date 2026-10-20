@@ -51,3 +51,29 @@ assert.equal(materializeSourceSpans(options,9,{firstBlockType:'EXERCISE',blocks:
 const lastThree='11. What is matter?\n12. Name types of matter\n13. What is physics for?';
 assert.equal(materializeSourceSpans(lastThree,9,{firstBlockType:'EXERCISE',blocks:[]}).blocks.length,3);
 console.log('PASS: merged question recovery, original line offsets, and matching-options preservation');
+
+
+const lessonPage=[
+ '1. What is nature?','2. What is a natural phenomenon?','3. What does physics study?',
+ '4. Give examples of physical phenomena.','5. Which changes are physical?',
+ 'a wrapped continuation','6. What is a physical body?','7. What is a substance?',
+ '8. Give examples of bodies.','9. Fill in table 1.','TABLE 1','Body | Substance | Phenomenon',
+ '10. Match phenomena to types.','1. Arrow moves','2. Light reflects',
+ '3. Compass turns','4. Water warms',
+ '11. Define matter.','12. Give matter types.','13. State physics aim.',
+ 'Practical work','Ice melts in a dish','Write an Aristotle biography'
+].join('\n');
+const lessonBlocks=materializeSourceSpans(lessonPage,9,{
+ firstBlockType:'EXERCISE',blocks:[
+  {blockType:'TABLE',firstLine:11},
+  {blockType:'EXERCISE',firstLine:13},
+  {blockType:'EXERCISE',firstLine:18},
+  {blockType:'ACTIVITY',firstLine:21}
+ ]});
+assert.equal(lessonBlocks.filter(b=>b.blockType==='EXERCISE').length,13);
+assert.equal(lessonBlocks.filter(b=>b.blockType==='TABLE').length,1);
+assert.equal(lessonBlocks.filter(b=>b.blockType==='ACTIVITY').length,1);
+assert.equal(lessonBlocks.map(b=>b.sourceText).join('\n'),lessonPage);
+assert.ok(lessonBlocks.find(b=>b.sourceText.startsWith('5.'))?.sourceText.includes('a wrapped continuation'));
+assert.ok(lessonBlocks.find(b=>b.sourceText.startsWith('10.'))?.sourceText.includes('4. Water warms'));
+console.log('PASS: full 13-question lesson fixture preserves question options, separate table, activity and all source text');
