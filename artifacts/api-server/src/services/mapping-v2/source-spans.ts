@@ -56,11 +56,27 @@ export function materializeSourceSpans(text:string,pageNumber:number,value:unkno
     sourceParagraph:'lines:'+(Number(range[1])+from)+'-'+(Number(range[1])+to-1)};
   });
  });
+ // Separate consecutive bullet-led practical assignments even if the provider
+ // returned the entire practical-work section as one ACTIVITY span.
+ const distinctActivities=separated.flatMap(block=>{
+  if(block.blockType!=='ACTIVITY')return [block];
+  const match=/^lines:(\\d+)-(\\d+)$/.exec(block.sourceParagraph??'');
+  if(!match)return [block];
+  const rows=block.sourceText.split('\\n');
+  const bullets=rows.flatMap((row,i)=>/^\\s*[■▪●•]\\s*/u.test(row)?[i]:[]);
+  if(bullets.length<2)return [block];
+  const starts=[0,...bullets.slice(1)];
+  return starts.map((start,i)=>{
+   const end=starts[i+1]??rows.length;
+   return {...block,sourceText:rows.slice(start,end).join('\\n'),
+    sourceParagraph:'lines:'+(Number(match[1])+start)+'-'+(Number(match[1])+end-1)};
+  });
+ });
  // A question's immediately following table is part of the same source exercise.
  // Only join verified adjacent lines on the same PDF page and when the question
  // explicitly references a table. Never absorb a standalone or unrelated table.
  const attached:typeof separated=[];
- for(const block of separated){
+ for(const block of distinctActivities){
   const previous=attached.at(-1);
   const previousRange=/^lines:(\d+)-(\d+)$/.exec(previous?.sourceParagraph??'');
   const currentRange=/^lines:(\d+)-(\d+)$/.exec(block.sourceParagraph??'');
