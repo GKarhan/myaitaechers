@@ -879,6 +879,8 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
   const [saving,setSaving]=useState(false);
   const [editError,setEditError]=useState("");
   const [editSuccess,setEditSuccess]=useState("");
+  const [publishing,setPublishing]=useState(false);
+  const [publishNote,setPublishNote]=useState("");
   const {data}=useQuery<{status:string;jobId:number|null;updatedAt?:string;result?:{previewKind?:string;draft?:PreviewMap;reason?:string;editedByTeacher?:boolean}|null}>({
     queryKey:['lesson-map-status',lessonId],
     queryFn:()=>customFetch(`/api/lessons/${lessonId}/map-status`,{
@@ -906,6 +908,25 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
       await qc.invalidateQueries({queryKey:["lesson-map-status",lessonId]});
     }catch(e){setEditError(e instanceof Error?e.message:String(e));}finally{setSaving(false);}
   };
+  const publishDraft=async()=>{
+    setPublishing(true);setPublishNote("");
+    try{
+      const result=await customFetch<{published:boolean}>(`/api/lessons/${lessonId}/map-draft/publish`,{
+        method:"POST",headers:{Authorization:`Bearer ${token??""}`},responseType:"json",
+      });
+      if(!result.published)throw Error("Չհաջողվեց տեղափոխել քարտեզը");
+      setPublishNote("Քարտեզը պահպանվել է հիմնական բազայում։ Հիմա կարելի է անցնել ուսուցչի հաստատմանը։");
+      await qc.invalidateQueries();
+    }catch(e){
+      const x=e as {data?:{error?:string;reason?:string;message?:string};message?:string};
+      const error=x.data?.error;
+      setPublishNote(error==="VERIFIED_SOURCE_SNAPSHOT_MISSING"
+        ?"Այս նախկին փորձի ստուգված աղբյուրային պատկերը պահպանված չէ։ Այն պետք է վերականգնել, նախքան հիմնական քարտեզ տեղափոխելը։"
+        :error==="MAP_VALIDATION_FAILED"
+          ?`Պահպանումը դեռ արգելված է՝ ${x.data?.reason??"քարտեզի կապերը ստուգման կարիք ունեն"}։ Խմբագրիր JSON-ը և կրկին ստուգիր։`
+          :x.data?.message??x.data?.reason??x.message??"Պահպանման սխալ");
+    }finally{setPublishing(false);}
+  };
   const topics=Array.isArray(draft.topics)?draft.topics:[];
   const exercises=Array.isArray(draft.exercises)?draft.exercises:[];
   const item=(label:string,value:unknown)=>value!==null&&value!==undefined&&value!==''?(
@@ -924,9 +945,13 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
         <button type="button" onClick={startEditing} disabled={saving} className="rounded border border-amber-400/40 px-3 py-1 text-xs text-amber-200">
           ✏️ Խմբագրել քարտեզի ցանկացած դաշտ
         </button>
+        <button type="button" onClick={()=>void publishDraft()} disabled={publishing||editing} className="rounded border border-emerald-400/40 px-3 py-1 text-xs text-emerald-200 disabled:opacity-50">
+          {publishing?"Ստուգվում է...":"Ստուգել և տեղափոխել հիմնական քարտեզ"}
+        </button>
         {data?.result?.editedByTeacher&&<span className="text-xs text-amber-200">Ուսուցչի խմբագրած նախագիծ</span>}
       </div>
       {editSuccess&&<p className="text-xs text-emerald-300">{editSuccess}</p>}
+      {publishNote&&<p className="text-xs text-amber-200" role="status">{publishNote}</p>}
       {editing&&<div className="space-y-2 rounded border border-amber-400/30 p-3">
         <p className="text-xs text-amber-100">Խմբագրիր JSON-ի ցանկացած դաշտ՝ թեմաներ, MicroNode-եր, բացատրություններ, Bloom-ի ուղիներ, վարժություններ և կապեր։ Պահպանումը չի հաստատում կամ հանձնարարում դասը։ Սկզբնական ԱԲ տարբերակը պահվում է։</p>
         <textarea aria-label="Քարտեզի ամբողջական խմբագիր" value={editText} onChange={e=>setEditText(e.target.value)}
