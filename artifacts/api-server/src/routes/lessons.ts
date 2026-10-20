@@ -5005,7 +5005,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     });
     const result=await persistCompleteMap({lessonId,resourceId:resource.id,map:generated.map,blocks:pass1.blocks,
       hash:generated.hash,sourceFingerprint,adapter:generated.adapter,expectedSnapshot,sourceSet,sourceScope,provenance:physicalPageProvenance});
-    await db.update(mappingJobsTable).set({status:'completed',progress:null,result:{...result,usage:generated.usage} as any,updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
+    await db.update(mappingJobsTable).set({status:'completed',progress:null,result:{...result,usage:generated.usage,previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft:unvalidatedDraft} as any,updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
   } catch (err) {
     logger.error({ err, lessonId, jobId: job.id }, "lesson mapping job failed");
     const preservedDiagnosticFailure = err instanceof MappingSourceTruncatedError
