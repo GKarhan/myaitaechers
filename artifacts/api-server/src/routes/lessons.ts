@@ -5573,6 +5573,144 @@ router.post("/lessons/:lessonId/map-draft/publish",requireAuth,requireLessonAuth
   }
 });
 
+// Legacy mapping jobs lack their exact verified Pass1 source blocks. Allow an explicit
+// instructor staging operation into canonical *draft* authoring tables, without
+// fabricating source citations or treating textbook prompts as verified exercises.
+// Approval/learner release stays blocked until source reconciliation.
+router.post("/lessons/:lessonId/map-draft/stage",requireAuth,requireLessonAuthor,async(req:AuthRequest,res)=>{
+ const lessonId=Number(req.params.lessonId);
+ if(!Number.isSafeInteger(lessonId)||lessonId<1){res.status(400).json({error:"INVALID_LESSON"});return;}
+ const expectedJobId=Number(req.body?.jobId);
+ if(!Number.isSafeInteger(expectedJobId)||expectedJobId<1){res.status(400).json({error:"INVALID_JOB"});return;}
+ const {completeMapSchema,bloomLevels}=await import("../services/mapping-v2/contract.js");
+ try{
+  const result=await db.transaction(async tx=>{
+   await tx.execute(sql`SELECT id FROM lessons WHERE id=${lessonId} FOR UPDATE`);
+   const [lesson]=await tx.select({id:lessonsTable.id,status:lessonsTable.status}).from(lessonsTable).where(eq(lessonsTable.id,lessonId)).limit(1);
+   if(!lesson) return {status:404 as const,error:"LESSON_NOT_FOUND"};
+   if(lesson.status==="approved")return {status:409 as const,error:"LESSON_ALREADY_APPROVED"};
+   const [existing]=await tx.select({id:lessonNodesTable.id}).from(lessonNodesTable).where(eq(lessonNodesTable.lessonId,lessonId)).limit(1);
+   if(existing)return {status:409 as const,error:"CANONICAL_MAP_ALREADY_EXISTS"};
+   const [job]=await tx.select().from(mappingJobsTable).where(and(eq(mappingJobsTable.id,expectedJobId),
+     eq(mappingJobsTable.lessonId,lessonId),eq(mappingJobsTable.jobType,"map"))).limit(1);
+   const jobResult=job?.result as Record<string,any>|undefined;
+   if(!job||job.status==="running"||job.status==="pending"||
+      jobResult?.previewKind!=="UNVALIDATED_PROVIDER_DRAFT"||!jobResult.draft)
+      return {status:409 as const,error:"MAP_DRAFT_NOT_AVAILABLE"};
+   // Never stage a future fully sourced map through the legacy import path.
+   if(jobResult.verifiedSourceSnapshot)return {status:409 as const,error:"USE_VERIFIED_MAP_PUBLICATION"};
+   const parsed=completeMapSchema.safeParse(jobResult.draft);
+   if(!parsed.success)return {status:422 as const,error:"MAP_SCHEMA_INVALID"};
+   const map=parsed.data,allNodes=map.topics.flatMap(t=>t.nodes);
+   if(!allNodes.length||new Set(map.topics.map(t=>t.id)).size!==map.topics.length||
+      new Set(allNodes.map(n=>n.id)).size!==allNodes.length||
+      new Set(map.exercises.map(e=>e.id)).size!==map.exercises.length)
+      return {status:422 as const,error:"MAP_DUPLICATE_OR_EMPTY_IDENTIFIERS"};
+   const nodeKeys=new Set(allNodes.map(n=>n.id));
+   if(allNodes.some(n=>n.prerequisiteNodeIds.some(id=>!nodeKeys.has(id)||id===n.id))||
+      map.exercises.some(e=>e.nodeIds.some(id=>!nodeKeys.has(id))))
+      return {status:422 as const,error:"MAP_INVALID_NODE_LINKS"};
+   const ids=new Map<string,number>();
+   const levels=new Map<string,number>();
+   const topicIds=new Map<string,number>();
+   let sequence=0;
+   for(const [index,topic] of map.topics.entries()){
+     const [insertedTopic]=await tx.insert(lessonTopicsTable).values({
+       lessonId,title:topic.bigIdea,sequence:index+1}).returning({id:lessonTopicsTable.id});
+     topicIds.set(topic.id,insertedTopic.id);
+     for(const node of topic.nodes){
+       const [inserted]=await tx.insert(lessonNodesTable).values({
+         lessonId,topicId:insertedTopic.id,sequence:++sequence,title:node.title,
+         learningObjective:node.learningObjective,
+         microNodeType:node.knowledgeType==="PROCEDURE_KNOWLEDGE"?"skill":"knowledge",
+         theoryContent:node.knowledge,
+         verbatimTheoryAnchor:"",
+         // No sourceText, sourcePage or sourceBlockIndices: these require actual matching evidence.
+         sourceBlockIndices:[],
+         targetBloomLevel:bloomLevels.indexOf(node.targetBloom)+1,
+         estimatedMinutes:node.estimatedMinutes,
+         childFriendlyExplanation:node.teaching.explanation,
+         explanationSteps:node.teaching.explanationSteps,
+         basicExamples:node.teaching.examples.map(x=>x.text),
+         nonExamples:node.teaching.nonExamples.map(x=>x.text),
+         commonMisconception:node.teaching.misconception,
+         misconceptionQuestions:[node.teaching.guidingQuestion],
+         contentSourceType:"ai_generated",cogPathStatus:"needs_review",
+         status:"draft",createdBy:"ai"
+       }).returning({id:lessonNodesTable.id});
+       ids.set(node.id,inserted.id);
+       const insertedLevels=await tx.insert(lessonNodeCognitiveLevelsTable).values(node.cognitivePath.map((path,i)=>({
+         lessonNodeId:inserted.id,cognitiveLevel:path.level,sequence:i+1,isApplicable:true,
+         isTargetCeiling:path.level===node.targetBloom,performanceObjective:path.performanceObjective,
+         successCriterion:path.successCriterion,provenance:"ai_generated",
+         minimumIndependentEvidence:path.minimumIndependentEvidence,
+         preferredInteractionTypes:path.interactionTypes
+       }))).returning({id:lessonNodeCognitiveLevelsTable.id,cognitiveLevel:lessonNodeCognitiveLevelsTable.cognitiveLevel});
+       for(const level of insertedLevels)levels.set(`${node.id}:${level.cognitiveLevel}`,level.id);
+       const items=[{itemType:"MAIN_EXPLANATION",content:node.teaching.explanation},
+         ...node.teaching.examples.map(x=>({itemType:"EXAMPLE",content:x.text})),
+         ...node.teaching.nonExamples.map(x=>({itemType:"COUNTEREXAMPLE",content:x.text})),
+         {itemType:"MISCONCEPTION",content:node.teaching.misconception},
+         {itemType:"GUIDING_QUESTION",content:node.teaching.guidingQuestion},
+         {itemType:"HINT",content:node.teaching.hint}];
+       await tx.insert(lessonNodeTeachingPackageItemsTable).values(items.map((item,i)=>({
+         ...item,lessonId,lessonNodeId:inserted.id,sequence:i+1,status:"draft",
+         provenance:"ai_generated",isPrimary:item.itemType==="MAIN_EXPLANATION"
+       })));
+     }
+   }
+   for(const node of allNodes){
+     const prerequisiteNodes=node.prerequisiteNodeIds.map(id=>ids.get(id)!);
+     await tx.update(lessonNodesTable).set({prerequisiteNodes}).where(eq(lessonNodesTable.id,ids.get(node.id)!));
+     if(prerequisiteNodes.length)await tx.insert(lessonNodeDependenciesTable).values(prerequisiteNodes.map(fromNodeId=>({
+       lessonId,fromNodeId,toNodeId:ids.get(node.id)!,dependencyType:"REQUIRED",
+       requiredLevel:"CRITICAL",reason:"Staged authoring prerequisite"
+     })));
+   }
+   // AI-generated question text is usable in draft form. Source textbook questions
+   // have no captured text; keep them in metadata, not as invented canonical tasks.
+   let stagedExercises=0;
+   for(const exercise of map.exercises){
+     if(exercise.sourceType!=="ai_generated")continue;
+     const [inserted]=await tx.insert(lessonExercisesTable).values({
+       lessonId,exerciseId:`STAGED-AI-${lessonId}-${exercise.id}`,
+       exerciseTextVerbatim:exercise.generatedText,
+       relatedNodeId:exercise.nodeIds.length?ids.get(exercise.nodeIds[0])!:null,
+       sourceType:"ai_generated",exercisePurpose:exercise.purpose,
+       successCriteria:exercise.successCriteria,sequence:++stagedExercises,
+       assignment:"CLASS",status:"draft"
+     }).returning({id:lessonExercisesTable.id});
+     for(const id of exercise.nodeIds){
+       const levelId=levels.get(`${id}:${exercise.cognitiveLevel}`);
+       if(levelId)await tx.insert(lessonNodeCognitiveTasksTable).values({
+         cognitiveLevelId:levelId,lessonExerciseId:inserted.id,taskProvenance:"ai_generated"
+       });
+     }
+   }
+   await tx.update(lessonsTable).set({
+     status:"draft",essentialQuestion:map.essentialQuestion,
+     coreIdea:map.topics.map(t=>t.bigIdea).join("\n"),
+     knowledgeBoundaries:map.boundaries,
+     mappingMetadata:{
+       pipeline:"STAGED_UNVERIFIED_MAP",
+       staging:{jobId:job.id,stagedAt:new Date().toISOString(),stagedBy:req.userId??null,
+         missingSourceVerification:true,sourceExerciseCount:map.exercises.filter(x=>x.sourceType==="textbook").length,
+         textbookExercisesPending:map.exercises.filter(x=>x.sourceType==="textbook"),
+         originalDraft:map,sourceBlockIndicesAreUnverified:true},
+       reviewIssues:[...map.reviewIssues,"Աղբյուրային հղումները չեն ստուգվել, և դասագրքային վարժությունները սպասում են վերականգնման։"]
+     } as any
+   }).where(eq(lessonsTable.id,lessonId));
+   return {status:200 as const,staged:true,nodeCount:ids.size,topicCount:topicIds.size,
+     aiExerciseCount:stagedExercises,missingTextbookCount:map.exercises.filter(x=>x.sourceType==="textbook").length};
+  });
+  if(result.status!==200){res.status(result.status).json(result);return;}
+  res.json({...result,approvalBlocked:true,reason:"UNVERIFIED_SOURCE"});
+ }catch(e){
+   logger.error({err:e,lessonId},"Legacy map staging failed");
+   res.status(500).json({error:"MAP_STAGING_FAILED"});
+ }
+});
+
 // ── GET /lessons/:lessonId/map-status ─────────────────────────────────────────
 // Lesson-centric poll endpoint: returns the most recent 'map' job for this
 // lesson so the teacher UI can resume progress display after navigation-away.
