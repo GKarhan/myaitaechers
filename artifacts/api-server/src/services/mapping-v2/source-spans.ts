@@ -56,6 +56,22 @@ export function materializeSourceSpans(text:string,pageNumber:number,value:unkno
     sourceParagraph:'lines:'+(Number(range[1])+from)+'-'+(Number(range[1])+to-1)};
   });
  });
+ // A question's immediately following table is part of the same source exercise.
+ // Only join verified adjacent lines on the same PDF page and when the question
+ // explicitly references a table. Never absorb a standalone or unrelated table.
+ const attached:typeof separated=[];
+ for(const block of separated){
+  const previous=attached.at(-1);
+  const previousRange=/^lines:(\d+)-(\d+)$/.exec(previous?.sourceParagraph??'');
+  const currentRange=/^lines:(\d+)-(\d+)$/.exec(block.sourceParagraph??'');
+  if(block.blockType==='TABLE'&&previous?.blockType==='EXERCISE'&&
+     previous.sourcePage===block.sourcePage&&previousRange&&currentRange&&
+     Number(previousRange[2])+1===Number(currentRange[1])&&
+     /աղյուսակ|table/i.test(previous.sourceText)){
+   previous.sourceText+='\n'+block.sourceText;
+   previous.sourceParagraph='lines:'+previousRange[1]+'-'+currentRange[2];
+  }else attached.push(block);
+ }
  // Empty lines are included in the partition; blank-only blocks need no map owner.
- return {blocks:separated.filter(b=>b.sourceText.trim().length>0)};
+ return {blocks:attached.filter(b=>b.sourceText.trim().length>0)};
 }
