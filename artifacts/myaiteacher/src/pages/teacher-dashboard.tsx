@@ -206,6 +206,9 @@ interface LessonJobStatus {
   progress: string | null;
   error:    string | null;
   result?:  {
+    previewKind?: string;
+    draft?: unknown;
+    reason?: string;
     coverageValid?: boolean;
     assignmentReadiness?: "READY" | "CONFIRMATION_REQUIRED" | "BLOCKED";
     readyMicroNodes?: number;
@@ -488,6 +491,21 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
             </div>
           )}
         </div>
+      )}
+
+      {mapStatus?.result?.previewKind === 'UNVALIDATED_PROVIDER_DRAFT' && mapStatus.result.draft != null && (
+        <details className="basis-full min-w-0 order-last mt-2 rounded-lg border border-amber-500/50 bg-amber-500/5 p-3">
+          <summary className="cursor-pointer text-sm font-medium text-amber-300">
+            Դիտել ամբողջ նախնական քարտեզը (չստուգված)
+          </summary>
+          <p className="mt-2 text-xs text-amber-200">
+            Սա ԱԲ-ի ամբողջական, չստուգված պատասխանը է։ Այն կարող է պարունակել սխալներ,
+            կրկնություններ և բացթողումներ։ Չի փոխարինում հաստատված քարտեզին և չի օգտագործվում ուսուցման մեջ։
+          </p>
+          <pre className="mt-3 max-h-[70vh] overflow-auto rounded-md bg-black/30 p-3 text-xs leading-relaxed whitespace-pre-wrap break-words" dir="auto">
+            {JSON.stringify(mapStatus.result.draft, null, 2)}
+          </pre>
+        </details>
       )}
 
       <ManualMappingEditor
