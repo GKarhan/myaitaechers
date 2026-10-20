@@ -882,6 +882,11 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
   const [publishing,setPublishing]=useState(false);
   const [staging,setStaging]=useState(false);
   const [showSource,setShowSource]=useState(false);
+  const [selectedExercise,setSelectedExercise]=useState("");
+  const [selectedPage,setSelectedPage]=useState("");
+  const [sourceText,setSourceText]=useState("");
+  const [recoverySaving,setRecoverySaving]=useState(false);
+  const [recoveryFeedback,setRecoveryFeedback]=useState("");
   const [publishNote,setPublishNote]=useState("");
   const {data}=useQuery<{status:string;jobId:number|null;updatedAt?:string;result?:{previewKind?:string;draft?:PreviewMap;reason?:string;editedByTeacher?:boolean;manualStaging?:{stagedAt:string}|null}|null}>({
     queryKey:['lesson-map-status',lessonId],
@@ -954,6 +959,22 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
     }catch(e){setPublishNote(e instanceof Error?e.message:String(e));}
     finally{setStaging(false);}
   };
+  const recoverSelectedExercise=async()=>{
+    setRecoverySaving(true);setRecoveryFeedback("");
+    try{
+      if(!selectedExercise||!selectedPage||!sourceText.trim())throw Error("Ընտրիր առաջադրանքը, PDF-ի էջը և պատճենիր առաջադրանքի իրական տեքստը։");
+      const response=await customFetch<{recovered:boolean;recoveredCount:number;totalPending:number}>(`/api/lessons/${lessonId}/recover-source-exercise`,{
+        method:"POST",headers:{Authorization:`Bearer ${token??""}`,"Content-Type":"application/json"},
+        body:JSON.stringify({exerciseId:selectedExercise,physicalPage:Number(selectedPage),sourceText}),responseType:"json"
+      });
+      if(!response.recovered)throw Error("Աղբյուրի կապը չպահպանվեց");
+      setRecoveryFeedback(`Պահպանվեց․ ${response.recoveredCount}/${response.totalPending} առաջադրանք։ Հաստատումը դեռ փակ է, մինչև աղբյուրային ամբողջական ստուգումը։`);
+      setSelectedExercise("");setSelectedPage("");setSourceText("");
+      await qc.invalidateQueries({queryKey:["lesson-source-recovery",lessonId]});
+      await qc.invalidateQueries();
+    }catch(e){setRecoveryFeedback(e instanceof Error?e.message:String(e));}
+    finally{setRecoverySaving(false);}
+  };
   const topics=Array.isArray(draft.topics)?draft.topics:[];
   const exercises=Array.isArray(draft.exercises)?draft.exercises:[];
   const item=(label:string,value:unknown)=>value!==null&&value!==undefined&&value!==''?(
@@ -1000,6 +1021,27 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
                 <p className="text-amber-200">Նախկին բլոկների ինդեքսները ստուգված չեն՝ {(e.unverifiedIndices??[]).join(", ")}</p>
               </div>)}
             </details>
+            <div className="rounded border border-amber-400/30 p-3 space-y-2">
+              <p className="text-xs font-semibold">Դասագրքային առաջադրանքի ստուգված կապի պահպանում</p>
+              <p className="text-xs text-amber-100">Ընտրիր E համարով առաջադրանքը, PDF-ի ֆիզիկական էջը և ստորև տեղադրիր հենց այդ էջից պատճենած հարցի ամբողջական տեքստը։ Կոդը կստուգի բնագրի համապատասխանությունը։</p>
+              <select aria-label="Ընտրել սպասող առաջադրանքը" value={selectedExercise} onChange={e=>setSelectedExercise(e.target.value)}
+                className="w-full rounded bg-black/40 p-2 text-xs border border-white/20">
+                <option value="">Ընտրել E առաջադրանք</option>
+                {recovery.pendingExercises.map(e=><option key={e.id} value={e.id}>{e.id} — {e.successCriteria}</option>)}
+              </select>
+              <select aria-label="Ընտրել PDF էջը" value={selectedPage} onChange={e=>setSelectedPage(e.target.value)}
+                className="w-full rounded bg-black/40 p-2 text-xs border border-white/20">
+                <option value="">Ընտրել PDF-ի էջը</option>
+                {recovery.pages.map(page=><option key={page.physicalPage} value={page.physicalPage}>Ֆիզիկական էջ {page.physicalPage}</option>)}
+              </select>
+              <textarea aria-label="Դասագրքային առաջադրանքի բնագիր" rows={5} value={sourceText} onChange={e=>setSourceText(e.target.value)}
+                placeholder="Տեղադրիր առաջադրանքի իրական տեքստը՝ PDF-ի էջից" className="w-full rounded border border-white/20 bg-black/40 p-2 text-xs" />
+              <button type="button" disabled={recoverySaving} onClick={()=>void recoverSelectedExercise()}
+                className="rounded border border-emerald-500/50 p-2 text-xs text-emerald-200 disabled:opacity-50">
+                {recoverySaving?"Ստուգվում և պահպանվում է...":"Ստուգել և պահպանել առաջադրանքը"}
+              </button>
+              {recoveryFeedback&&<p className="text-xs text-amber-200" role="status">{recoveryFeedback}</p>}
+            </div>
             {recovery.pages.map(page=><details key={page.physicalPage} className="rounded border border-white/15 p-2">
               <summary className="cursor-pointer text-xs font-semibold">PDF ֆիզիկական էջ {page.physicalPage}</summary>
               <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words p-2 text-xs">{page.text}</pre>
