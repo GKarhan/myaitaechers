@@ -5789,7 +5789,19 @@ router.post("/lessons/:lessonId/recover-source-exercise",requireAuth,requireLess
     const already=Array.isArray(currentMeta.staging?.recoveredExercises)?currentMeta.staging.recoveredExercises:[];
     if(already.some((v:Record<string,any>)=>v.id===exerciseKey))
       return {status:409 as const,error:"EXERCISE_ALREADY_RECOVERED"};
-    const nodeMap=currentMeta.staging?.nodeIdMap as Record<string,number>|undefined;
+    let nodeMap=currentMeta.staging?.nodeIdMap as Record<string,number>|undefined;
+    if(!nodeMap){
+      // Jobs 224/225 were staged before nodeIdMap existed. Reconstruct only
+      // when order and titles exactly agree; never infer a changed mapping.
+      const originalNodes=(currentMeta.staging?.originalDraft?.topics??[])
+        .flatMap((topic:Record<string,any>)=>topic.nodes??[]);
+      const liveNodes=await tx.select({id:lessonNodesTable.id,title:lessonNodesTable.title,sequence:lessonNodesTable.sequence})
+        .from(lessonNodesTable).where(eq(lessonNodesTable.lessonId,lessonId)).orderBy(asc(lessonNodesTable.sequence));
+      if(originalNodes.length!==liveNodes.length||
+        originalNodes.some((n:Record<string,any>,i:number)=>n.title!==liveNodes[i]?.title))
+        return {status:409 as const,error:"NODE_MAPPING_NEEDS_REVIEW"};
+      nodeMap=Object.fromEntries(originalNodes.map((n:Record<string,any>,i:number)=>[n.id,liveNodes[i].id]));
+    }
     const targetId=item.nodeIds?.[0] && nodeMap?.[item.nodeIds[0]];
     if(!targetId)return {status:422 as const,error:"NODE_LINK_MISSING"};
     const [node]=await tx.select({id:lessonNodesTable.id}).from(lessonNodesTable)
