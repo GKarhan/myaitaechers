@@ -39,3 +39,75 @@ for(let mask=0;mask<128;mask++){
  assert.equal(output.blocks.map(b=>b.sourceText).join('\n'),exhaustive);
 }
 console.log('PASS: all 128 source partitions preserve every character including first/last lines');
+
+
+const mergedQuestions=Array.from({length:9},(_,i)=>String(i+1)+'. Question '+(i+1)+'?').join('\n');
+const recovered=materializeSourceSpans(mergedQuestions,9,{firstBlockType:'EXERCISE',blocks:[]});
+assert.equal(recovered.blocks.length,9);
+assert.equal(recovered.blocks.map(b=>b.sourceText).join('\n'),mergedQuestions);
+assert.equal(recovered.blocks[8].sourceParagraph,'lines:9-9');
+const options='10. Match these phenomena\n1. Arrow moves\n2. Light reflects\n3. Compass turns\n4. Water warms';
+assert.equal(materializeSourceSpans(options,9,{firstBlockType:'EXERCISE',blocks:[]}).blocks.length,1);
+const lastThree='11. What is matter?\n12. Name types of matter\n13. What is physics for?';
+assert.equal(materializeSourceSpans(lastThree,9,{firstBlockType:'EXERCISE',blocks:[]}).blocks.length,3);
+console.log('PASS: merged question recovery, original line offsets, and matching-options preservation');
+
+
+const lessonPage=[
+ '1. What is nature?','2. What is a natural phenomenon?','3. What does physics study?',
+ '4. Give examples of physical phenomena.','5. Which changes are physical?',
+ 'a wrapped continuation','6. What is a physical body?','7. What is a substance?',
+ '8. Give examples of bodies.','9. Fill in table 1.','TABLE 1','Body | Substance | Phenomenon',
+ '10. Match phenomena to types.','1. Arrow moves','2. Light reflects',
+ '3. Compass turns','4. Water warms',
+ '11. Define matter.','12. Give matter types.','13. State physics aim.',
+ 'Practical work','Ice melts in a dish','Write an Aristotle biography'
+].join('\n');
+const lessonBlocks=materializeSourceSpans(lessonPage,9,{
+ firstBlockType:'EXERCISE',blocks:[
+  {blockType:'TABLE',firstLine:11},
+  {blockType:'EXERCISE',firstLine:13},
+  {blockType:'EXERCISE',firstLine:18},
+  {blockType:'ACTIVITY',firstLine:21}
+ ]});
+assert.equal(lessonBlocks.blocks.filter(b=>b.blockType==='EXERCISE').length,13);
+assert.equal(lessonBlocks.blocks.filter(b=>b.blockType==='TABLE').length,0);
+assert.ok(lessonBlocks.blocks.find(b=>b.sourceText.startsWith('9.'))?.sourceText.includes('Body | Substance | Phenomenon'));
+assert.equal(lessonBlocks.blocks.filter(b=>b.blockType==='ACTIVITY').length,1);
+assert.equal(lessonBlocks.blocks.map(b=>b.sourceText).join('\n'),lessonPage);
+assert.ok(lessonBlocks.blocks.find(b=>b.sourceText.startsWith('5.'))?.sourceText.includes('a wrapped continuation'));
+assert.ok(lessonBlocks.blocks.find(b=>b.sourceText.startsWith('10.'))?.sourceText.includes('4. Water warms'));
+console.log('PASS: full 13-question lesson fixture preserves question options, separate table, activity and all source text');
+
+const separateTable=materializeSourceSpans('9. Describe the change\nTABLE 1\nBody | Substance',9,{
+ firstBlockType:'EXERCISE',blocks:[{blockType:'TABLE',firstLine:2}]});
+assert.equal(separateTable.blocks.length,2);
+const adjacentTable=materializeSourceSpans('9. Complete table 1\nTABLE 1\nBody | Substance',9,{
+ firstBlockType:'EXERCISE',blocks:[{blockType:'TABLE',firstLine:2}]});
+assert.equal(adjacentTable.blocks.length,1);
+assert.equal(adjacentTable.blocks[0].sourceParagraph,'lines:1-3');
+assert.equal(adjacentTable.blocks[0].sourceText,'9. Complete table 1\nTABLE 1\nBody | Substance');
+console.log('PASS: only immediately adjacent referenced tables attach to question source');
+
+
+const practicalPageOne=materializeSourceSpans('Practical work 1\nObserve melting ice\nPractical work 2\nResearch Aristotle and prepare a report',9,{
+ firstBlockType:'ACTIVITY',blocks:[{blockType:'ACTIVITY',firstLine:3}]});
+const practicalPageTwo=materializeSourceSpans('Continue the report using reference books.\n§2. Next lesson\nNew lesson text',10,{
+ firstBlockType:'ACTIVITY',blocks:[{blockType:'NOTE',firstLine:2}]});
+assert.equal(practicalPageOne.blocks.filter(b=>b.blockType==='ACTIVITY').length,2);
+assert.equal(practicalPageTwo.blocks[0].blockType,'ACTIVITY');
+assert.equal(practicalPageTwo.blocks[0].sourceParagraph,'lines:1-1');
+assert.equal(practicalPageTwo.blocks[1].blockType,'NOTE');
+assert.equal([...practicalPageOne.blocks,...practicalPageTwo.blocks].map(b=>b.sourceText).join('\n'),
+ ['Practical work 1','Observe melting ice','Practical work 2','Research Aristotle and prepare a report',
+ 'Continue the report using reference books.','§2. Next lesson','New lesson text'].join('\n'));
+console.log('PASS: distinct practicals, next-page continuation and neighboring lesson remain separate source spans');
+
+
+const actualBulletPracticals='Գործնական աշխատանքներ\n Սառույցը դնել ափսեի մեջ:\nՆկարագրել հալումը:\n Արիստոտելի մասին գրել:\nՇարունակել հաջորդ էջում:';
+const bulletResult=materializeSourceSpans(actualBulletPracticals,9,{firstBlockType:'ACTIVITY',blocks:[]});
+assert.equal(bulletResult.blocks.length,2);
+assert.equal(bulletResult.blocks[0].sourceParagraph,'lines:1-3');
+assert.equal(bulletResult.blocks[1].sourceParagraph,'lines:4-5');
+assert.equal(bulletResult.blocks.map(b=>b.sourceText).join('\n'),actualBulletPracticals);
+console.log('PASS: two Armenian bullet-led practical assignments survive as distinct source spans');

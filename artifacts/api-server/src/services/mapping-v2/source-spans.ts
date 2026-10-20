@@ -34,6 +34,60 @@ export function materializeSourceSpans(text:string,pageNumber:number,value:unkno
   const lastLine=index+1<spans.length?spans[index+1].firstLine-1:lines.length;
   return {blockType:span.blockType,sourceText:lines.slice(span.firstLine-1,lastLine).map(l=>l.text).join('\n'),sourcePage:pageNumber,sourceParagraph:`lines:${span.firstLine}-${lastLine}`,sourceBoundingBox:null};
  });
+ // Recover only an unambiguous sequence of consecutive numbered questions.
+ // Options inside one question restart at 1, so they are not split.
+ const separated=blocks.flatMap(block=>{
+  if(block.blockType!=='EXERCISE')return [block];
+  const range=/^lines:(\d+)-(\d+)$/.exec(block.sourceParagraph??'');
+  if(!range)return [block];
+  const rows=block.sourceText.split('\n');
+  const getNumber=(row:string)=>/^\s*(\d{1,3})[.)։]\s*/.exec(row)?.[1];
+  const initial=getNumber(rows[0]);
+  if(initial===undefined)return [block];
+  const boundaries=[0];let last=Number(initial);
+  for(let i=1;i<rows.length;i++){
+   const value=getNumber(rows[i]);
+   if(value!==undefined&&Number(value)===last+1){boundaries.push(i);last++;}
+  }
+  if(boundaries.length<2)return [block];
+  return boundaries.map((from,i)=>{
+   const to=boundaries[i+1]??rows.length;
+   return {...block,sourceText:rows.slice(from,to).join('\n'),
+    sourceParagraph:'lines:'+(Number(range[1])+from)+'-'+(Number(range[1])+to-1)};
+  });
+ });
+ // Separate consecutive bullet-led practical assignments even if the provider
+ // returned the entire practical-work section as one ACTIVITY span.
+ const distinctActivities=separated.flatMap(block=>{
+  if(block.blockType!=='ACTIVITY')return [block];
+  const match=/^lines:(\d+)-(\d+)$/.exec(block.sourceParagraph??'');
+  if(!match)return [block];
+  const rows=block.sourceText.split('\n');
+  const bullets=rows.flatMap((row,i)=>/^\s*[■▪●•]\s*/u.test(row)?[i]:[]);
+  if(bullets.length<2)return [block];
+  const starts=[0,...bullets.slice(1)];
+  return starts.map((start,i)=>{
+   const end=starts[i+1]??rows.length;
+   return {...block,sourceText:rows.slice(start,end).join('\n'),
+    sourceParagraph:'lines:'+(Number(match[1])+start)+'-'+(Number(match[1])+end-1)};
+  });
+ });
+ // A question's immediately following table is part of the same source exercise.
+ // Only join verified adjacent lines on the same PDF page and when the question
+ // explicitly references a table. Never absorb a standalone or unrelated table.
+ const attached:typeof separated=[];
+ for(const block of distinctActivities){
+  const previous=attached.at(-1);
+  const previousRange=/^lines:(\d+)-(\d+)$/.exec(previous?.sourceParagraph??'');
+  const currentRange=/^lines:(\d+)-(\d+)$/.exec(block.sourceParagraph??'');
+  if(block.blockType==='TABLE'&&previous?.blockType==='EXERCISE'&&
+     previous.sourcePage===block.sourcePage&&previousRange&&currentRange&&
+     Number(previousRange[2])+1===Number(currentRange[1])&&
+     /աղյուսակ|table/i.test(previous.sourceText)){
+   previous.sourceText+='\n'+block.sourceText;
+   previous.sourceParagraph='lines:'+previousRange[1]+'-'+currentRange[2];
+  }else attached.push(block);
+ }
  // Empty lines are included in the partition; blank-only blocks need no map owner.
- return {blocks:blocks.filter(b=>b.sourceText.trim().length>0)};
+ return {blocks:attached.filter(b=>b.sourceText.trim().length>0)};
 }
