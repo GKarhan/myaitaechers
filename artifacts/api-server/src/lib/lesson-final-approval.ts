@@ -125,8 +125,8 @@ export async function validateLessonForFinalApproval(
 
   // Legacy JSON can be staged for teacher editing, but has no verified source
   // attachment. This remains a non-overrideable learner-delivery blocker.
-  const metadata=lesson.mappingMetadata as {pipeline?:string}|null;
-  if(metadata?.pipeline==="STAGED_UNVERIFIED_MAP"){
+  const stagedMetadata=lesson.mappingMetadata as {pipeline?:string}|null;
+  if(stagedMetadata?.pipeline==="STAGED_UNVERIFIED_MAP"){
     errors.push({
       code:"LOST_SOURCE_IDENTITY",
       messageArm:"Քարտեզը տեղափոխված է խմբագրման համար, սակայն դասագրքի աղբյուրային կապերը դեռ չեն ստուգվել։ Հաստատումն ու հանձնարարումը հնարավոր չեն մինչև աղբյուրների վերականգնումը։"
