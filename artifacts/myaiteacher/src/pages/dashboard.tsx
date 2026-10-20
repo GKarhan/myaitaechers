@@ -5,6 +5,7 @@ import QuickSwitch from "@/components/QuickSwitch";
 import StudentLessonCard, { type LinkedQuiz } from "@/components/StudentLessonCard";
 import StudentQuizCard from "@/components/StudentQuizCard";
 import {
+  customFetch,
   useGetDashboard,
   useGetStudentSchedule,
   useGetStudentHomeworkSummary,
@@ -79,16 +80,14 @@ export default function Dashboard() {
     setAllLessons(undefined);
     setLessonLoadError(null);
     const timeout = setTimeout(() => controller.abort(), 20000);
-    fetch("/api/student/assigned-lessons", {
+    customFetch<AssignedLesson[]>("/api/student/assigned-lessons", {
       headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
       signal: controller.signal,
+      responseType: "json",
     })
-      .then(async response => {
-        if (!response.ok) throw new Error(`Դասերի բեռնումը չհաջողվեց (HTTP ${response.status})`);
-        const body: unknown = await response.json();
-        if (!Array.isArray(body)) throw new Error("Դասերի տվյալների ձևաչափը սխալ է");
-        return body as AssignedLesson[];
+      .then(lessons => {
+        if (!Array.isArray(lessons)) throw new Error("Դասերի տվյալների ձևաչափը սխալ է");
+        return lessons;
       })
       .then(lessons => {
         if (!cancelled) { setAllLessons(lessons); setLessonLoadError(null); }
