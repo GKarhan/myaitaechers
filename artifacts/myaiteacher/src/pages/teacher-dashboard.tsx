@@ -882,6 +882,9 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
   const [publishing,setPublishing]=useState(false);
   const [staging,setStaging]=useState(false);
   const [showSource,setShowSource]=useState(false);
+  const [approvalConfirmed,setApprovalConfirmed]=useState(false);
+  const [approving,setApproving]=useState(false);
+  const [approvalMessage,setApprovalMessage]=useState("");
   const [selectedExercise,setSelectedExercise]=useState("");
   const [selectedPage,setSelectedPage]=useState("");
   const [sourceText,setSourceText]=useState("");
@@ -975,6 +978,19 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
     }catch(e){setRecoveryFeedback(e instanceof Error?e.message:String(e));}
     finally{setRecoverySaving(false);}
   };
+  const acceptStagedMap=async()=>{
+    setApproving(true);setApprovalMessage("");
+    try{
+      const v=await customFetch<{approved:boolean;nodeCount:number}>(`/api/lessons/${lessonId}/staged-map/approve`,{
+        method:"POST",headers:{Authorization:`Bearer ${token??""}`,"Content-Type":"application/json"},
+        body:JSON.stringify({confirmStagedContent:true}),responseType:"json"
+      });
+      if(!v.approved)throw Error("Հաստատումը չհաջողվեց");
+      setApprovalMessage(`Հաստատված է ${v.nodeCount} MicroNode։ Այժմ դասի վերևում սեղմիր «Հանձնարարել սովորողին»։`);
+      await qc.invalidateQueries();
+    }catch(e){setApprovalMessage(e instanceof Error?e.message:String(e));}
+    finally{setApproving(false);}
+  };
   const topics=Array.isArray(draft.topics)?draft.topics:[];
   const exercises=Array.isArray(draft.exercises)?draft.exercises:[];
   const item=(label:string,value:unknown)=>value!==null&&value!==undefined&&value!==''?(
@@ -1048,6 +1064,19 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
             </details>)}
           </div>}
         </>}
+      </div>}
+      {!!data?.result?.manualStaging&&<div className="rounded-lg border border-emerald-500/30 p-3 space-y-2">
+        <p className="text-xs font-semibold text-emerald-200">Ուսուցչի հաստատում՝ MicroNode-երով դասի և թեստի փորձարկման համար</p>
+        <p className="text-xs text-amber-100">Քարտեզի MicroNode-երը պահպանված են հիմնական բազայում։ Չստուգված դասագրքային առաջադրանքները չեն համարվի հաստատված և չեն օգտագործվի թեստի համար։ Քարտեզի բովանդակությունը դեռ պահանջում է հետագա մանկավարժական վերանայում։</p>
+        <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={approvalConfirmed}
+          onChange={e=>setApprovalConfirmed(e.target.checked)} />
+          <span>Ծանոթացել եմ քարտեզի բովանդակությանը և հաստատում եմ այն սովորողին տրամադրելու համար՝ որպես ուսուցչի ընդունած աշխատանքային տարբերակ։</span>
+        </label>
+        <button type="button" disabled={!approvalConfirmed||approving} onClick={()=>void acceptStagedMap()}
+          className="rounded border border-emerald-400/50 px-3 py-2 text-xs text-emerald-200 disabled:opacity-40">
+          {approving?"Հաստատվում է…":"Հաստատել քարտեզը"}
+        </button>
+        {approvalMessage&&<p role="status" className="text-xs text-amber-100">{approvalMessage}</p>}
       </div>}
       {editSuccess&&<p className="text-xs text-emerald-300">{editSuccess}</p>}
       {publishNote&&<p className="text-xs text-amber-200" role="status">{publishNote}</p>}
