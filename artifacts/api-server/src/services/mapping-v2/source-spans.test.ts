@@ -71,9 +71,20 @@ const lessonBlocks=materializeSourceSpans(lessonPage,9,{
   {blockType:'ACTIVITY',firstLine:21}
  ]});
 assert.equal(lessonBlocks.blocks.filter(b=>b.blockType==='EXERCISE').length,13);
-assert.equal(lessonBlocks.blocks.filter(b=>b.blockType==='TABLE').length,1);
+assert.equal(lessonBlocks.blocks.filter(b=>b.blockType==='TABLE').length,0);
+assert.ok(lessonBlocks.blocks.find(b=>b.sourceText.startsWith('9.'))?.sourceText.includes('Body | Substance | Phenomenon'));
 assert.equal(lessonBlocks.blocks.filter(b=>b.blockType==='ACTIVITY').length,1);
 assert.equal(lessonBlocks.blocks.map(b=>b.sourceText).join('\n'),lessonPage);
 assert.ok(lessonBlocks.blocks.find(b=>b.sourceText.startsWith('5.'))?.sourceText.includes('a wrapped continuation'));
 assert.ok(lessonBlocks.blocks.find(b=>b.sourceText.startsWith('10.'))?.sourceText.includes('4. Water warms'));
 console.log('PASS: full 13-question lesson fixture preserves question options, separate table, activity and all source text');
+
+const separateTable=materializeSourceSpans('9. Describe the change\\nTABLE 1\\nBody | Substance',9,{
+ firstBlockType:'EXERCISE',blocks:[{blockType:'TABLE',firstLine:2}]});
+assert.equal(separateTable.blocks.length,2);
+const adjacentTable=materializeSourceSpans('9. Complete table 1\\nTABLE 1\\nBody | Substance',9,{
+ firstBlockType:'EXERCISE',blocks:[{blockType:'TABLE',firstLine:2}]});
+assert.equal(adjacentTable.blocks.length,1);
+assert.equal(adjacentTable.blocks[0].sourceParagraph,'lines:1-3');
+assert.equal(adjacentTable.blocks[0].sourceText,'9. Complete table 1\\nTABLE 1\\nBody | Substance');
+console.log('PASS: only immediately adjacent referenced tables attach to question source');
