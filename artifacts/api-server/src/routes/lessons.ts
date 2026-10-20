@@ -5700,6 +5700,10 @@ router.post("/lessons/:lessonId/map-draft/stage",requireAuth,requireLessonAuthor
        reviewIssues:[...map.reviewIssues,"Աղբյուրային հղումները չեն ստուգվել, և դասագրքային վարժությունները սպասում են վերականգնման։"]
      } as any
    }).where(eq(lessonsTable.id,lessonId));
+   await tx.update(mappingJobsTable).set({result:{...jobResult,manualStaging:{
+     stagedAt:new Date().toISOString(),nodeCount:ids.size,stagedBy:req.userId??null,
+     reason:"UNVERIFIED_SOURCE"
+   }} as any,updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
    return {status:200 as const,staged:true,nodeCount:ids.size,topicCount:topicIds.size,
      aiExerciseCount:stagedExercises,missingTextbookCount:map.exercises.filter(x=>x.sourceType==="textbook").length};
   });
