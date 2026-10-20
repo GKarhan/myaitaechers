@@ -880,8 +880,9 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
   const [editError,setEditError]=useState("");
   const [editSuccess,setEditSuccess]=useState("");
   const [publishing,setPublishing]=useState(false);
+  const [staging,setStaging]=useState(false);
   const [publishNote,setPublishNote]=useState("");
-  const {data}=useQuery<{status:string;jobId:number|null;updatedAt?:string;result?:{previewKind?:string;draft?:PreviewMap;reason?:string;editedByTeacher?:boolean}|null}>({
+  const {data}=useQuery<{status:string;jobId:number|null;updatedAt?:string;result?:{previewKind?:string;draft?:PreviewMap;reason?:string;editedByTeacher?:boolean;manualStaging?:{stagedAt:string}|null}|null}>({
     queryKey:['lesson-map-status',lessonId],
     queryFn:()=>customFetch(`/api/lessons/${lessonId}/map-status`,{
       headers:{Authorization:`Bearer ${token??''}`},responseType:'json'
@@ -927,6 +928,20 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
           :x.data?.message??x.data?.reason??x.message??"Պահպանման սխալ");
     }finally{setPublishing(false);}
   };
+  const stageDraft=async()=>{
+    if(!data?.jobId)return;
+    setStaging(true);setPublishNote("");
+    try{
+      const x=await customFetch<{staged:boolean;nodeCount:number;missingTextbookCount:number}>(`/api/lessons/${lessonId}/map-draft/stage`,{
+        method:"POST",headers:{Authorization:`Bearer ${token??""}`,"Content-Type":"application/json"},
+        body:JSON.stringify({jobId:data.jobId}),responseType:"json",
+      });
+      if(!x.staged)throw Error("Քարտեզը չի տեղափոխվել");
+      setPublishNote(`Հիմնական բազայում պահպանվեց ${x.nodeCount} MicroNode՝ որպես խմբագրվող սևագիր։ ${x.missingTextbookCount} դասագրքային առաջադրանք սպասում է աղբյուրի ստուգման։ Սովորողին հանձնարարումը դեռ արգելափակված է։`);
+      await qc.invalidateQueries();
+    }catch(e){setPublishNote(e instanceof Error?e.message:String(e));}
+    finally{setStaging(false);}
+  };
   const topics=Array.isArray(draft.topics)?draft.topics:[];
   const exercises=Array.isArray(draft.exercises)?draft.exercises:[];
   const item=(label:string,value:unknown)=>value!==null&&value!==undefined&&value!==''?(
@@ -947,6 +962,11 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
         </button>
         <button type="button" onClick={()=>void publishDraft()} disabled={publishing||editing} className="rounded border border-emerald-400/40 px-3 py-1 text-xs text-emerald-200 disabled:opacity-50">
           {publishing?"Ստուգվում է...":"Ստուգել և տեղափոխել հիմնական քարտեզ"}
+        </button>
+        <button type="button" onClick={()=>void stageDraft()}
+          disabled={staging||editing||!!data?.result?.manualStaging}
+          className="rounded border border-sky-400/40 px-3 py-1 text-xs text-sky-200 disabled:opacity-50">
+          {data?.result?.manualStaging?"✓ Աշխատանքային քարտեզը տեղափոխված է":staging?"Պահպանվում է...":"Տեղափոխել հիմնական բազա՝ որպես սևագիր"}
         </button>
         {data?.result?.editedByTeacher&&<span className="text-xs text-amber-200">Ուսուցչի խմբագրած նախագիծ</span>}
       </div>
