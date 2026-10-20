@@ -70,10 +70,10 @@ const lessonBlocks=materializeSourceSpans(lessonPage,9,{
   {blockType:'EXERCISE',firstLine:18},
   {blockType:'ACTIVITY',firstLine:21}
  ]});
-assert.equal(lessonBlocks.filter(b=>b.blockType==='EXERCISE').length,13);
-assert.equal(lessonBlocks.filter(b=>b.blockType==='TABLE').length,1);
-assert.equal(lessonBlocks.filter(b=>b.blockType==='ACTIVITY').length,1);
-assert.equal(lessonBlocks.map(b=>b.sourceText).join('\n'),lessonPage);
-assert.ok(lessonBlocks.find(b=>b.sourceText.startsWith('5.'))?.sourceText.includes('a wrapped continuation'));
-assert.ok(lessonBlocks.find(b=>b.sourceText.startsWith('10.'))?.sourceText.includes('4. Water warms'));
+assert.equal(lessonBlocks.blocks.filter(b=>b.blockType==='EXERCISE').length,13);
+assert.equal(lessonBlocks.blocks.filter(b=>b.blockType==='TABLE').length,1);
+assert.equal(lessonBlocks.blocks.filter(b=>b.blockType==='ACTIVITY').length,1);
+assert.equal(lessonBlocks.blocks.map(b=>b.sourceText).join('\n'),lessonPage);
+assert.ok(lessonBlocks.blocks.find(b=>b.sourceText.startsWith('5.'))?.sourceText.includes('a wrapped continuation'));
+assert.ok(lessonBlocks.blocks.find(b=>b.sourceText.startsWith('10.'))?.sourceText.includes('4. Water warms'));
 console.log('PASS: full 13-question lesson fixture preserves question options, separate table, activity and all source text');
