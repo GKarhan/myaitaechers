@@ -873,7 +873,13 @@ type PreviewMap = {
 };
 function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
   const {token}=useAuth();
-  const {data}=useQuery<{status:string;jobId:number|null;result?:{previewKind?:string;draft?:PreviewMap;reason?:string}|null}>({
+  const qc=useQueryClient();
+  const [editing,setEditing]=useState(false);
+  const [editText,setEditText]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [editError,setEditError]=useState("");
+  const [editSuccess,setEditSuccess]=useState("");
+  const {data}=useQuery<{status:string;jobId:number|null;updatedAt?:string;result?:{previewKind?:string;draft?:PreviewMap;reason?:string;editedByTeacher?:boolean}|null}>({
     queryKey:['lesson-map-status',lessonId],
     queryFn:()=>customFetch(`/api/lessons/${lessonId}/map-status`,{
       headers:{Authorization:`Bearer ${token??''}`},responseType:'json'
@@ -885,6 +891,21 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
   });
   const draft=data?.result?.previewKind==='UNVALIDATED_PROVIDER_DRAFT'?data.result.draft:null;
   if(!draft)return null;
+  const startEditing=()=>{setEditText(JSON.stringify(draft,null,2));setEditError("");setEditSuccess("");setEditing(true);};
+  const saveEditedDraft=async()=>{
+    if(!data?.updatedAt)return;
+    setSaving(true);setEditError("");setEditSuccess("");
+    try{
+      const parsed=JSON.parse(editText);
+      const result=await customFetch<{saved:boolean}>(`/api/lessons/${lessonId}/map-draft`,{
+        method:"PUT",headers:{Authorization:`Bearer ${token??""}`,"Content-Type":"application/json"},
+        body:JSON.stringify({draft:parsed,expectedUpdatedAt:data.updatedAt}),responseType:"json",
+      });
+      if(!result.saved)throw Error("Չհաջողվեց պահպանել");
+      setEditing(false);setEditSuccess("Փոփոխությունները պահպանվել են որպես չստուգված նախագիծ։");
+      await qc.invalidateQueries({queryKey:["lesson-map-status",lessonId]});
+    }catch(e){setEditError(e instanceof Error?e.message:String(e));}finally{setSaving(false);}
+  };
   const topics=Array.isArray(draft.topics)?draft.topics:[];
   const exercises=Array.isArray(draft.exercises)?draft.exercises:[];
   const item=(label:string,value:unknown)=>value!==null&&value!==undefined&&value!==''?(
@@ -899,6 +920,23 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
         Այս տեսքը միայն դիտման համար է։
       </p>
       <p className="text-xs">Թեմաներ՝ {topics.length} · MicroNode-եր՝ {topics.reduce((n,t)=>n+(t.nodes?.length??0),0)} · Առաջադրանքներ՝ {exercises.length}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={startEditing} disabled={saving} className="rounded border border-amber-400/40 px-3 py-1 text-xs text-amber-200">
+          ✏️ Խմբագրել քարտեզի ցանկացած դաշտ
+        </button>
+        {data?.result?.editedByTeacher&&<span className="text-xs text-amber-200">Ուսուցչի խմբագրած նախագիծ</span>}
+      </div>
+      {editSuccess&&<p className="text-xs text-emerald-300">{editSuccess}</p>}
+      {editing&&<div className="space-y-2 rounded border border-amber-400/30 p-3">
+        <p className="text-xs text-amber-100">Խմբագրիր JSON-ի ցանկացած դաշտ՝ թեմաներ, MicroNode-եր, բացատրություններ, Bloom-ի ուղիներ, վարժություններ և կապեր։ Պահպանումը չի հաստատում կամ հանձնարարում դասը։ Սկզբնական ԱԲ տարբերակը պահվում է։</p>
+        <textarea aria-label="Քարտեզի ամբողջական խմբագիր" value={editText} onChange={e=>setEditText(e.target.value)}
+          rows={24} spellCheck={false} className="w-full rounded border border-white/20 bg-black/50 p-3 font-mono text-xs text-white" />
+        {editError&&<p className="text-xs text-red-300" role="alert">{editError}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={()=>void saveEditedDraft()} disabled={saving} className="rounded bg-amber-500/20 px-3 py-1 text-xs text-amber-100">{saving?"Պահպանվում է...":"Պահպանել փոփոխությունները"}</button>
+          <button type="button" onClick={()=>{setEditing(false);setEditError("");}} disabled={saving} className="rounded border border-white/20 px-3 py-1 text-xs">Չեղարկել</button>
+        </div>
+      </div>}
       {item('Առանցքային հարց',draft.essentialQuestion)}
       {item('Քարտեզագրման սխեմա',draft.schemaVersion)}
       {item('Ստուգման հարցերի քանակ',draft.reviewIssues?.length??0)}
