@@ -5829,6 +5829,48 @@ router.post("/lessons/:lessonId/recover-source-exercise",requireAuth,requireLess
  }
 });
 
+// Teacher acceptance of a staged AI map for the lesson-and-quiz pilot.
+// The teacher explicitly accepts the unverified textbook references;
+// excluded source exercises are never silently converted into student tasks.
+router.post("/lessons/:lessonId/staged-map/approve",requireAuth,requireLessonAuthor,async(req:AuthRequest,res)=>{
+ const lessonId=Number(req.params.lessonId);
+ if(!Number.isSafeInteger(lessonId)||lessonId<1){res.status(400).json({error:"INVALID_LESSON"});return;}
+ if(req.body?.confirmStagedContent!==true){res.status(400).json({error:"TEACHER_CONFIRMATION_REQUIRED"});return;}
+ const approval=await db.transaction(async tx=>{
+   await tx.execute(sql`SELECT id FROM lessons WHERE id=${lessonId} FOR UPDATE`);
+   const [lesson]=await tx.select().from(lessonsTable).where(eq(lessonsTable.id,lessonId)).limit(1);
+   if(!lesson)return {status:404 as const,error:"LESSON_NOT_FOUND"};
+   const metadata=(lesson.mappingMetadata??{}) as Record<string,any>;
+   if(lesson.status!=="draft"||metadata.pipeline!=="STAGED_UNVERIFIED_MAP")
+     return {status:409 as const,error:"NOT_STAGED_DRAFT"};
+   const nodes=await tx.select().from(lessonNodesTable).where(eq(lessonNodesTable.lessonId,lessonId));
+   const levels=await tx.select({lessonNodeId:lessonNodeCognitiveLevelsTable.lessonNodeId})
+     .from(lessonNodeCognitiveLevelsTable).innerJoin(lessonNodesTable,eq(lessonNodesTable.id,lessonNodeCognitiveLevelsTable.lessonNodeId))
+     .where(eq(lessonNodesTable.lessonId,lessonId));
+   if(!nodes.length||nodes.some(n=>!n.learningObjective?.trim()||
+     !(n.theoryContent?.trim()||n.childFriendlyExplanation?.trim()))||
+     nodes.some(n=>!levels.some(l=>l.lessonNodeId===n.id)))
+     return {status:422 as const,error:"INCOMPLETE_MICRONODES"};
+   const exercises=await tx.select().from(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId,lessonId));
+   if(exercises.some(e=>e.sourceType==="textbook"&&e.status!=="approved"))
+     return {status:422 as const,error:"UNREVIEWED_SOURCE_EXERCISES"};
+   // Do not change source verification claims or approve unreviewed textbook items.
+   await tx.update(lessonNodesTable).set({status:"approved",reviewedBy:req.userId??null})
+     .where(eq(lessonNodesTable.lessonId,lessonId));
+   await tx.update(lessonsTable).set({
+     status:"approved",everApproved:false,
+     mappingMetadata:{...metadata,stagedPilotApproval:{
+       mode:"TEACHER_ACCEPTED_UNVERIFIED_MAP",acceptedAt:new Date().toISOString(),
+       acceptedBy:req.userId??null,pendingTextbookExercises:metadata.staging?.textbookExercisesPending?.length??0,
+       limit:"MicroNode-based test pilot only"
+     }}
+   } as any).where(eq(lessonsTable.id,lessonId));
+   return {status:200 as const,approved:true,nodeCount:nodes.length,
+     pendingTextbookExercises:metadata.staging?.textbookExercisesPending?.length??0};
+ });
+ res.status(approval.status).json(approval);
+});
+
 // ── GET /lessons/:lessonId/map-status ─────────────────────────────────────────
 // Lesson-centric poll endpoint: returns the most recent 'map' job for this
 // lesson so the teacher UI can resume progress display after navigation-away.
