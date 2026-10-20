@@ -39,3 +39,15 @@ for(let mask=0;mask<128;mask++){
  assert.equal(output.blocks.map(b=>b.sourceText).join('\n'),exhaustive);
 }
 console.log('PASS: all 128 source partitions preserve every character including first/last lines');
+
+
+const mergedQuestions=Array.from({length:9},(_,i)=>String(i+1)+'. Question '+(i+1)+'?').join('\n');
+const recovered=materializeSourceSpans(mergedQuestions,9,{firstBlockType:'EXERCISE',blocks:[]});
+assert.equal(recovered.blocks.length,9);
+assert.equal(recovered.blocks.map(b=>b.sourceText).join('\n'),mergedQuestions);
+assert.equal(recovered.blocks[8].sourceParagraph,'lines:9-9');
+const options='10. Match these phenomena\n1. Arrow moves\n2. Light reflects\n3. Compass turns\n4. Water warms';
+assert.equal(materializeSourceSpans(options,9,{firstBlockType:'EXERCISE',blocks:[]}).blocks.length,1);
+const lastThree='11. What is matter?\n12. Name types of matter\n13. What is physics for?';
+assert.equal(materializeSourceSpans(lastThree,9,{firstBlockType:'EXERCISE',blocks:[]}).blocks.length,3);
+console.log('PASS: merged question recovery, original line offsets, and matching-options preservation');
