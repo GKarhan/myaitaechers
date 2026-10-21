@@ -14,6 +14,7 @@ type TakeQuestion = {
 };
 
 type TakeData = {
+  assessmentConfig?: { purpose:string; context:string } | null;
   assignmentId: number;
   sessionId: number;
   attemptId: number;
@@ -26,9 +27,10 @@ type TakeData = {
 };
 
 type Feedback = {
-  isCorrect: boolean;
+  deferred?: boolean;
+  isCorrect: boolean | null;
   selectedOptionIndex: number;
-  correctOptionIndex: number;
+  correctOptionIndex: number | null;
   selectedAnswer: string | null;
   correctAnswer: string | null;
   feedback: {
@@ -211,13 +213,14 @@ export default function QuizTake() {
 
       <main className="max-w-2xl mx-auto px-5 py-8">
         <section className="rounded-3xl border border-white/10 bg-card/60 p-6">
+          {data.assessmentConfig && <p className="text-xs text-muted-foreground mb-2">{data.assessmentConfig.purpose === "CHECK" ? "Գիտելիքի անկախ ստուգում" : "Ուսուցողական"} · {({IN_CLASS:"Միայն դասարանում",AT_HOME:"Միայն տանը",CLASS_THEN_HOME:"Դասարանում սկսել, տանը շարունակել",ANYWHERE:"Ցանկացած վայրում"} as Record<string,string>)[data.assessmentConfig.context]}</p>}
           <p className="text-xs text-primary mb-3">Հարց {currentIndex + 1}</p>
           <h1 className="text-lg font-semibold leading-relaxed">{question.questionText}</h1>
           <div className="mt-6 space-y-3">
             {question.options.map((option, optionIndex) => {
               const selected = answers[question.id] === optionIndex;
               const correct = currentFeedback?.correctOptionIndex === optionIndex;
-              const cls = currentFeedback
+              const cls = currentFeedback && !currentFeedback.deferred
                 ? correct
                   ? "border-teal-400/60 bg-teal-400/15"
                   : selected
@@ -238,7 +241,8 @@ export default function QuizTake() {
             })}
           </div>
 
-          {currentFeedback && (
+          {currentFeedback?.deferred && <p className="mt-4 text-primary">Պատասխանը պահպանված է։ Արդյունքը՝ թեստի ավարտից հետո։</p>}
+          {currentFeedback && !currentFeedback.deferred && (
             <div className={`mt-6 rounded-2xl border p-4 ${currentFeedback.isCorrect ? "border-teal-400/30 bg-teal-400/10" : "border-amber-400/30 bg-amber-400/10"}`}>
               <p className="font-semibold">
                 {currentFeedback.isCorrect ? "✅ Ճիշտ է" : "❌ Սխալ է"}

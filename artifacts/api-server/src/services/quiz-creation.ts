@@ -1,13 +1,17 @@
+import { normalizeQuestionText } from "./quiz-question-quality.js";
+import { allocateNodeQuestions, type AssessmentConfig } from "./node-assessment-policy.js";
 import {
   db,
   lessonNodeCognitiveLevelsTable,
   lessonNodesTable,
+  quizAnswersTable,
+  quizAttemptsTable,
   quizAssignmentsTable,
   quizLessonLinksTable,
   quizQuestionsTable,
   quizzesTable,
 } from "@workspace/db";
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import {
   generateQuizQuestions,
@@ -69,6 +73,7 @@ export class QuizCanonicalTargetChangedError extends Error {
 }
 
 export type CreateQuizFromNodeScopeInput = {
+  assessmentConfig?: AssessmentConfig;
   teacherId: number;
   subjectId: number;
   classId?: number | null;
@@ -191,12 +196,20 @@ export async function generateQuizFromNodeScope(
     throw new QuizCreationError("QUESTION_SCOPE_INVALID");
   }
 
+  const priorQuestions = input.assessmentConfig && input.studentId != null
+    ? await db.select({text:quizQuestionsTable.questionText}).from(quizAnswersTable)
+      .innerJoin(quizQuestionsTable,eq(quizQuestionsTable.id,quizAnswersTable.questionId))
+      .innerJoin(quizAttemptsTable,eq(quizAttemptsTable.id,quizAnswersTable.attemptId))
+      .innerJoin(quizAssignmentsTable,eq(quizAssignmentsTable.id,quizAttemptsTable.quizAssignmentId))
+      .where(and(eq(quizAssignmentsTable.studentId,input.studentId),inArray(quizQuestionsTable.nodeId,nodeIds))) : [];
+  const avoidQuestionTexts = [...new Set(priorQuestions.map(q=>q.text))];
+  const exposedFamilies = new Set(avoidQuestionTexts.map(normalizeQuestionText));
   const canonicalTargets = input.generationPurpose === "retest" || input.generationPurpose === "standard"
     ? []
     : await resolveNormalQuizCanonicalTargets(nodeIds);
   let generated: GeneratedQuestion[];
   if (canonicalTargets.length > 0) {
-    const allocation = allocateQuestionsByNode(nodeIds, input.questionCount);
+    const allocation = input.assessmentConfig ? allocateNodeQuestions(nodeIds, input.questionCount) : allocateQuestionsByNode(nodeIds, input.questionCount);
     const batches: GeneratedQuestion[] = [];
     for (const target of canonicalTargets) {
       const nodeQuestionCount = allocation.get(target.nodeId) ?? 0;
@@ -217,6 +230,7 @@ export async function generateQuizFromNodeScope(
         questionCount: nodeQuestionCount,
         difficultyMode: input.difficultyMode,
         canonicalTargets: [target],
+        avoidQuestionTexts,
         questionProvider: injectedProvider,
         qualityReview: input.qualityReview,
       });
@@ -232,6 +246,17 @@ export async function generateQuizFromNodeScope(
       batches.push(...nodeBatch);
     }
     generated = batches;
+  } else if (input.assessmentConfig) {
+    const allocation = allocateNodeQuestions(nodeIds, input.questionCount);
+    const batches: GeneratedQuestion[] = [];
+    for (const [nodeId, count] of allocation) {
+      const generate = input.generateQuestions ?? generateQuizQuestions;
+      const batch = await generate({ nodeIds: [nodeId], questionCount: count, difficultyMode: input.difficultyMode,
+        avoidQuestionTexts, questionProvider: input.questionProvider, qualityReview: input.qualityReview });
+      if (batch.length !== count || batch.some(q => q.nodeId !== nodeId)) throw new QuizCreationError("QUESTION_SCOPE_INVALID");
+      batches.push(...batch);
+    }
+    generated = batches;
   } else {
     const generate = input.generateQuestions ?? generateQuizQuestions;
     generated = await generate({
@@ -239,6 +264,15 @@ export async function generateQuizFromNodeScope(
       questionCount: input.questionCount,
       difficultyMode: input.difficultyMode,
     });
+  }
+
+  if (input.assessmentConfig) {
+    const allocation = allocateNodeQuestions(nodeIds, input.questionCount);
+    for (const [nodeId, count] of allocation) {
+      const questions = generated.filter(q => q.nodeId === nodeId);
+      const unique = new Set(questions.map(q => normalizeQuestionText(q.questionText)));
+      if (questions.length !== count || unique.size !== count || questions.some(q=>exposedFamilies.has(normalizeQuestionText(q.questionText)))) throw new QuizCreationError("QUESTION_SCOPE_INVALID");
+    }
   }
 
   if (generated.length === 0 && !input.allowEmptyQuestions) {
@@ -313,6 +347,7 @@ export async function persistGeneratedQuizInTransaction(
   const [quiz] = await tx
     .insert(quizzesTable)
     .values({
+      assessmentConfig: input.assessmentConfig ?? null,
       teacherId: input.teacherId,
       subjectId: input.subjectId,
       classId: input.classId ?? null,

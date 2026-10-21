@@ -1,3 +1,6 @@
+import { normalizeQuestionText } from "../services/quiz-question-quality.js";
+import { resolveKnowledgeTreeStates } from "../services/knowledge-tree-state.js";
+import { parseAssessmentConfig, allocateNodeQuestions, aggregateAssessments } from "../services/node-assessment-policy.js";
 import { Router } from "express";
 import {
   db,
@@ -153,6 +156,7 @@ async function buildStudentResultAnalysis(
           .where(inArray(lessonNodesTable.id, nodeIds))
       : [];
   const lnMap = new Map(lessonNodeRows.map((n) => [n.id, n]));
+  const canonicalStates = await resolveKnowledgeTreeStates(studentId,nodeIds);
 
   // knowledge_nodes + review_schedule — for current KT mastery state, needs_review
   // detection (dueAt), and provisional flag (isProvisional).
@@ -271,11 +275,13 @@ async function buildStudentResultAnalysis(
       total:           agg.total,
       correct:         agg.correct,
       incorrect:       agg.total - agg.correct,
-      percent,
+      percent: canonicalStates.get(nodeId)?.assessment?.percent ?? percent,
       masteryLevel,
       masteryScore,
       confidenceScore: kn?.confidenceScore ?? confidenceScore,
       isProvisional,
+      assessment: canonicalStates.get(nodeId)?.assessment ?? null,
+      knowledgeState: canonicalStates.get(nodeId)?.knowledgeState,
       nextAction,
     };
   });
@@ -416,6 +422,7 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     lessonIds,   // array of lesson ids — route maps to nodeIds internally
     nodeIds: explicitNodeIds,
     quizType: requestedQuizType,
+    assessmentConfig: requestedAssessmentConfig,
     generationMode = "canonical",
     questionCount = 10,
     difficultyMode = "MIXED",
@@ -427,12 +434,15 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     lessonIds?: number[];
     nodeIds?: number[];
     quizType?: string;
+    assessmentConfig?: unknown;
     generationMode?: "canonical" | "standard";
     questionCount?: number;
     difficultyMode?: string;
     title?: string;
   };
 
+  const assessmentConfig = requestedAssessmentConfig == null ? undefined : parseAssessmentConfig(requestedAssessmentConfig);
+  if (requestedAssessmentConfig != null && !assessmentConfig) { res.status(400).json({error:"INVALID_ASSESSMENT_CONFIG"}); return; }
   if (!["canonical", "standard"].includes(generationMode)) {
     res.status(400).json({ error: "Invalid quiz generation mode" });
     return;
@@ -468,6 +478,12 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     res.status(400).json({ error: "No nodes found — provide lessonIds or nodeIds" });
     return;
   }
+  resolvedNodeIds = [...new Set(resolvedNodeIds)];
+  if (assessmentConfig) {
+    try { allocateNodeQuestions(resolvedNodeIds, questionCount); }
+    catch { res.status(400).json({error:"QUESTION_COUNT_OUTSIDE_NODE_RANGE",min:resolvedNodeIds.length,max:Math.min(50,resolvedNodeIds.length*3)});return; }
+  }
+
   resolvedNodeIds = [...new Set(resolvedNodeIds)];
 
   // Phase 1.9: resolve authoritative lesson IDs for the relationship table.
@@ -586,6 +602,7 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     // Remove this branch only when every creation client polls generation jobs.
     try {
       const created = await createQuizFromNodeScope({
+        assessmentConfig: assessmentConfig ?? undefined,
         teacherId: req.userId!,
         subjectId,
         classId,
@@ -654,6 +671,7 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
   }
 
   const snapshot = normalizeQuizGenerationRequest({
+    assessmentConfig: assessmentConfig ?? undefined,
     generationMode,
     subjectId,
     classId,
@@ -1046,6 +1064,14 @@ router.get("/quizzes/:id/results", requireTeacher, async (req: AuthRequest, res)
     return { ...row, totalCorrect: progress.totalCorrect, totalQuestions: progress.totalQuestions,
       scorePercent: progress.scorePercent };
   });
+  const [resultQuiz]=await db.select({config:quizzesTable.assessmentConfig,nodeIds:quizzesTable.nodeIds}).from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1);
+  if(parseAssessmentConfig(resultQuiz?.config)) {
+    for(const row of latestRows) {
+      const states=await resolveKnowledgeTreeStates(row.studentId,Array.isArray(resultQuiz?.nodeIds)?resultQuiz.nodeIds as number[]:[]);
+      const totals=aggregateAssessments([...states.values()]);
+      if(totals&&row.completedAt)Object.assign(row,totals);
+    }
+  }
   // Sort: completed worst-score-first; non-completed at the bottom
   latestRows.sort((a, b) => {
     const aComp = a.completedAt !== null;
@@ -1148,7 +1174,7 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
     const answers = progress.latestQuestions.filter(q => q.nodeId === node.nodeId);
     const correct = answers.filter(q => q.isCorrect).length;
     return { ...node, total: answers.length, correct, incorrect: answers.length - correct,
-      percent: answers.length ? Math.round(correct / answers.length * 100) : 0 };
+      percent: node.assessment?.percent ?? (answers.length ? Math.round(correct / answers.length * 100) : 0) };
   });
   const recommendations = histories.at(-1)?.analysis.recommendations ?? [];
   res.json({
@@ -1157,12 +1183,47 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
     totalQuestions: progress.totalQuestions,
     scorePercent: progress.scorePercent,
     initialScorePercent: initial.scorePercent,
+    practiceScorePercent: progress.scorePercent,
+    ...(aggregateAssessments(nodeBreakdown) ?? {}),
     questions,
     nodeBreakdown,
     recommendations,
     attemptHistory: progress.attempts,
   });
 });
+
+// New independent evidence after practice. Scope and author are server-owned.
+router.post("/quizzes/:id/reconfirm", requireStudent, asyncHandler(async (req:AuthRequest,res)=>{
+  const quizId=Number(req.params.id);
+  const [source]=await db.select().from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1);
+  const [assignment]=await db.select().from(quizAssignmentsTable)
+    .where(and(eq(quizAssignmentsTable.quizId,quizId),eq(quizAssignmentsTable.studentId,req.userId!))).limit(1);
+  const config=parseAssessmentConfig(source?.assessmentConfig);
+  if(!source||!assignment||!config){res.status(404).json({error:"ASSESSMENT_NOT_FOUND"});return;}
+  const [completed]=await db.select().from(quizAttemptsTable)
+    .where(and(eq(quizAttemptsTable.quizAssignmentId,assignment.id),isNotNull(quizAttemptsTable.completedAt)))
+    .orderBy(desc(quizAttemptsTable.attemptSequence)).limit(1);
+  if(!completed){res.status(409).json({error:"COMPLETE_PRACTICE_FIRST"});return;}
+  const ids=Array.isArray(source.nodeIds)?source.nodeIds as number[]:[];
+  const states=await resolveKnowledgeTreeStates(req.userId!,ids);
+  const nodeIds=ids.filter(id=>states.get(id)?.assessment?.status!=="NEEDS_SUPPORT" &&
+    (states.get(id)?.knowledgeState!=="MASTERED"||states.get(id)?.assessment?.certainty!=="HIGH"));
+  if(!nodeIds.length){res.status(409).json({error:"NO_INDEPENDENT_CHECK_SCOPE"});return;}
+  const links=await db.select({lessonId:quizLessonLinksTable.lessonId}).from(quizLessonLinksTable).where(eq(quizLessonLinksTable.quizId,quizId));
+  const snapshot=normalizeQuizGenerationRequest({generationMode:"canonical",studentId:req.userId!,
+    assessmentConfig:{...config,purpose:"CHECK"},subjectId:source.subjectId,classId:source.classId,
+    sourceBookId:source.sourceBookId,quizType:source.quizType,lessonIds:links.map(l=>l.lessonId),
+    nodeIds,questionCount:Math.min(3,Math.floor(50/nodeIds.length))*nodeIds.length,difficultyMode:source.difficultyMode as any,title:source.title});
+  const result=await createOrReuseQuizGenerationJob({teacherId:source.teacherId,
+    idempotencyKey:`reconfirm:${assignment.id}:${completed.id}`,snapshot});
+  scheduleQuizGenerationJob(result.job.id);
+  res.status(202).json({jobId:result.job.id,status:result.job.status});
+}));
+router.get("/quizzes/assessment-jobs/:jobId", requireStudent, asyncHandler(async(req:AuthRequest,res)=>{
+  const [job]=await db.select().from(quizGenerationJobsTable).where(eq(quizGenerationJobsTable.id,Number(req.params.jobId))).limit(1);
+  if(!job||(job.requestSnapshot as any)?.studentId!==req.userId!){res.status(404).json({error:"JOB_NOT_FOUND"});return;}
+  res.json({jobId:job.id,status:job.status,quizId:job.quizId,errorCode:job.errorCode});
+}));
 
 // ── GET /api/quizzes/:id/my-result ────────────────────────────────────────────
 // Student: full per-question result + node breakdown + personalized recommendations.
@@ -1195,7 +1256,7 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
     ? and(
         eq(quizAttemptsTable.quizSessionId, session.id),
         requestedAttemptId > 0
-          ? eq(quizAttemptsTable.id, requestedAttemptId)
+          ? and(eq(quizAttemptsTable.id, requestedAttemptId), isNotNull(quizAttemptsTable.completedAt))
           : isNotNull(quizAttemptsTable.completedAt),
       )
     : eq(quizAttemptsTable.quizAssignmentId, assignment.id);
@@ -1234,6 +1295,8 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
     totalCorrect:   attempt.totalCorrect,
     totalQuestions: attempt.totalQuestions,
     scorePercent:   attempt.scorePercent,
+    practiceScorePercent: attempt.scorePercent,
+    ...(aggregateAssessments(nodeBreakdown) ?? {}),
     questions,
     nodeBreakdown,
     recommendations,
@@ -1242,6 +1305,7 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
       status: session.status,
       ...sessionState,
     } : null,
+    assessmentConfig: (await db.select({config:quizzesTable.assessmentConfig}).from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1))[0]?.config ?? null,
     attempts: attemptHistory.map((item) => ({
       ...item,
       completedAt: item.completedAt?.toISOString() ?? null,
@@ -1519,6 +1583,8 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
     return;
   }
 
+  const [takeQuiz] = await db.select({config:quizzesTable.assessmentConfig}).from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1);
+  const config = parseAssessmentConfig(takeQuiz?.config);
   const opened = await getOrCreateActiveAttempt({
     rootQuizId: quizId,
     assignmentId: assignment.id,
@@ -1540,6 +1606,7 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
   const finalizedAnswerMap = new Map(finalizedAnswers.map((answer) => [answer.questionId, answer]));
 
   res.json({
+    assessmentConfig: config,
     assignmentId:     assignment.id,
     assignmentStatus: "IN_PROGRESS",
     sessionId: opened.session.id,
@@ -1561,13 +1628,14 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
         : options.map((_, index) => index);
       const presentedOptions = order.map((index) => options[index]);
       return [{
+        ...(config?.purpose === "CHECK" ? { deferred:true } : {}),
         questionId: snapshot.questionId,
         selectedOptionIndex: scored.selectedPresentationIndex,
-        isCorrect: scored.isCorrect,
-        correctOptionIndex: scored.correctPresentationIndex,
+        isCorrect: config?.purpose === "CHECK" ? null : scored.isCorrect,
+        correctOptionIndex: config?.purpose === "CHECK" ? null : scored.correctPresentationIndex,
         selectedAnswer: presentedOptions[scored.selectedPresentationIndex] ?? null,
-        correctAnswer: presentedOptions[scored.correctPresentationIndex] ?? null,
-        feedback: scored.feedback,
+        correctAnswer: config?.purpose === "CHECK" ? null : presentedOptions[scored.correctPresentationIndex] ?? null,
+        feedback: config?.purpose === "CHECK" ? {whyCorrect:null,whyWrong:null,solutionExplanation:null} : scored.feedback,
       }];
     }),
   });
@@ -1584,6 +1652,8 @@ router.post("/quizzes/:id/attempts/:attemptId/feedback", requireAuth, asyncHandl
     return;
   }
 
+  const [feedbackQuiz] = await db.select({config:quizzesTable.assessmentConfig}).from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1);
+  const checkOnly = parseAssessmentConfig(feedbackQuiz?.config)?.purpose === "CHECK";
   const outcome = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM quiz_attempts WHERE id = ${attemptId} FOR UPDATE`);
     const [access] = await tx.select({
@@ -1648,12 +1718,13 @@ router.post("/quizzes/:id/attempts/:attemptId/feedback", requireAuth, asyncHandl
     return {
       status: 200,
       body: {
-        isCorrect: persisted.isCorrect,
+        deferred: checkOnly,
+        isCorrect: checkOnly ? null : persisted.isCorrect,
         selectedOptionIndex: persistedPresentationIndex,
-        correctOptionIndex: persistedScore.correctPresentationIndex,
+        correctOptionIndex: checkOnly ? null : persistedScore.correctPresentationIndex,
         selectedAnswer: presentedOptions[persistedPresentationIndex] ?? null,
-        correctAnswer: presentedOptions[persistedScore.correctPresentationIndex] ?? null,
-        feedback: persistedScore.feedback,
+        correctAnswer: checkOnly ? null : presentedOptions[persistedScore.correctPresentationIndex] ?? null,
+        feedback: checkOnly ? {whyCorrect:null,whyWrong:null,solutionExplanation:null} : persistedScore.feedback,
       },
     };
   });
@@ -1812,6 +1883,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
   // questions stay usable, but are explicitly unqualified.
   const studentId = req.userId!;
   const scoredTopicIds: number[] = [];
+  let assessmentV1 = false;
   const nodeIds = [...new Set(answerRows
     .map((answer) => answer.nodeId)
     .filter((id): id is number => id !== null))];
@@ -1845,7 +1917,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     }
 
     const [quizRow] = await tx
-      .select({ subjectId: quizzesTable.subjectId })
+      .select({ subjectId: quizzesTable.subjectId, assessmentConfig: quizzesTable.assessmentConfig })
       .from(quizzesTable)
       .where(eq(quizzesTable.id, quizId))
       .limit(1);
@@ -1906,6 +1978,18 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
       : [];
     const sourceExerciseMap = new Map(sourceExercises.map((exercise) => [exercise.id, exercise]));
 
+    const config = parseAssessmentConfig(quizRow.assessmentConfig);
+    assessmentV1 = !!config;
+    const prior = config ? await tx.select({questionId:quizAnswersTable.questionId, questionText:quizQuestionsTable.questionText, nodeId:quizQuestionsTable.nodeId})
+      .from(quizAnswersTable).innerJoin(quizQuestionsTable,eq(quizQuestionsTable.id,quizAnswersTable.questionId)).innerJoin(quizAttemptsTable,eq(quizAttemptsTable.id,quizAnswersTable.attemptId))
+      .innerJoin(quizAssignmentsTable,eq(quizAssignmentsTable.id,quizAttemptsTable.quizAssignmentId))
+      .where(and(eq(quizAssignmentsTable.studentId,studentId),ne(quizAttemptsTable.id,attempt.id),
+        inArray(quizQuestionsTable.nodeId,nodeIds))) : [];
+    const exposed = new Set(prior.map(row=>row.questionId));
+    const exposedFamilies = new Set(prior.map(row=>`${row.nodeId}:${normalizeQuestionText(row.questionText)}`));
+    for (const question of questionMap.values()) {
+      if (exposedFamilies.has(`${question.nodeId}:${normalizeQuestionText(question.questionText)}`)) exposed.add(question.id);
+    }
     for (const answer of answerRows) {
       const question = questionMap.get(answer.questionId);
       const node = answer.nodeId === null ? null : nodeMap.get(answer.nodeId) ?? null;
@@ -1948,7 +2032,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
       const sourceExercise = question.sourceExerciseId === null
         ? null
         : sourceExerciseMap.get(question.sourceExerciseId) ?? null;
-      const qualificationStatus = classifyQualifyingEvidence({
+      const qualificationStatus = config && exposed.has(question.id) ? "unqualified" : classifyQualifyingEvidence({
         lessonNodeId: answer.nodeId,
         cognitiveLevelId,
         taskSource: "quiz_question",
@@ -1970,6 +2054,10 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
         hintUsed: false,
         metadata: {
           source: "quiz",
+          ...(config ? { assessmentVersion:config.version, assessmentPurpose:config.purpose,
+            assessmentCycle:`quiz:${quizId}:attempt:${attempt.id}`,
+            independentAssessment:!exposed.has(question.id) && qualificationStatus === "qualified", answerPreviouslyExposed:exposed.has(question.id),
+            assessmentFamily:normalizeQuestionText(question.questionText) } : {}),
           quizId,
           questionId: question.id,
           qualification_status: qualificationStatus,
@@ -2066,7 +2154,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
   // Commit supporting scores before returning: the client invalidates the tree
   // immediately on success and must not fetch the previous scores.
   await Promise.all(scoredTopicIds.map(topicId =>
-    updateTopicScoring(topicId, studentId, { quizId }),
+    updateTopicScoring(topicId, studentId, { quizId, assessmentV1 }),
   ));
 
   const sessionState = await resolveQuizSessionProjection(quizId, studentId);

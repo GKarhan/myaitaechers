@@ -1,3 +1,5 @@
+import { parseAssessmentConfig } from "./node-assessment-policy.js";
+import { resolveKnowledgeTreeStates } from "./knowledge-tree-state.js";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import {
   db,
@@ -40,7 +42,7 @@ export async function resolveQuizSessionProjection(
   rootQuizId: number,
   learnerId: number,
 ): Promise<QuizSessionProjection> {
-  const [quiz] = await db.select({ nodeIds: quizzesTable.nodeIds })
+  const [quiz] = await db.select({ nodeIds: quizzesTable.nodeIds, assessmentConfig: quizzesTable.assessmentConfig })
     .from(quizzesTable).where(eq(quizzesTable.id, rootQuizId)).limit(1);
   let nodeIds = Array.isArray(quiz?.nodeIds)
     ? quiz.nodeIds.filter((value): value is number => Number.isInteger(value))
@@ -49,6 +51,12 @@ export async function resolveQuizSessionProjection(
     const rows = await db.select({ nodeId: quizQuestionsTable.nodeId })
       .from(quizQuestionsTable).where(eq(quizQuestionsTable.quizId, rootQuizId));
     nodeIds = rows.map((row) => row.nodeId).filter((value): value is number => value !== null);
+  }
+  if (parseAssessmentConfig(quiz?.assessmentConfig)) {
+    const states = await resolveKnowledgeTreeStates(learnerId,nodeIds);
+    const masteredNodeIds = nodeIds.filter(id=>states.get(id)?.knowledgeState === "MASTERED");
+    const learningNodeIds = nodeIds.filter(id=>states.get(id)?.knowledgeState !== "MASTERED" && states.get(id)?.assessment?.status !== "NEEDS_SUPPORT");
+    return { masteredNodeIds,learningNodeIds,knowsCount:masteredNodeIds.length,learningCount:learningNodeIds.length };
   }
   // Local quiz practice tracks questions answered correctly in any completed
   // attempt. This is distinct from the canonical C4/C5 mastery model.

@@ -1,3 +1,4 @@
+import { currentIndependentAssessment, type AssessmentSummary } from "./node-assessment-policy.js";
 import { currentNodeResult, hasCurrentCeilingProvenance, type NodeAnswer } from "./current-node-result.js";
 /**
  * C5 — Canonical Knowledge Tree state projection.
@@ -57,6 +58,7 @@ export type KnowledgeStateResult = {
 
 export type KnowledgeTreeState = KnowledgeStateResult & {
   lessonNodeId: number;
+  assessment?: AssessmentSummary | null;
   masteryScore: number;
   confidenceScore: number | null;
 };
@@ -499,11 +501,24 @@ export async function resolveKnowledgeTreeStates(
       meaningfulAttemptCount,
       qualifyingEvidenceCount,
     });
+    const target = path.find(level => level.isApplicable && level.isTargetCeiling);
+    const assessment = currentIndependentAssessment(nodeEvidence, target?.id);
+    // Versioned independent outcomes are shared by all consumers. Legacy
+    // evidence and untested cognitive targets retain the existing classifier.
+    if (assessment && assessment.attempted > 0 && target && acceptance.accepted) {
+      classification.knowledgeState = assessment.status === "SUCCESS" ? "MASTERED"
+        : assessment.correct > 0 ? "PARTIAL" : "NOT_KNOWN";
+      classification.knowledgeStateLabel = LABELS[classification.knowledgeState];
+      classification.demonstratedCognitiveLevel = assessment.status === "SUCCESS" ? levelSummary(target) : null;
+      classification.remainingCognitiveLevels = assessment.status === "SUCCESS" ? [] : [target.cognitiveLevel];
+      classification.stateReason = assessment.status === "SUCCESS" ? "TARGET_REACHED" : "ATTEMPTED_WITHOUT_TRUSTWORTHY_CEILING";
+    }
     result.set(
       nodeId,
       {
         ...emptyStateForNode(node, classification, knowledgeNodeMap.get(nodeId)),
-        masteryScore: currentNodeResult(nodeEvidence) ?? 0,
+        masteryScore: assessment?.percent ?? currentNodeResult(nodeEvidence) ?? 0,
+        assessment,
       },
     );
   }

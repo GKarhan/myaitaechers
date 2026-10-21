@@ -1,3 +1,4 @@
+import { currentIndependentAssessment } from "./node-assessment-policy.js";
 import { db, evidenceEventsTable, knowledgeNodesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
@@ -212,11 +213,14 @@ const THREE_Q_TIERS: Record<number, { masteryScore: number; confidenceScore: num
 export async function updateTopicScoring(
   topicId: number,
   userId: number,
-  options?: { quizId?: number }
+  options?: { quizId?: number; assessmentV1?: boolean }
 ): Promise<void> {
   try {
     const events = await db
       .select({
+        id: evidenceEventsTable.id,
+        taskReference: evidenceEventsTable.taskReference,
+        cognitiveLevelId: evidenceEventsTable.cognitiveLevelId,
         wasCorrect: evidenceEventsTable.wasCorrect,
         responseTimeMs: evidenceEventsTable.responseTimeMs,
         hintUsed: evidenceEventsTable.hintUsed,
@@ -234,6 +238,21 @@ export async function updateTopicScoring(
       .orderBy(evidenceEventsTable.createdAt);
 
     if (events.length === 0) return;
+
+    if (options?.assessmentV1) {
+      const assessment = currentIndependentAssessment(events);
+      if (!assessment || !assessment.attempted) return;
+      await db.update(knowledgeNodesTable).set({
+        masteryScore: assessment.percent!,
+        confidenceScore: assessment.correct / 3 * 100,
+        status: assessment.status === "SUCCESS" ? "mastered" : assessment.correct ? "weak" : "in_progress",
+        isProvisional: assessment.certainty !== "HIGH", updatedAt: new Date(),
+      }).where(eq(knowledgeNodesTable.id, topicId));
+      const fresh = events.some(e => (e.metadata as any)?.quizId === options.quizId
+        && (e.metadata as any)?.independentAssessment === true);
+      if (fresh && assessment.status === "SUCCESS") await scheduleReview(topicId,userId,assessment.percent!,{delayedOnly:true});
+      return;
+    }
 
     // ── Provisional flag: clear once ≥ 2 distinct quiz sessions on this node ─
     // We count distinct quizIds from evidence_events metadata (set at insert time

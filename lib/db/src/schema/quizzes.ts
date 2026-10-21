@@ -24,6 +24,7 @@ export const quizzesTable = pgTable("quizzes", {
     .references(() => booksTable.id, { onDelete: "set null" }),
   nodeIds: jsonb("node_ids").notNull().default(sql`'[]'::jsonb`),
   title: text("title").notNull(),
+  assessmentConfig: jsonb("assessment_config"),
   questionCount: integer("question_count").notNull().default(10),
   // SIMPLE | MEDIUM | HARD | MIXED
   difficultyMode: text("difficulty_mode").notNull().default("MIXED"),
