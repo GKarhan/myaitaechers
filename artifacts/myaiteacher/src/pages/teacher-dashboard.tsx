@@ -1209,6 +1209,17 @@ function LessonNodesPanel({
   onOpenResults?: (quizId: number) => void;
 }) {
   const qc = useQueryClient();
+  const { token: mappingToken } = useAuth();
+  const { data: mapJobForApproval } = useQuery<{result?:{previewKind?:string;manualStaging?:unknown}|null}>({
+    queryKey:["lesson-map-status",lessonId],
+    queryFn:()=>customFetch(`/api/lessons/${lessonId}/map-status`,{
+      headers:{Authorization:`Bearer ${mappingToken??""}`},responseType:"json"
+    }),
+    enabled:!!mappingToken,
+    staleTime:30000,
+  });
+  const hasStagedMapPreview=mapJobForApproval?.result?.previewKind==="UNVALIDATED_PROVIDER_DRAFT" && !!mapJobForApproval?.result?.manualStaging;
+
   const [, setLocation] = useLocation(); // P1.12: navigate to quiz review
   const [open, setOpen] = useState(false);
   const [deleteAllOpen, setDeleteAllOpen]       = useState(false);
@@ -2708,7 +2719,7 @@ function LessonNodesPanel({
             <summary className="cursor-pointer text-xs text-amber-200 font-semibold">Բացել նախնական JSON քարտեզը և ընդհանուր հաստատումը</summary>
             <div className="mt-3"><UnvalidatedMappingDraftPanel lessonId={lessonId} lessonStatus={authoringStatus} /></div>
           </details>
-          {nodes.length > 0 && !["active","assigned","approved"].includes(authoringStatus) && <CompleteMapApproval lessonId={lessonId} courseId={courseId} status={authoringStatus} />}
+          {nodes.length > 0 && !hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <CompleteMapApproval lessonId={lessonId} courseId={courseId} status={authoringStatus} />}
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center justify-between">
