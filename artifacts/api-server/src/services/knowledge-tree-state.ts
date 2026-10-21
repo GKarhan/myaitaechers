@@ -1,3 +1,4 @@
+import { currentNodeResult, hasCurrentCeilingProvenance, type NodeAnswer } from "./current-node-result.js";
 /**
  * C5 — Canonical Knowledge Tree state projection.
  *
@@ -90,7 +91,7 @@ type ClassifierEvidence = Pick<
   | "createdAt"
 > & {
   topicId: number | null;
-};
+} & Pick<NodeAnswer, "lessonSessionId" | "metadata">;
 
 const LABELS: Record<KnowledgeState, string> = {
   MASTERED: "Գիտի",
@@ -393,6 +394,8 @@ export async function resolveKnowledgeTreeStates(
           id: evidenceEventsTable.id,
           lessonNodeId: evidenceEventsTable.lessonNodeId,
           topicId: evidenceEventsTable.topicId,
+          lessonSessionId: evidenceEventsTable.lessonSessionId,
+          metadata: evidenceEventsTable.metadata,
           cognitiveLevelId: evidenceEventsTable.cognitiveLevelId,
           qualificationStatus: evidenceEventsTable.qualificationStatus,
           wasCorrect: evidenceEventsTable.wasCorrect,
@@ -475,15 +478,19 @@ export async function resolveKnowledgeTreeStates(
     const demonstratedCeilingTrusted =
       acceptance.accepted &&
       persistedLevelId !== null &&
-      persistedReference !== null &&
       persistedIndex >= 0 &&
       computedIndex >= persistedIndex &&
-      nodeEvidence.some(
-        (event) =>
-          event.taskReference === persistedReference &&
-          event.cognitiveLevelId === persistedLevelId &&
-          isQualifyingIndependentEvidence(event, nodeId, acceptedLevelIds),
-      );
+      hasCurrentCeilingProvenance({
+        persistedLevelId,
+        computedLevelId: computation.ceiling?.id ?? null,
+        hasComputedEvidence: computation.latestQualifyingEvidence !== null,
+        hasValidStoredReference: nodeEvidence.some(
+          (event) =>
+            event.taskReference === persistedReference &&
+            event.cognitiveLevelId === persistedLevelId &&
+            isQualifyingIndependentEvidence(event, nodeId, acceptedLevelIds),
+        ),
+      });
     const classification = classifyKnowledgeState({
       pathAccepted: acceptance.accepted,
       path,
@@ -494,7 +501,10 @@ export async function resolveKnowledgeTreeStates(
     });
     result.set(
       nodeId,
-      emptyStateForNode(node, classification, knowledgeNodeMap.get(nodeId)),
+      {
+        ...emptyStateForNode(node, classification, knowledgeNodeMap.get(nodeId)),
+        masteryScore: currentNodeResult(nodeEvidence) ?? 0,
+      },
     );
   }
 
