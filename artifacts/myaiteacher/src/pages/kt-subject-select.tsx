@@ -49,7 +49,7 @@ export default function KtSubjectSelect() {
     queryFn: async () => {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      return customFetch<SubjectsResponse>("/api/knowledge-tree/subjects", { headers, credentials: "include" });
+      return customFetch<SubjectsResponse>("/api/knowledge-tree/subjects", { headers, credentials: "omit" });
     },
     enabled: !!token && !authLoading,
     staleTime: 0,

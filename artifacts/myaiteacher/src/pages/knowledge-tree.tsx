@@ -328,7 +328,7 @@ export default function KnowledgeTree() {
     queryFn: async ({ signal }) => {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      return customFetch<KTData>(`/api/knowledge-tree/${subjectId}`, { signal, headers, credentials: "include" });
+      return customFetch<KTData>(`/api/knowledge-tree/${subjectId}`, { signal, headers, credentials: "omit" });
     },
     enabled: !!token && !isNaN(subjectId) && !isTeacherView,
     staleTime: 0,
@@ -343,7 +343,7 @@ export default function KnowledgeTree() {
       const url = `/api/knowledge-tree/${subjectId}?studentId=${studentId}`;
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      return customFetch<KTData>(url, { headers, credentials: "include" });
+      return customFetch<KTData>(url, { headers, credentials: "omit" });
     },
     enabled: !!token && !isNaN(subjectId) && isTeacherView,
     staleTime: 0,

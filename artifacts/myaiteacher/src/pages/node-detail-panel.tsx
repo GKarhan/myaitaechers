@@ -123,7 +123,7 @@ export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps)
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
       return customFetch<NodeDetail>(`/api/knowledge-tree/nodes/${lessonNodeId}`, {
-        signal, headers, credentials: "include",
+        signal, headers, credentials: "omit",
       });
     },
     enabled: !!token && !!lessonNodeId,
@@ -214,7 +214,7 @@ export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps)
                   await customFetch<{ lessonId: number }>("/api/lessons/start", {
                     method: "POST",
                     headers,
-                    credentials: "include",
+                    credentials: "omit",
                     body: JSON.stringify({
                       lessonId: data.lesson.id,
                       lessonNodeId: data.lessonNodeId,
