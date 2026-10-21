@@ -41,7 +41,7 @@ const DIFFICULTY_LABEL: Record<string, string> = {
   HIGH: "Բարդ",
 };
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+const BASE = "https://myaitaechers-api.onrender.com";
 
 export default function QuizReview() {
   const { id } = useParams<{ id: string }>();
