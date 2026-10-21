@@ -1034,7 +1034,7 @@ function UnvalidatedMappingDraftPanel({lessonId,lessonStatus,approvalOnly=false}
         Այս տեսքը միայն դիտման համար է։
       </p>
       <p className="text-xs">Թեմաներ՝ {topics.length} · MicroNode-եր՝ {topics.reduce((n,t)=>n+(t.nodes?.length??0),0)} · Առաջադրանքներ՝ {exercises.length}</p>
-      <div className="flex flex-wrap items-center gap-2">
+      {!["active","assigned","approved"].includes(lessonStatus) && <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={startEditing} disabled={saving} className="rounded border border-amber-400/40 px-3 py-1 text-xs text-amber-200">
           ✏️ Խմբագրել քարտեզի ցանկացած դաշտ
         </button>
@@ -1047,8 +1047,8 @@ function UnvalidatedMappingDraftPanel({lessonId,lessonStatus,approvalOnly=false}
           {data?.result?.manualStaging?"✓ Աշխատանքային քարտեզը տեղափոխված է":staging?"Պահպանվում է...":"Տեղափոխել հիմնական բազա՝ որպես սևագիր"}
         </button>
         {data?.result?.editedByTeacher&&<span className="text-xs text-amber-200">Ուսուցչի խմբագրած նախագիծ</span>}
-      </div>
-      {!!data?.result?.manualStaging&&<div className="rounded border border-sky-500/30 p-2 space-y-2">
+      </div>}
+      {!["active","assigned","approved"].includes(lessonStatus) && !!data?.result?.manualStaging&&<div className="rounded border border-sky-500/30 p-2 space-y-2">
         <button type="button" onClick={()=>setShowSource(value=>!value)}
           className="text-xs text-sky-200 underline">
           {showSource?"Փակել դասագրքի աղբյուրային էջերը":"Բացել դասագրքի իրական էջերն ու չկապված առաջադրանքները"}
@@ -3468,25 +3468,6 @@ function LessonNodesPanel({
     </div>
   );
 }
-type AssignmentReviewIssue = {
-  code?: string;
-  messageArm?: string;
-  message?: string;
-  count?: number;
-};
-
-type AssignmentReadiness = "READY" | "CONFIRMATION_REQUIRED" | "BLOCKED";
-
-type AssignmentReadinessResponse = {
-  canAssign: boolean;
-  readiness: AssignmentReadiness;
-  confirmationRequired: boolean;
-  reviewIssues: AssignmentReviewIssue[];
-  warnings: AssignmentReviewIssue[];
-  hardBlockers: AssignmentReviewIssue[];
-  errors: AssignmentReviewIssue[];
-};
-
 function LessonAssignmentAction({
   lessonId,
   courseId,
