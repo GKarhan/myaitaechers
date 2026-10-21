@@ -31,7 +31,7 @@ function taskNumber(line:string){return /^\s*(\d{1,3})[.)։]\s*/.exec(line)?.[1]
 function newSection(line:string){return /^\s*(?:§\s*\d|Section\s+\d|Գործնական\s*աշխատանք)/iu.test(line);}
 function refineQuestionStarts(lines:{id:number;text:string}[],spans:{firstLine:number;blockType:BlockType}[],precedingPageTail:string|null){
  const starts=new Map(spans.map(s=>[s.firstLine,s.blockType]));
- let active=false,last=0,inside=false;
+ let active=false,last=0,inside=false,optionLast:number|null=null;
  for(const line of (precedingPageTail??'').split(/\r?\n/u)){
   if(questionHeader(line)){active=true;last=0;}
   else if(newSection(line)){active=false;last=0;}
@@ -41,13 +41,18 @@ function refineQuestionStarts(lines:{id:number;text:string}[],spans:{firstLine:n
   if(questionHeader(line.text)){starts.set(line.id,'NOTE');active=true;inside=false;last=0;continue;}
   if(newSection(line.text)){if(active)starts.set(line.id,/^\s*(?:§|Section)/iu.test(line.text)?'NOTE':'ACTIVITY');active=false;inside=false;continue;}
   if(/^\s*--\s*\d+ of \d+\s*--\s*$/u.test(line.text)){starts.set(line.id,'NOTE');inside=false;continue;}
-  if(/^\s*[❶-❾①-⑳]\s*[^?՞]{1,80}$/u.test(line.text)){
+  if(!active&&/^\s*[❶-❾①-⑳]\s*[^?՞՛:։.!]{1,60}$/u.test(line.text)){
    starts.set(line.id,'NOTE');active=false;inside=false;continue;
   }
   if(!active)continue;
   const number=taskNumber(line.text);
+  if(number!==undefined&&inside){
+   const n=Number(number);
+   if(optionLast!==null&&n===optionLast+1){optionLast=n;starts.delete(line.id);continue;}
+   if(n===1&&last>=1){optionLast=1;starts.delete(line.id);continue;}
+  }
   if(number!==undefined&&Number(number)===last+1){
-   starts.set(line.id,'EXERCISE');inside=true;last=Number(number);
+   starts.set(line.id,'EXERCISE');inside=true;last=Number(number);optionLast=null;
   }else if(inside)starts.delete(line.id);
  }
  return [...starts].map(([firstLine,blockType])=>({firstLine,blockType})).sort((a,b)=>a.firstLine-b.firstLine);
@@ -78,10 +83,14 @@ export function materializeSourceSpans(text:string,pageNumber:number,value:unkno
   const getNumber=(row:string)=>/^\s*(\d{1,3})[.)։]\s*/.exec(row)?.[1];
   const initial=getNumber(rows[0]);
   if(initial===undefined)return [block];
-  const boundaries=[0];let last=Number(initial);
+  const boundaries=[0];let last=Number(initial),optionLast:number|null=null;
   for(let i=1;i<rows.length;i++){
    const value=getNumber(rows[i]);
-   if(value!==undefined&&Number(value)===last+1){boundaries.push(i);last++;}
+   if(value===undefined)continue;
+   const n=Number(value);
+   if(optionLast!==null&&n===optionLast+1){optionLast=n;continue;}
+   if(n===1){optionLast=1;continue;}
+   if(n===last+1){boundaries.push(i);last++;optionLast=null;}
   }
   if(boundaries.length<2)return [block];
   return boundaries.map((from,i)=>{

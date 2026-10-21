@@ -127,3 +127,10 @@ assert.ok(physicsBlocks.some((b:any)=>b.sourcePage===13&&/^❶/u.test(b.sourceTe
 assert.equal(materializeSourceSpans('Theory\n5. A numbered statement',16,{firstBlockType:'NOTE',blocks:[]}).blocks.length,1);
 assert.equal(materializeSourceSpans('1. An unrelated list',17,{firstBlockType:'NOTE',blocks:[]},physicsPages[3].text).blocks.length,1,'next section ends inherited question context');
 console.log('PASS real job 229: seven separate questions over two pages, theory subsection not an exercise, next lesson boundary, exact source and physical pages preserved');
+
+const headerOptions='Questions and tasks\n1. Match the options\n1. Option A\n2. Option B\n3. Option C\n4. Option D\n2. Next question?';
+const withOptions=materializeSourceSpans(headerOptions,15,{firstBlockType:'NOTE',blocks:[]});
+assert.equal(withOptions.blocks.filter(b=>b.blockType==='EXERCISE').length,2);
+assert.ok(withOptions.blocks[1].sourceText.includes('4. Option D'));
+assert.equal(withOptions.blocks.map(b=>b.sourceText).join('\n'),headerOptions);
+console.log('PASS explicit question headers do not split restarted numeric answer options');
