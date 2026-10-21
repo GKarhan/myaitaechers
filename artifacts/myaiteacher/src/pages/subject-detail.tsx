@@ -14,6 +14,8 @@ import {
   getGetStudentScheduleQueryKey,
 } from "@workspace/api-client-react";
 
+const QUIZ_API_BASE = "https://myaitaechers-api.onrender.com";
+
 type StudentLesson = {
   id: number;
   courseId: number | null | undefined;
@@ -90,10 +92,10 @@ export default function SubjectDetail() {
   const { data: assignedQuizzes = [] } = useQuery<AssignedQuiz[]>({
     queryKey: ["quizzes", "assigned", token],
     queryFn: async () => {
-      const r = await fetch("/api/quizzes/assigned", {
+      const r = await fetch(`${QUIZ_API_BASE}/api/quizzes/assigned`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!r.ok) return [];
+      if (!r.ok) throw new Error(`Թեստերի բեռնման սխալ (HTTP ${r.status})`);
       return r.json();
     },
     enabled: !!token,

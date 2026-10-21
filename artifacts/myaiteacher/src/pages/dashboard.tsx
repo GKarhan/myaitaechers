@@ -16,6 +16,8 @@ import {
 
 import { NAV_ITEMS, NAV_STANDALONE_ROUTES, NavKey as Section, lessonStatusBadge } from "@/lib/student-nav";
 
+const QUIZ_API_BASE = "https://myaitaechers-api.onrender.com";
+
 type AssignedLesson = {
   id: number; subject: string; teacherName: string; title: string;
   lessonNumber?: number | null; paragraphNumber?: string | null;
@@ -121,7 +123,7 @@ export default function Dashboard() {
     const active = allLessons.filter((l) => l.status === "active" || l.status === "assigned");
     Promise.all(
       active.map((l) =>
-        fetch(`/api/lessons/${l.id}/student-package`, {
+        fetch(`${QUIZ_API_BASE}/api/lessons/${l.id}/student-package`, {
           headers: { Authorization: `Bearer ${token}` },
         })
           .then((r) => (r.ok ? r.json() : null))
@@ -140,7 +142,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
-    fetch("/api/quizzes/assigned", {
+    fetch(`${QUIZ_API_BASE}/api/quizzes/assigned`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : []))
