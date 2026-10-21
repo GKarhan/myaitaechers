@@ -193,7 +193,7 @@ export default function SubjectDetail() {
   const completed = subject.completedLessons ?? 0;
   const total     = subject.totalLessons ?? 0;
 
-  const activeLesson = (teacherLessons as StudentLesson[]).find((l) => l.status === "active");
+  const assignedLessonList = (teacherLessons as StudentLesson[]).filter((l) => l.status === "active" || l.status === "assigned");
 
   const sortedLessons = [...(teacherLessons as StudentLesson[])].sort((a, b) => {
     const ta = (a.textbookTitle ?? "").localeCompare(b.textbookTitle ?? "", "hy");
@@ -236,17 +236,19 @@ export default function SubjectDetail() {
           </Link>
         </div>
 
-      {/* ── ԱՅՍՕՐՎԱ ԴԱՍԸ ── */}
-      {activeLesson && (
+      {/* All assigned lessons remain visible even after later lessons are activated. */}
+      {assignedLessonList.length > 0 && (
         <div className="mb-12">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            ԱՅՍՕՐՎԱ ԴԱՍԸ
+            <span className="w-2 h-2 rounded-full bg-primary" />
+            ՀԱՆՁՆԱՐԱՐՎԱԾ ԴԱՍԵՐ ({assignedLessonList.length})
           </h2>
-          <StudentLessonCard lesson={{
-            ...activeLesson,
-            subject: subjectName,
-          }} showSubject={false} />
+          <div className="space-y-3">
+            {assignedLessonList.map((assignedLesson) => (
+              <StudentLessonCard key={assignedLesson.id}
+                lesson={{...assignedLesson,subject:subjectName}} showSubject={false}/>
+            ))}
+          </div>
         </div>
       )}
 

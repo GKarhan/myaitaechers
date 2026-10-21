@@ -304,12 +304,8 @@ router.put("/teacher/lessons/:id/status", requireTeacher, async (req: AuthReques
     patch.assignedAt = new Date();
   }
   if (status === "active") {
-    // When activating, deactivate any other active lesson in the same course
-    if (lesson.courseId) {
-      await db.update(lessonsTable)
-        .set({ status: "assigned" })
-        .where(and(eq(lessonsTable.courseId, lesson.courseId), eq(lessonsTable.status, "active")));
-    }
+    // Multiple approved lessons can be active within the same course.
+    // Activating a new lesson must never withdraw the earlier assignment.
     if (!lesson.assignedAt) patch.assignedAt = new Date();
   }
   if (status === "completed") {

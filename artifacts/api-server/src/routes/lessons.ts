@@ -984,7 +984,7 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
 
   // P1.12: Students may only start lessons that have been activated (status="active").
   // Teachers and admins bypass this gate so they can test/preview any lesson.
-  if (req.userRole !== "teacher" && req.userRole !== "admin" && lesson.status !== "active") {
+  if (req.userRole !== "teacher" && req.userRole !== "admin" && !["active", "assigned"].includes(lesson.status)) {
     res.status(403).json({ error: "LESSON_NOT_ACTIVE", message: "This lesson is not yet available" });
     return;
   }
@@ -5829,6 +5829,49 @@ router.post("/lessons/:lessonId/recover-source-exercise",requireAuth,requireLess
  }
 });
 
+// Confirm the C2 cognitive paths and the teaching package in one teacher workflow.
+// A failed cognitive validator never gets silently marked confirmed.
+async function confirmMappedLessonAssets(lessonId:number){
+ const {assessCognitivePathForConfirmation}=await import("../lib/cognitive-path-grounding.js");
+ const nodes=await db.select().from(lessonNodesTable).where(eq(lessonNodesTable.lessonId,lessonId));
+ if(!nodes.length)return {ok:false as const,reason:"NO_MICRONODES"};
+ const invalid:{nodeId:number;reason:string}[]=[];
+ for(const node of nodes){
+   const levels=await db.select().from(lessonNodeCognitiveLevelsTable)
+     .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId,node.id))
+     .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
+   const check=assessCognitivePathForConfirmation(node,levels);
+   if(!check.valid)invalid.push({nodeId:node.id,reason:JSON.stringify(check)});
+ }
+ if(invalid.length)return {ok:false as const,reason:"COGNITIVE_PATH_VALIDATION_FAILED",invalid};
+ for(const node of nodes){
+   const confirmed=await confirmAuthoredCognitivePath(lessonId,node.id);
+   if(!confirmed.found||!confirmed.confirmed)
+     return {ok:false as const,reason:"COGNITIVE_PATH_CONFIRMATION_FAILED",nodeId:node.id};
+ }
+ await db.update(lessonNodeTeachingPackageItemsTable).set({status:"approved"})
+   .where(and(eq(lessonNodeTeachingPackageItemsTable.lessonId,lessonId),
+     eq(lessonNodeTeachingPackageItemsTable.status,"draft")));
+ return {ok:true as const,nodeCount:nodes.length};
+}
+
+// Backfill previously teacher-approved staged lessons; idempotent on recheck.
+router.post("/lessons/:lessonId/confirm-mapped-assets",requireAuth,requireLessonAuthor,async(req:AuthRequest,res)=>{
+ const lessonId=Number(req.params.lessonId);
+ if(!Number.isSafeInteger(lessonId)||lessonId<1){res.status(400).json({error:"INVALID_LESSON"});return;}
+ if(req.body?.confirmMappedAssets!==true){res.status(400).json({error:"TEACHER_CONFIRMATION_REQUIRED"});return;}
+ const [lesson]=await db.select().from(lessonsTable).where(eq(lessonsTable.id,lessonId)).limit(1);
+ const metadata=lesson?.mappingMetadata as Record<string,any>|undefined;
+ if(!lesson||metadata?.pipeline!=="STAGED_UNVERIFIED_MAP"||!metadata?.stagedPilotApproval)
+   {res.status(409).json({error:"STAGED_APPROVAL_REQUIRED"});return;}
+ const result=await confirmMappedLessonAssets(lessonId);
+ if(!result.ok){res.status(422).json(result);return;}
+ await db.update(lessonsTable).set({mappingMetadata:{...metadata,
+   stagedPilotApproval:{...metadata.stagedPilotApproval,assetsConfirmedAt:new Date().toISOString(),
+     assetsConfirmedBy:req.userId??null}} as any}).where(eq(lessonsTable.id,lessonId));
+ res.json({confirmed:true,nodeCount:result.nodeCount});
+});
+
 // Teacher acceptance of a staged AI map for the lesson-and-quiz pilot.
 // The teacher explicitly accepts the unverified textbook references;
 // excluded source exercises are never silently converted into student tasks.
@@ -5836,6 +5879,13 @@ router.post("/lessons/:lessonId/staged-map/approve",requireAuth,requireLessonAut
  const lessonId=Number(req.params.lessonId);
  if(!Number.isSafeInteger(lessonId)||lessonId<1){res.status(400).json({error:"INVALID_LESSON"});return;}
  if(req.body?.confirmStagedContent!==true){res.status(400).json({error:"TEACHER_CONFIRMATION_REQUIRED"});return;}
+ const [candidate]=await db.select({mappingMetadata:lessonsTable.mappingMetadata,status:lessonsTable.status})
+   .from(lessonsTable).where(eq(lessonsTable.id,lessonId)).limit(1);
+ if(candidate?.status==="draft"&&(candidate.mappingMetadata as any)?.pipeline==="STAGED_UNVERIFIED_MAP"){
+   const assets=await confirmMappedLessonAssets(lessonId);
+   if(!assets.ok){res.status(422).json({error:assets.reason,details:assets});return;}
+ }
+
  const approval=await db.transaction(async tx=>{
    await tx.execute(sql`SELECT id FROM lessons WHERE id=${lessonId} FOR UPDATE`);
    const [lesson]=await tx.select().from(lessonsTable).where(eq(lessonsTable.id,lessonId)).limit(1);
@@ -5854,7 +5904,12 @@ router.post("/lessons/:lessonId/staged-map/approve",requireAuth,requireLessonAut
    const exercises=await tx.select().from(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId,lessonId));
    if(exercises.some(e=>e.sourceType==="textbook"&&e.status!=="approved"))
      return {status:422 as const,error:"UNREVIEWED_SOURCE_EXERCISES"};
+   // Preserve the teacher's explicit acceptance of both cognitive paths
+   // and the generated teaching package, not only the node record itself.
+   // Validation is performed before the lesson status changes.
    // Do not change source verification claims or approve unreviewed textbook items.
+   await tx.update(lessonNodeTeachingPackageItemsTable).set({status:"approved"})
+     .where(and(eq(lessonNodeTeachingPackageItemsTable.lessonId,lessonId),eq(lessonNodeTeachingPackageItemsTable.status,"draft")));
    await tx.update(lessonNodesTable).set({status:"approved",reviewedBy:req.userId??null})
      .where(eq(lessonNodesTable.lessonId,lessonId));
    await tx.update(lessonsTable).set({
