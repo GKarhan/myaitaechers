@@ -2643,8 +2643,8 @@ function LessonNodesPanel({
         >
           <span className="font-medium tracking-wide">
             {(nodes.length > 0 || exercises.length > 0)
-              ? `🗺️ Մանրամասն քարտեզագրում · Թեմաներ / MicroNode-եր / աղբյուր / ուղի / վարժություններ (${nodes.length} · ${exercises.length})`
-              : "🗺️ Մանրամասն քարտեզագրում · Թեմաներ / MicroNode-եր / աղբյուր / ուղի / վարժություններ"}
+              ? `🗺️ Մանրամասն քարտեզագրում · ${nodes.length} MicroNode · ${exercises.length} վարժություն`
+              : "🗺️ Մանրամասն քարտեզագրում"}
           </span>
           <span>{open ? "▲" : "▼"}</span>
         </button>
@@ -2716,10 +2716,12 @@ function LessonNodesPanel({
             Հիմնական քարտեզ՝ {nodes.length} MicroNode։ Ուսուցիչը աշխատում է ստորև ցուցադրված հիմնական քարտեզի հետ։ Հին JSON-ը պահվում է միայն որպես համեմատության և խմբագրման արխիվ։
           </div>}
           <details className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
-            <summary className="cursor-pointer text-xs text-amber-200 font-semibold">Բացել նախնական JSON քարտեզը և ընդհանուր հաստատումը</summary>
+            <summary className="cursor-pointer text-xs text-amber-200 font-semibold">Նախնական JSON քարտեզ · տեխնիկական մանրամասներ և հատուկ հաստատում</summary>
             <div className="mt-3"><UnvalidatedMappingDraftPanel lessonId={lessonId} lessonStatus={authoringStatus} /></div>
           </details>
           {nodes.length > 0 && !hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <CompleteMapApproval lessonId={lessonId} courseId={courseId} status={authoringStatus} />}
+          {nodes.length > 0 && ["active","assigned","approved"].includes(authoringStatus) && <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-xs text-emerald-200">✓ Դասի քարտեզը հաստատված է։ Կրկնակի հաստատում չի պահանջվում։</p>}
+          {hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <p className="rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-amber-200">Այս դասի ամբողջական հաստատումը հասանելի է «Նախնական JSON քարտեզ» բաժնում՝ աղբյուրների ստուգումից հետո։</p>}
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center justify-between">
