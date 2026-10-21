@@ -814,7 +814,7 @@ router.get("/lessons/:lessonId/student-package", requireAuth, async (req: AuthRe
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
   // Authorization: students may only access active lessons; teachers preview any.
-  if (!isTeacher && lesson.status !== "active") {
+  if (!isTeacher && !["active", "assigned"].includes(lesson.status)) {
     res.status(403).json({ error: "LESSON_NOT_ACTIVE" }); return;
   }
 
