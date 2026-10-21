@@ -1011,7 +1011,7 @@ function UnvalidatedMappingDraftPanel({lessonId,lessonStatus,approvalOnly=false}
   const item=(label:string,value:unknown)=>value!==null&&value!==undefined&&value!==''?(
     <p className="text-xs leading-relaxed break-words"><span className="text-muted-foreground">{label}՝ </span>{String(value)}</p>
   ):null;
-  if (approvalOnly) return !["active","assigned","approved"].includes(lessonStatus) ? ({!!data?.result?.manualStaging&&<div className="rounded-lg border border-emerald-500/30 p-3 space-y-2">
+  if (approvalOnly) return !["active","assigned","approved"].includes(lessonStatus) ? <>{!!data?.result?.manualStaging&&<div className="rounded-lg border border-emerald-500/30 p-3 space-y-2">
         <p className="text-xs font-semibold text-emerald-200">Մեկ ընդհանուր հաստատում</p>
         <p className="text-xs text-amber-100">Հաստատվում է քարտեզի ամբողջ փաթեթը՝ MicroNode-երը, ճանաչողական ուղիները և ուսումնական նյութերը։ Դասագրքային չստուգված առաջադրանքները չեն դառնում հաստատված։ Եթե ստուգումը չանցնի, դասը չի հաստատվի։</p>
         <label className="flex items-start gap-2 text-xs">
@@ -1024,7 +1024,7 @@ function UnvalidatedMappingDraftPanel({lessonId,lessonStatus,approvalOnly=false}
           {approving||assetsConfirming?"Ստուգվում է…":"Ստուգել և հաստատել ամբողջ քարտեզը"}
         </button>
         {(approvalMessage||assetsMessage)&&<p role="status" className="text-xs text-amber-200">{approvalMessage||assetsMessage}</p>}
-      </div>}) : null;
+      </div>}</> : null;
   return <section className="rounded-lg border border-amber-500/30 bg-amber-500/[0.04] p-3 space-y-3" data-testid="unvalidated-map-preview">
     <div className="space-y-1">
       <h3 className="text-sm font-semibold text-amber-300">Փորձնական քարտեզ՝ բազայում պահպանված JSON-ից</h3>
