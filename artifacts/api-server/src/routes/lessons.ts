@@ -984,7 +984,7 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
 
   // P1.12: Students may only start lessons that have been activated (status="active").
   // Teachers and admins bypass this gate so they can test/preview any lesson.
-  if (req.userRole !== "teacher" && req.userRole !== "admin" && lesson.status !== "active") {
+  if (req.userRole !== "teacher" && req.userRole !== "admin" && !["active", "assigned"].includes(lesson.status)) {
     res.status(403).json({ error: "LESSON_NOT_ACTIVE", message: "This lesson is not yet available" });
     return;
   }
