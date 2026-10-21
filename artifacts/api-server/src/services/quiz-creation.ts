@@ -270,7 +270,7 @@ export async function persistGeneratedQuizInTransaction(
   generated: GeneratedQuestion[],
   canonicalTargets?: CanonicalQuizTarget[],
 ): Promise<CreatedQuizResult> {
-  if (input.generationPurpose !== "retest" && canonicalTargets) {
+  if (input.generationPurpose !== "retest" && input.generationPurpose !== "standard" && canonicalTargets?.length) {
     if (generated.length !== input.questionCount) {
       throw new QuizCreationError("QUESTION_SCOPE_INVALID");
     }
