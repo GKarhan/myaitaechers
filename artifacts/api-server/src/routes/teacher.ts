@@ -289,9 +289,10 @@ router.put("/teacher/lessons/:id/status", requireTeacher, async (req: AuthReques
   const [lesson] = await db.select().from(lessonsTable).where(and(eq(lessonsTable.id, id), eq(lessonsTable.teacherId, req.userId!))).limit(1);
   if (!lesson) { res.status(404).json({ error: "Das chi gtnvel" }); return; }
 
-  // P1.12: Only an "approved" lesson may be set to "active" (assigned to students).
-  // Raw/draft/needs_review lessons must never be delivered to students.
-  if (status === "active" && lesson.status !== "approved") {
+  // A previously assigned lesson remains eligible for re-activation. This
+  // is idempotent: issuing the assignment again never invalidates the lesson.
+  // Draft and needs_review still cannot be delivered to learners.
+  if (status === "active" && !["approved", "assigned", "active"].includes(lesson.status)) {
     res.status(400).json({
       error: "LESSON_NOT_APPROVED",
       message: "Lesson must be in 'approved' state before it can be assigned to students",
