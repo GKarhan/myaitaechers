@@ -1,3 +1,4 @@
+import type { AssessmentSummary } from "../services/node-assessment-policy.js";
 import { Router } from "express";
 import {
   db,
@@ -372,6 +373,7 @@ router.get(
         : null,
 
       learnerState: {
+        assessment: state?.assessment ?? null,
         masteryScore,
         confidenceScore: kn?.confidenceScore ?? null,
         masteryLevel,
@@ -584,6 +586,7 @@ router.get(
     type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
 
     interface MicroNode {
+      assessment?: AssessmentSummary | null;
       lessonNodeId: number;
       title: string;
       sequence: number;
@@ -612,6 +615,7 @@ router.get(
     // Process each flat row → typed MicroNode
     const processedNodes = nodeRows.map((row) => {
       const canonical = stateMap.get(row.lessonNodeId) ?? {
+        assessment: null,
         knowledgeState: "NOT_STUDIED" as const,
         knowledgeStateLabel: "Դեռ չի ուսումնասիրել",
         coverageState: "NOT_STUDIED" as const,
@@ -665,6 +669,7 @@ router.get(
       const key: number | "ungrouped" = node.topicId ?? "ungrouped";
       if (!lb.has(key)) lb.set(key, []);
       lb.get(key)!.push({
+        assessment: node.assessment,
         lessonNodeId: node.lessonNodeId,
         title:        node.title,
         sequence:     node.sequence,

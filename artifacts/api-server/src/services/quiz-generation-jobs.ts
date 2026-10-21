@@ -1,3 +1,4 @@
+import type { AssessmentConfig } from "./node-assessment-policy.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   db,
@@ -48,6 +49,8 @@ export type QuizGenerationErrorDetails = {
 
 export type QuizGenerationRequestSnapshot = {
   schemaVersion: 1;
+  studentId?: number;
+  assessmentConfig?: AssessmentConfig;
   generationMode?: "canonical" | "standard";
   subjectId: number;
   classId: number | null;
@@ -87,6 +90,8 @@ function uniqueSortedPositiveIntegers(values: number[] | undefined): number[] {
 }
 
 export function normalizeQuizGenerationRequest(input: {
+  studentId?: number;
+  assessmentConfig?: AssessmentConfig;
   generationMode?: "canonical" | "standard";
   subjectId: number;
   classId?: number | null;
@@ -100,7 +105,9 @@ export function normalizeQuizGenerationRequest(input: {
 }): QuizGenerationRequestSnapshot {
   return {
     schemaVersion: 1,
+    ...(input.studentId ? {studentId:input.studentId} : {}),
     generationMode: input.generationMode ?? "canonical",
+    ...(input.assessmentConfig ? { assessmentConfig: input.assessmentConfig } : {}),
     subjectId: input.subjectId,
     classId: input.classId ?? null,
     sourceBookId: input.sourceBookId ?? null,
@@ -117,6 +124,8 @@ function stableJson(value: QuizGenerationRequestSnapshot): string {
   return JSON.stringify({
     schemaVersion: value.schemaVersion,
     generationMode: value.generationMode ?? "canonical",
+    ...(value.assessmentConfig ? {assessmentConfig:value.assessmentConfig} : {}),
+    ...(value.studentId ? {studentId:value.studentId} : {}),
     subjectId: value.subjectId,
     classId: value.classId,
     sourceBookId: value.sourceBookId,
@@ -316,6 +325,8 @@ function snapshotToCreationInput(
 ): CreateQuizFromNodeScopeInput {
   return {
     teacherId,
+    assessmentConfig: snapshot.assessmentConfig,
+    studentId: snapshot.studentId,
     subjectId: snapshot.subjectId,
     classId: snapshot.classId,
     sourceBookId: snapshot.sourceBookId,

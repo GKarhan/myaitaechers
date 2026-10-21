@@ -4944,10 +4944,12 @@ export default function TeacherDashboard() {
   const [quizLessonIds, setQuizLessonIds]   = useState<number[]>([]);
   const [quizBookId,    setQuizBookId]      = useState<number | null>(null);
   const [quizCount,     setQuizCount]       = useState(10);
+  const [assessmentPurpose, setAssessmentPurpose] = useState("LEARNING");
+  const [assessmentContext, setAssessmentContext] = useState("ANYWHERE");
   const [quizBooks,     setQuizBooks]       = useState<{id:number;name:string}[]>([]);
   const [quizCreating,  setQuizCreating]    = useState(false);
   const [quizError,     setQuizError]       = useState<string|null>(null);
-  const [quizGenerationMode, setQuizGenerationMode] = useState<"standard" | "canonical">("standard");
+  const [quizGenerationMode, setQuizGenerationMode] = useState<"standard" | "canonical">("canonical");
   const [quizType,      setQuizType]        = useState<"lesson"|"summary">("lesson");
   // ── Node drill-down (single-lesson mode) ──────────────────────────────────
   const [quizNodeIds,      setQuizNodeIds]      = useState<number[]>([]);
@@ -5165,6 +5167,11 @@ export default function TeacherDashboard() {
     return () => { cancelled = true; };
   }, [section]);
 
+  useEffect(()=>{
+    const n=quizType==="lesson" && quizNodeIds.length>0 ? quizNodeIds.length : quizLeafCount;
+    if(n>0&&n<=50)setQuizCount(count=>Math.max(n,Math.min(count,Math.min(50,n*3))));
+  },[quizLeafCount,quizNodeIds,quizType]);
+
   async function handleCreateQuiz() {
     // Type-specific frontend validation
     if (quizType === "lesson" && quizLessonIds.length !== 1) return;
@@ -5192,6 +5199,7 @@ export default function TeacherDashboard() {
           sourceBookId:   quizBookId ?? undefined,
           quizType,
           generationMode: quizGenerationMode,
+          assessmentConfig: { version:"NODE_V1", purpose:assessmentPurpose, context:assessmentContext },
           lessonIds:      sendNodeIds ? undefined : quizLessonIds,
           nodeIds:        sendNodeIds,
           questionCount:  quizCount,
@@ -7733,6 +7741,15 @@ export default function TeacherDashboard() {
               </p>
             )}
 
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <label>Թեստի նպատակը<select className="block w-full bg-background p-2 rounded-xl" value={assessmentPurpose} onChange={e=>setAssessmentPurpose(e.target.value)}>
+                <option value="LEARNING">Ուսուցողական</option><option value="CHECK">Գիտելիքի անկախ ստուգում</option>
+              </select></label>
+              <label>Կատարման պայման<select className="block w-full bg-background p-2 rounded-xl" value={assessmentContext} onChange={e=>setAssessmentContext(e.target.value)}>
+                <option value="ANYWHERE">Ցանկացած վայրում</option><option value="IN_CLASS">Միայն դասարանում</option>
+                <option value="AT_HOME">Միայն տանը</option><option value="CLASS_THEN_HOME">Դասարանում սկսել, տանը շարունակել</option>
+              </select></label>
+            </div>
             {/* Question count + suggestion */}
             <div className="mb-4">
               <label className="block text-sm text-muted-foreground mb-1.5">
@@ -7755,7 +7772,7 @@ export default function TeacherDashboard() {
                   const idealQEff = effectiveLeaf * 3;
                   return (
                     <span className="text-xs text-muted-foreground/80">
-                      Առաջարկվող հարցերի քանակ: {minQEff}–{idealQEff}
+                      Հարցերի քանակ: {minQEff}–{Math.min(50,idealQEff)} · 1–3 հարց յուրաքանչյուր հանգույցի համար
                     </span>
                   );
                 })()}
@@ -7765,9 +7782,9 @@ export default function TeacherDashboard() {
                 const effectiveLeaf = quizType === "lesson" && quizNodeIds.length > 0
                   ? quizNodeIds.length
                   : quizLeafCount;
-                return quizCount < effectiveLeaf ? (
+                return (quizCount < effectiveLeaf || quizCount > Math.min(50,effectiveLeaf*3)) ? (
                   <p className="text-xs text-amber-400/80 mt-1.5 flex items-center gap-1">
-                    ⚠ Հարցերի քանակը ցածր է նվազագույն սահմանից
+                    ⚠ Հարցերի քանակը պետք է լինի նշված սահմաններում
                   </p>
                 ) : null;
               })()}

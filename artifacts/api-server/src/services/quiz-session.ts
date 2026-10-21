@@ -1,6 +1,9 @@
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { filterRequiredPrerequisites, parseAssessmentConfig } from "./node-assessment-policy.js";
+import { resolveKnowledgeTreeStates } from "./knowledge-tree-state.js";
+import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import {
   db,
+  lessonNodeDependenciesTable,
   quizAnswersTable,
   quizAssignmentsTable,
   quizAttemptQuestionsTable,
@@ -10,6 +13,16 @@ import {
   quizzesTable,
 } from "@workspace/db";
 
+
+export async function filterAutomaticAssessmentScope(userId:number,nodeIds:readonly number[]):Promise<number[]> {
+  if(!nodeIds.length)return [];
+  const edges=await db.select({fromNodeId:lessonNodeDependenciesTable.fromNodeId,toNodeId:lessonNodeDependenciesTable.toNodeId})
+    .from(lessonNodeDependenciesTable).where(or(eq(lessonNodeDependenciesTable.requiredLevel,"CRITICAL"),eq(lessonNodeDependenciesTable.dependencyType,"REQUIRED")));
+  const relevant=new Set(nodeIds);let grew=true;
+  while(grew){grew=false;for(const e of edges)if(relevant.has(e.toNodeId)&&!relevant.has(e.fromNodeId)){relevant.add(e.fromNodeId);grew=true;}}
+  const states=await resolveKnowledgeTreeStates(userId,[...relevant]);
+  return filterRequiredPrerequisites(nodeIds,edges,states);
+}
 
 export type QuizSessionProjection = {
   masteredNodeIds: number[];
@@ -40,7 +53,7 @@ export async function resolveQuizSessionProjection(
   rootQuizId: number,
   learnerId: number,
 ): Promise<QuizSessionProjection> {
-  const [quiz] = await db.select({ nodeIds: quizzesTable.nodeIds })
+  const [quiz] = await db.select({ nodeIds: quizzesTable.nodeIds, assessmentConfig: quizzesTable.assessmentConfig })
     .from(quizzesTable).where(eq(quizzesTable.id, rootQuizId)).limit(1);
   let nodeIds = Array.isArray(quiz?.nodeIds)
     ? quiz.nodeIds.filter((value): value is number => Number.isInteger(value))
@@ -49,6 +62,12 @@ export async function resolveQuizSessionProjection(
     const rows = await db.select({ nodeId: quizQuestionsTable.nodeId })
       .from(quizQuestionsTable).where(eq(quizQuestionsTable.quizId, rootQuizId));
     nodeIds = rows.map((row) => row.nodeId).filter((value): value is number => value !== null);
+  }
+  if (parseAssessmentConfig(quiz?.assessmentConfig)) {
+    const states = await resolveKnowledgeTreeStates(learnerId,nodeIds);
+    const masteredNodeIds = nodeIds.filter(id=>states.get(id)?.knowledgeState === "MASTERED");
+    const learningNodeIds = await filterAutomaticAssessmentScope(learnerId,nodeIds.filter(id=>states.get(id)?.knowledgeState !== "MASTERED" && states.get(id)?.assessment?.status !== "NEEDS_SUPPORT"));
+    return { masteredNodeIds,learningNodeIds,knowsCount:masteredNodeIds.length,learningCount:learningNodeIds.length };
   }
   // Local quiz practice tracks questions answered correctly in any completed
   // attempt. This is distinct from the canonical C4/C5 mastery model.

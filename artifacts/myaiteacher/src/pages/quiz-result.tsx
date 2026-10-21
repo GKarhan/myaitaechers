@@ -1,3 +1,4 @@
+import { NodeAssessmentBadge, type AssessmentView } from "@/components/NodeAssessmentBadge";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -42,12 +43,14 @@ type SessionProjection = {
 };
 
 type Result = {
+  assessmentConfig?: {purpose:string;context:string}|null;
   attemptId?: number;
   totalCorrect: number;
   totalQuestions: number;
   scorePercent: number;
+  practiceScorePercent?:number;
   questions: QuestionResult[];
-  nodeBreakdown?: Array<{ nodeId: number; nodeTitle: string; percent: number; masteryLevel: string }>;
+  nodeBreakdown?: Array<{ nodeId: number; nodeTitle: string; percent: number; masteryLevel: string; assessment?:AssessmentView }>;
   recommendations?: Array<{ nodeId: number; nodeTitle: string; prerequisiteBlocked: boolean }>;
   session?: SessionProjection | null;
   attempts?: AttemptHistory[];
@@ -71,6 +74,8 @@ export default function QuizResult() {
   const [error, setError] = useState<string | null>(null);
   const [showKnowsOnly, setShowKnowsOnly] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [reconfirming,setReconfirming]=useState(false);
+  const [reconfirmError,setReconfirmError]=useState<string|null>(null);
 
   useEffect(() => {
     if (!token || !id || !user) return;
@@ -103,6 +108,25 @@ export default function QuizResult() {
     const mastered = new Set(result.session.masteredNodeIds);
     return result.questions.filter((question) => question.nodeId != null && mastered.has(question.nodeId));
   }, [result, showKnowsOnly]);
+
+  async function reconfirm() {
+    if(!token||!id||reconfirming)return;
+    setReconfirming(true);setReconfirmError(null);
+    try {
+      const response=await fetch(`${BASE}/api/quizzes/${id}/reconfirm`,{method:"POST",headers:{Authorization:`Bearer ${token}`}});
+      const created=await response.json();if(!response.ok)throw new Error(created.error);
+      for(let i=0;i<150;i++) {
+        const r=await fetch(`${BASE}/api/quizzes/assessment-jobs/${created.jobId}`,{headers:{Authorization:`Bearer ${token}`}});
+        if(!r.ok)throw new Error("Չհաջողվեց ստուգել առաջադրանքի ընթացքը");
+        const job=await r.json();
+        if(job.status==="completed"&&job.quizId){setLocation(`/quiz/${job.quizId}/take`);return;}
+        if(job.status==="failed")throw new Error(job.errorCode??"Ստուգումը չհաջողվեց ստեղծել");
+        await new Promise(resolve=>setTimeout(resolve,2000));
+      }
+      throw new Error("Ստուգումը դեռ պատրաստվում է։ Կարող եք կրկին բացել։");
+    }catch(e){setReconfirmError(e instanceof Error?e.message:"Ստուգումը չհաջողվեց ստեղծել");}
+    finally{setReconfirming(false);}
+  }
 
   async function finishSession() {
     if (!token || !id || finishing) return;
@@ -141,6 +165,7 @@ export default function QuizResult() {
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-8">
         <section className="rounded-3xl border border-white/10 bg-card/60 p-8 text-center">
           <div className={`text-5xl font-black ${scoreColor}`}>{result.scorePercent}%</div>
+          {result.assessmentConfig && <p className="text-sm text-muted-foreground mb-2">Գիտելիքի անկախ ստուգման արդյունք</p>}
           <p className="mt-2 text-white/80">{result.totalCorrect}/{result.totalQuestions} ճիշտ պատասխան</p>
         </section>
 
@@ -216,10 +241,15 @@ export default function QuizResult() {
           </section>
         )}
 
-        {isTeacherView && result.nodeBreakdown && result.nodeBreakdown.length > 0 && (
+        {!isTeacherView && result.assessmentConfig && result.nodeBreakdown?.some(n=>n.assessment && n.assessment.nextAction!=="TEACHER_REVIEW" && n.assessment.nextAction!=="REVIEW") && <section className="space-y-3">
+          <p className="text-sm text-muted-foreground">Վարժանքի կրկնությունը չի ավելացնում անկախ հաստատումների քանակը։</p>
+          <button disabled={reconfirming} onClick={reconfirm} className="rounded-xl bg-primary px-5 py-3 disabled:opacity-50">{reconfirming?"Պատրաստվում է...":"Նոր անկախ ստուգում"}</button>
+          {reconfirmError&&<p className="text-red-400">{reconfirmError}</p>}
+        </section>}
+        {result.nodeBreakdown && result.nodeBreakdown.length > 0 && (
           <section className="space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-white/75">Գիտելիքի հանգույցներ</h2>
-            {result.nodeBreakdown.map((node) => <div key={node.nodeId} className="rounded-xl border border-white/10 bg-card/30 px-4 py-3 flex justify-between"><span>{node.nodeTitle}</span><span>{node.percent}%</span></div>)}
+            {result.nodeBreakdown.map((node) => <div key={node.nodeId} className="rounded-xl border border-white/10 bg-card/30 px-4 py-3 flex justify-between"><span>{node.nodeTitle}<NodeAssessmentBadge assessment={node.assessment}/></span><span>{node.percent}%</span></div>)}
           </section>
         )}
 

@@ -39,7 +39,8 @@ function nextIntervalDays(currentIntervalDays: number, masteryScore: number): nu
 export async function scheduleReview(
   topicId: number,
   userId: number,
-  masteryScore: number
+  masteryScore: number,
+  options?: { delayedOnly?: boolean }
 ): Promise<void> {
   try {
     const [existing] = await db
@@ -51,7 +52,7 @@ export async function scheduleReview(
     const now = new Date();
 
     if (!existing) {
-      const intervalDays = nextIntervalDays(1, masteryScore);
+      const intervalDays = options?.delayedOnly ? 1 : nextIntervalDays(1, masteryScore);
       const dueAt = new Date(now.getTime() + intervalDays * 24 * 60 * 60 * 1000);
       await db.insert(reviewScheduleTable).values({
         userId,
@@ -64,6 +65,8 @@ export async function scheduleReview(
       return;
     }
 
+    // Same-day confirmations are not evidence of durable retention.
+    if (options?.delayedOnly && existing.dueAt > now) return;
     const intervalDays = nextIntervalDays(existing.intervalDays, masteryScore);
     const dueAt = new Date(now.getTime() + intervalDays * 24 * 60 * 60 * 1000);
 

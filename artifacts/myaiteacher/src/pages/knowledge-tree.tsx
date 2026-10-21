@@ -1,3 +1,4 @@
+import { NodeAssessmentBadge, type AssessmentView } from "@/components/NodeAssessmentBadge";
 import { customFetch } from "@workspace/api-client-react";
 import { useEffect, useState, useCallback } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
@@ -91,7 +92,7 @@ function NodeRow({
       </span>
 
       {/* Title */}
-      <span className="flex-1 text-sm font-medium text-white">{node.title}</span>
+      <span className="flex-1 text-sm font-medium text-white">{node.title}<NodeAssessmentBadge assessment={(node as typeof node & {assessment?:AssessmentView}).assessment}/></span>
 
       {/* Score */}
       <span className="text-sm font-semibold text-muted-foreground w-10 text-right">

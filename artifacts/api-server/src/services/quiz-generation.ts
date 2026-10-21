@@ -40,6 +40,7 @@ export interface GenerateQuizInput {
   nodeIds: number[];
   questionCount: number;
   difficultyMode: "SIMPLE" | "MEDIUM" | "HARD" | "MIXED";
+  avoidQuestionTexts?: string[];
   canonicalTargets?: CanonicalQuizTarget[];
   qualityReview?: (
     input: SemanticQuestionReviewInput,
@@ -366,6 +367,7 @@ export async function generateQuizQuestions(
       "",
       "NODE CONTENT (use ONLY this material — never invent outside it):",
       nodeBlocks,
+      ...(input.avoidQuestionTexts?.length ? ["Previously answered tasks: generate different independent tasks; do not repeat or merely reorder these:", JSON.stringify(input.avoidQuestionTexts)] : []),
       retryInstruction,
     ].join("\n");
 
