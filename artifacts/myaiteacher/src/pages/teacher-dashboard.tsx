@@ -871,7 +871,7 @@ type PreviewMap = {
   excludedBlocks?:Array<{blockIndex?:number;reason?:string;kind?:string}>;
   reviewIssues?:string[];
 };
-function UnvalidatedMappingDraftPanel({lessonId,lessonStatus}:{lessonId:number;lessonStatus:string}){
+function UnvalidatedMappingDraftPanel({lessonId,lessonStatus,approvalOnly=false}:{lessonId:number;lessonStatus:string;approvalOnly?:boolean}){
   const {token}=useAuth();
   const qc=useQueryClient();
   const [editing,setEditing]=useState(false);
@@ -1011,6 +1011,20 @@ function UnvalidatedMappingDraftPanel({lessonId,lessonStatus}:{lessonId:number;l
   const item=(label:string,value:unknown)=>value!==null&&value!==undefined&&value!==''?(
     <p className="text-xs leading-relaxed break-words"><span className="text-muted-foreground">{label}՝ </span>{String(value)}</p>
   ):null;
+  if (approvalOnly) return !["active","assigned","approved"].includes(lessonStatus) ? <>{!!data?.result?.manualStaging&&<div className="rounded-lg border border-emerald-500/30 p-3 space-y-2">
+        <p className="text-xs font-semibold text-emerald-200">Մեկ ընդհանուր հաստատում</p>
+        <p className="text-xs text-amber-100">Հաստատվում է քարտեզի ամբողջ փաթեթը՝ MicroNode-երը, ճանաչողական ուղիները և ուսումնական նյութերը։ Դասագրքային չստուգված առաջադրանքները չեն դառնում հաստատված։ Եթե ստուգումը չանցնի, դասը չի հաստատվի։</p>
+        <label className="flex items-start gap-2 text-xs">
+          <input type="checkbox" checked={approvalConfirmed} onChange={e=>setApprovalConfirmed(e.target.checked)} />
+          <span>Վերանայել եմ դասի քարտեզը և ցանկանում եմ հաստատել ամբողջ ուսումնական փաթեթը։</span>
+        </label>
+        <button type="button" disabled={!approvalConfirmed||approving||assetsConfirming}
+          onClick={()=>void (lessonStatus==="draft"?acceptStagedMap():confirmAssets())}
+          className="rounded border border-emerald-400/50 px-3 py-2 text-xs text-emerald-200 disabled:opacity-40">
+          {approving||assetsConfirming?"Ստուգվում է…":"Ստուգել և հաստատել ամբողջ քարտեզը"}
+        </button>
+        {(approvalMessage||assetsMessage)&&<p role="status" className="text-xs text-amber-200">{approvalMessage||assetsMessage}</p>}
+      </div>}</> : null;
   return <section className="rounded-lg border border-amber-500/30 bg-amber-500/[0.04] p-3 space-y-3" data-testid="unvalidated-map-preview">
     <div className="space-y-1">
       <h3 className="text-sm font-semibold text-amber-300">Փորձնական քարտեզ՝ բազայում պահպանված JSON-ից</h3>
@@ -1020,7 +1034,7 @@ function UnvalidatedMappingDraftPanel({lessonId,lessonStatus}:{lessonId:number;l
         Այս տեսքը միայն դիտման համար է։
       </p>
       <p className="text-xs">Թեմաներ՝ {topics.length} · MicroNode-եր՝ {topics.reduce((n,t)=>n+(t.nodes?.length??0),0)} · Առաջադրանքներ՝ {exercises.length}</p>
-      <div className="flex flex-wrap items-center gap-2">
+      {!["active","assigned","approved"].includes(lessonStatus) && <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={startEditing} disabled={saving} className="rounded border border-amber-400/40 px-3 py-1 text-xs text-amber-200">
           ✏️ Խմբագրել քարտեզի ցանկացած դաշտ
         </button>
@@ -1033,8 +1047,8 @@ function UnvalidatedMappingDraftPanel({lessonId,lessonStatus}:{lessonId:number;l
           {data?.result?.manualStaging?"✓ Աշխատանքային քարտեզը տեղափոխված է":staging?"Պահպանվում է...":"Տեղափոխել հիմնական բազա՝ որպես սևագիր"}
         </button>
         {data?.result?.editedByTeacher&&<span className="text-xs text-amber-200">Ուսուցչի խմբագրած նախագիծ</span>}
-      </div>
-      {!!data?.result?.manualStaging&&<div className="rounded border border-sky-500/30 p-2 space-y-2">
+      </div>}
+      {!["active","assigned","approved"].includes(lessonStatus) && !!data?.result?.manualStaging&&<div className="rounded border border-sky-500/30 p-2 space-y-2">
         <button type="button" onClick={()=>setShowSource(value=>!value)}
           className="text-xs text-sky-200 underline">
           {showSource?"Փակել դասագրքի աղբյուրային էջերը":"Բացել դասագրքի իրական էջերն ու չկապված առաջադրանքները"}
@@ -1079,20 +1093,6 @@ function UnvalidatedMappingDraftPanel({lessonId,lessonStatus}:{lessonId:number;l
             </details>)}
           </div>}
         </>}
-      </div>}
-      {!!data?.result?.manualStaging&&<div className="rounded-lg border border-emerald-500/30 p-3 space-y-2">
-        <p className="text-xs font-semibold text-emerald-200">Մեկ ընդհանուր հաստատում</p>
-        <p className="text-xs text-amber-100">Հաստատվում է քարտեզի ամբողջ փաթեթը՝ MicroNode-երը, ճանաչողական ուղիները և ուսումնական նյութերը։ Դասագրքային չստուգված առաջադրանքները չեն դառնում հաստատված։ Եթե ստուգումը չանցնի, դասը չի հաստատվի։</p>
-        <label className="flex items-start gap-2 text-xs">
-          <input type="checkbox" checked={approvalConfirmed} onChange={e=>setApprovalConfirmed(e.target.checked)} />
-          <span>Վերանայել եմ դասի քարտեզը և ցանկանում եմ հաստատել ամբողջ ուսումնական փաթեթը։</span>
-        </label>
-        <button type="button" disabled={!approvalConfirmed||approving||assetsConfirming}
-          onClick={()=>void (lessonStatus==="draft"?acceptStagedMap():confirmAssets())}
-          className="rounded border border-emerald-400/50 px-3 py-2 text-xs text-emerald-200 disabled:opacity-40">
-          {approving||assetsConfirming?"Ստուգվում է…":"Ստուգել և հաստատել ամբողջ քարտեզը"}
-        </button>
-        {(approvalMessage||assetsMessage)&&<p role="status" className="text-xs text-amber-200">{approvalMessage||assetsMessage}</p>}
       </div>}
       {editSuccess&&<p className="text-xs text-emerald-300">{editSuccess}</p>}
       {publishNote&&<p className="text-xs text-amber-200" role="status">{publishNote}</p>}
@@ -2643,8 +2643,8 @@ function LessonNodesPanel({
         >
           <span className="font-medium tracking-wide">
             {(nodes.length > 0 || exercises.length > 0)
-              ? `🗺️ Մանրամասն քարտեզագրում · Թեմաներ / MicroNode-եր / աղբյուր / ուղի / վարժություններ (${nodes.length} · ${exercises.length})`
-              : "🗺️ Մանրամասն քարտեզագրում · Թեմաներ / MicroNode-եր / աղբյուր / ուղի / վարժություններ"}
+              ? `🗺️ Մանրամասն քարտեզագրում · ${nodes.length} MicroNode · ${exercises.length} վարժություն`
+              : "🗺️ Մանրամասն քարտեզագրում"}
           </span>
           <span>{open ? "▲" : "▼"}</span>
         </button>
@@ -2716,10 +2716,12 @@ function LessonNodesPanel({
             Հիմնական քարտեզ՝ {nodes.length} MicroNode։ Ուսուցիչը աշխատում է ստորև ցուցադրված հիմնական քարտեզի հետ։ Հին JSON-ը պահվում է միայն որպես համեմատության և խմբագրման արխիվ։
           </div>}
           <details className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
-            <summary className="cursor-pointer text-xs text-amber-200 font-semibold">Բացել նախնական JSON քարտեզը և ընդհանուր հաստատումը</summary>
+            <summary className="cursor-pointer text-xs text-amber-200 font-semibold">Տեխնիկական մանրամասներ · նախնական JSON քարտեզ</summary>
             <div className="mt-3"><UnvalidatedMappingDraftPanel lessonId={lessonId} lessonStatus={authoringStatus} /></div>
           </details>
           {nodes.length > 0 && !hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <CompleteMapApproval lessonId={lessonId} courseId={courseId} status={authoringStatus} />}
+          {nodes.length > 0 && ["active","assigned","approved"].includes(authoringStatus) && <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-xs text-emerald-200">✓ Դասի քարտեզը հաստատված է։ Կրկնակի հաստատում չի պահանջվում։</p>}
+          {hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <UnvalidatedMappingDraftPanel lessonId={lessonId} lessonStatus={authoringStatus} approvalOnly />}
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center justify-between">
@@ -3466,25 +3468,6 @@ function LessonNodesPanel({
     </div>
   );
 }
-type AssignmentReviewIssue = {
-  code?: string;
-  messageArm?: string;
-  message?: string;
-  count?: number;
-};
-
-type AssignmentReadiness = "READY" | "CONFIRMATION_REQUIRED" | "BLOCKED";
-
-type AssignmentReadinessResponse = {
-  canAssign: boolean;
-  readiness: AssignmentReadiness;
-  confirmationRequired: boolean;
-  reviewIssues: AssignmentReviewIssue[];
-  warnings: AssignmentReviewIssue[];
-  hardBlockers: AssignmentReviewIssue[];
-  errors: AssignmentReviewIssue[];
-};
-
 function LessonAssignmentAction({
   lessonId,
   courseId,
@@ -3497,22 +3480,7 @@ function LessonAssignmentAction({
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
-  const [reviewIssues, setReviewIssues] = useState<AssignmentReviewIssue[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const readinessQuery = useQuery<AssignmentReadinessResponse>({
-    queryKey: ["lesson-final-approval-readiness", lessonId],
-    queryFn: async () => {
-      const response = await mappingApiResponse(`/api/lessons/${lessonId}/final-approval-readiness`, {
-        headers: { Authorization: `Bearer ${token ?? ""}` },
-      });
-      if (!response.ok) throw new Error("Չհաջողվեց ստուգել հանձնարարելու պատրաստ լինելը։");
-      return response.json();
-    },
-    enabled: !!token && authoringStatus !== "approved",
-    staleTime: 0,
-  });
-  const readiness = readinessQuery.data?.readiness;
-
   const refreshLessons = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) }),
@@ -3531,44 +3499,12 @@ function LessonAssignmentAction({
     await refreshLessons();
   };
 
-  const runAssignmentPreflight = async (overrideWarnings = false) => {
-    if (pending) return;
+  const runAssignmentPreflight = async () => {
+    if (pending || authoringStatus !== "approved") return;
     setPending(true);
     setError(null);
     try {
-      if (authoringStatus === "approved") {
-        await activateLesson();
-        return;
-      }
-      const response = await mappingApiResponse(`/api/lessons/${lessonId}/final-approve`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
-        body: JSON.stringify(overrideWarnings ? { overrideWarnings: true } : {}),
-      });
-      const data = await response.json().catch(() => ({})) as {
-        approved?: boolean;
-        canAssign?: boolean;
-        confirmationRequired?: boolean;
-        reviewIssues?: AssignmentReviewIssue[];
-        hardBlockers?: AssignmentReviewIssue[];
-        overrideable?: AssignmentReviewIssue[];
-        warnings?: AssignmentReviewIssue[];
-        errors?: AssignmentReviewIssue[];
-      };
-      if (data.approved) {
-        setReviewIssues(null);
-        await activateLesson();
-        return;
-      }
-      if (response.status === 409 && data.confirmationRequired) {
-        setReviewIssues(data.reviewIssues ?? [...(data.overrideable ?? []), ...(data.warnings ?? [])]);
-        return;
-      }
-      const issues = data.hardBlockers ?? data.errors ?? [];
-      setError(
-        issues.map((issue) => issue.messageArm ?? issue.message).filter(Boolean).join(" ")
-        || "Դասը դեռ պատրաստ չէ հանձնարարելու համար։",
-      );
+      await activateLesson();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Կապի սխալ։ Կրկին փորձեք։");
     } finally {
@@ -3577,75 +3513,17 @@ function LessonAssignmentAction({
   };
 
   return (
-    <>
-      <div className="flex flex-col items-end gap-1">
-        {readiness && (
-          <p className={`max-w-72 text-right text-[10px] leading-snug ${
-            readiness === "READY"
-              ? "text-teal-300"
-              : readiness === "CONFIRMATION_REQUIRED"
-                ? "text-amber-300"
-                : "text-destructive"
-          }`}>
-            {readiness === "READY"
-              ? "Պատրաստ է հանձնարարելու"
-              : readiness === "CONFIRMATION_REQUIRED"
-                ? "Կան խնդիրներ, բայց կարող եք հաստատել և հանձնարարել"
-                : "Հանձնարարումը հնարավոր չէ մինչև այս խնդիրների լուծումը"}
-          </p>
-        )}
-        <button
-          onClick={() => { void runAssignmentPreflight(); }}
-          disabled={pending}
-          className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 disabled:opacity-50"
-        >
-          {pending ? "Ստուգվում է..." : "Հանձնարարել սովորողին"}
-        </button>
-        {error && <p className="max-w-56 text-right text-[10px] leading-snug text-destructive">{error}</p>}
-      </div>
-      <AlertDialog
-        open={reviewIssues !== null}
-        onOpenChange={(open) => { if (!open && !pending) setReviewIssues(null); }}
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={() => { void runAssignmentPreflight(); }}
+        disabled={pending || authoringStatus !== "approved"}
+        title={authoringStatus !== "approved" ? "Նախ հաստատեք դասի ամբողջ քարտեզը" : undefined}
+        className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 disabled:opacity-50"
       >
-        <AlertDialogContent className="border-amber-400/20 bg-[#0f1117] text-white">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-base text-amber-200">
-              Դասում կան չլուծված կամ վերանայման ենթակա խնդիրներ
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-sm leading-relaxed text-white/70">
-              Կարող եք վերադառնալ և վերանայել, կամ մեկ անգամ հաստատել ու հանձնարարել դասը։
-              Հաստատելու դեպքում նշումները կպահպանվեն որպես ձեր տեղեկացված որոշում։
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
-            {(reviewIssues ?? []).slice(0, 6).map((issue, index) => (
-              <p key={index} className="rounded border border-amber-400/15 bg-amber-400/[0.06] px-2 py-1.5 text-[11px] leading-relaxed text-amber-100">
-                {issue.messageArm ?? issue.message ?? "Վերանայում է պահանջվում։"}
-              </p>
-            ))}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={pending}
-              onClick={() => setReviewIssues(null)}
-              className="border-white/15 bg-white/5 text-white hover:bg-white/10"
-            >
-              Վերադառնալ և խմբագրել
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={pending}
-              onClick={(event) => {
-                event.preventDefault();
-                void runAssignmentPreflight(true);
-              }}
-              className="bg-amber-500 text-black hover:bg-amber-400"
-            >
-              {pending ? "Հանձնարարում է..." : "Այնուամենայնիվ հանձնարարել"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+        {pending ? "Հանձնարարում է..." : "Հանձնարարել սովորողին"}
+      </button>
+      {error && <p role="alert" className="max-w-56 text-right text-[10px] leading-snug text-destructive">{error}</p>}
+    </div>
   );
 }
 
