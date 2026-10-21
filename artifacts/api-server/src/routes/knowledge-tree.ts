@@ -16,7 +16,6 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, isNotNull, desc, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
-import { getMasteryLevelFromScores } from "../lib/mastery";
 import {
   aggregateCanonicalKnowledgeState,
   resolveKnowledgeTreeStates,
@@ -286,13 +285,10 @@ router.get(
     }
 
     // 8. Compute mastery level (same function + fold as main KT tree)
-    const rawLevel    = getMasteryLevelFromScores(
-      kn?.masteryScore   ?? null,
-      kn?.confidenceScore ?? null,
-      dueAt,
-    );
-    const masteryLevel = rawLevel === "needs_review" ? "mastered" : rawLevel;
-    const masteryScore = kn?.masteryScore ?? 0;
+    const masteryLevel = state?.knowledgeState === "MASTERED" ? "mastered"
+      : state?.knowledgeState === "PARTIAL" ? "weak"
+      : state?.knowledgeState === "NOT_KNOWN" ? "in_progress" : "not_started";
+    const masteryScore = state?.masteryScore ?? 0;
 
     // 9. Evidence counts (full) — evidence_events.topicId FK → knowledge_nodes.id
     let totalEvidence  = 0;
@@ -615,11 +611,6 @@ router.get(
 
     // Process each flat row → typed MicroNode
     const processedNodes = nodeRows.map((row) => {
-      const rawLevel = getMasteryLevelFromScores(
-        row.masteryScore, row.confidenceScore, row.dueAt ?? null
-      );
-      const masteryLevel: MasteryLevel4 =
-        rawLevel === "needs_review" ? "mastered" : rawLevel;
       const canonical = stateMap.get(row.lessonNodeId) ?? {
         knowledgeState: "NOT_STUDIED" as const,
         knowledgeStateLabel: "Դեռ չի ուսումնասիրել",
@@ -631,13 +622,16 @@ router.get(
         remainingCognitiveLevels: [],
         stateReason: "NO_MEANINGFUL_ATTEMPT",
       };
+      const masteryLevel: MasteryLevel4 = canonical.knowledgeState === "MASTERED" ? "mastered"
+        : canonical.knowledgeState === "PARTIAL" ? "weak"
+        : canonical.knowledgeState === "NOT_KNOWN" ? "in_progress" : "not_started";
       return {
         lessonId:  row.lessonId,
         topicId:   row.topicId ?? null,
         lessonNodeId: row.lessonNodeId,
         title:     row.nodeTitle,
         sequence:  row.nodeSequence,
-        masteryScore:    row.masteryScore    ?? 0,
+        masteryScore:    stateMap.get(row.lessonNodeId)?.masteryScore ?? 0,
         confidenceScore: row.confidenceScore ?? null,
         masteryLevel,
         ...canonical,

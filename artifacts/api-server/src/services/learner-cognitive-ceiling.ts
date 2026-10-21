@@ -320,7 +320,9 @@ export async function projectLearnerCognitiveCeiling(
       calculated !== null &&
       (
         learnerNode.demonstratedCognitiveLevelId !== calculated.id ||
-        learnerNode.demonstratedCognitiveLevel !== calculated.cognitiveLevel
+        learnerNode.demonstratedCognitiveLevel !== calculated.cognitiveLevel ||
+        learnerNode.demonstratedCognitiveEvidenceReference !==
+          (computation.latestQualifyingEvidence?.taskReference ?? null)
       )
     ) {
       updates.demonstratedCognitiveLevelId = calculated.id;
