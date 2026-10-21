@@ -1,3 +1,4 @@
+import {SourceReferenceValidationError} from "./mapping-v2/source-references.js";
 import {SOURCE_PREPARATION_PROMPT} from "./mapping-v2/prompts.js";
 import fs from "fs";
 import path from "path";
@@ -814,6 +815,7 @@ export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingPass1SchemaValidationError) return error.teacherMessage;
   if (error instanceof MappingZeroMicroNodesError) return error.teacherMessage;
   if (error instanceof MappingSourcePlacementError) return error.teacherMessage;
+  if (error instanceof SourceReferenceValidationError) return "Քարտեզագրումը աղբյուրային բլոկները անվտանգ չի տեղավորել։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել կամ վերանայել աղբյուրը։";
   if (error instanceof MappingInstructionalCoverageError) return error.teacherMessage;
   if (error instanceof MappingSourceAlignmentError) return error.teacherMessage;
   if (error instanceof MappingGranularityReviewError) return error.teacherMessage;

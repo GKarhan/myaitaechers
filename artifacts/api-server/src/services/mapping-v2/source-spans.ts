@@ -8,6 +8,7 @@ Keep each numbered question/exercise as its own EXERCISE block, including all of
 Do not turn a numbered theory subsection heading into an exercise. Include a question's associated table, answer cells, matching options and illustrations' visible labels inside that EXERCISE range. Exclude unrelated theory, running captions or page headers from it. Adjacent same-type theory lines may be grouped. If a single line contains more than one logical item, keep that line intact; do not invent character offsets. Line numbers are server IDs, not printed page or exercise numbers.`;
 
 const blockTypeSchema=z.enum(['DEFINITION','RULE','EXAMPLE','EXERCISE','OBJECTIVE','WARNING','EXCEPTION','TABLE','IMAGE','CAPTION','NOTE','ACTIVITY','HOMEWORK']);
+type BlockType=z.infer<typeof blockTypeSchema>;
 export const spanSchema=z.strictObject({firstBlockType:blockTypeSchema,blocks:z.array(z.strictObject({
  blockType:blockTypeSchema,firstLine:z.number().int().min(2),
 }))});
@@ -20,16 +21,49 @@ export class SourceSpanPlanError extends Error {
   this.diagnostics={physicalPage,lineCount,starts,reason};
  }
 }
-export function materializeSourceSpans(text:string,pageNumber:number,value:unknown){
+// Printed question-section headings prove list context independently of the
+// provider's classification. Preserve exact lines; only refine boundaries/types.
+function questionHeader(line:string){
+ return /^(հարցերևառաջադրանքներ|հարցերեւառաջադրանքներ|questionsandtasks|questionsandexercises)$/u.test(
+  line.normalize('NFKC').toLocaleLowerCase('hy-AM').replace(/[^\p{L}]/gu,''));
+}
+function taskNumber(line:string){return /^\s*(\d{1,3})[.)։]\s*/.exec(line)?.[1];}
+function newSection(line:string){return /^\s*(?:§\s*\d|Section\s+\d|Գործնական\s*աշխատանք)/iu.test(line);}
+function refineQuestionStarts(lines:{id:number;text:string}[],spans:{firstLine:number;blockType:BlockType}[],precedingPageTail:string|null){
+ const starts=new Map(spans.map(s=>[s.firstLine,s.blockType]));
+ let active=false,last=0,inside=false;
+ for(const line of (precedingPageTail??'').split(/\r?\n/u)){
+  if(questionHeader(line)){active=true;last=0;}
+  else if(newSection(line)){active=false;last=0;}
+  else if(active){const n=taskNumber(line);if(n!==undefined&&(last===0||Number(n)===last+1))last=Number(n);}
+ }
+ for(const line of lines){
+  if(questionHeader(line.text)){starts.set(line.id,'NOTE');active=true;inside=false;last=0;continue;}
+  if(newSection(line.text)){if(active)starts.set(line.id,/^\s*(?:§|Section)/iu.test(line.text)?'NOTE':'ACTIVITY');active=false;inside=false;continue;}
+  if(/^\s*--\s*\d+ of \d+\s*--\s*$/u.test(line.text)){starts.set(line.id,'NOTE');inside=false;continue;}
+  if(/^\s*[❶-❾①-⑳]\s*[^?՞]{1,80}$/u.test(line.text)){
+   starts.set(line.id,'NOTE');active=false;inside=false;continue;
+  }
+  if(!active)continue;
+  const number=taskNumber(line.text);
+  if(number!==undefined&&Number(number)===last+1){
+   starts.set(line.id,'EXERCISE');inside=true;last=Number(number);
+  }else if(inside)starts.delete(line.id);
+ }
+ return [...starts].map(([firstLine,blockType])=>({firstLine,blockType})).sort((a,b)=>a.firstLine-b.firstLine);
+}
+
+export function materializeSourceSpans(text:string,pageNumber:number,value:unknown,precedingPageTail:string|null=null){
  if(!Number.isInteger(pageNumber)||pageNumber<1)throw Error('SOURCE_SPAN_PAGE_INVALID');
  const result=spanSchema.safeParse(value);if(!result.success)throw Error('SOURCE_SPAN_SCHEMA_INVALID');
  const lines=sourceLines(text);
  // Explicit source IDs determine reading order, regardless of response order.
- const spans=[{firstLine:1,blockType:result.data.firstBlockType},...result.data.blocks].sort((a,b)=>a.firstLine-b.firstLine);
+ let spans:{firstLine:number;blockType:BlockType}[]=[{firstLine:1,blockType:result.data.firstBlockType},...result.data.blocks].sort((a,b)=>a.firstLine-b.firstLine);
  const starts=spans.map(s=>s.firstLine);
  const fail=(reason:string):never=>{throw new SourceSpanPlanError(pageNumber,lines.length,starts,reason);};
  if(new Set(starts).size!==starts.length)fail('DUPLICATE_START');
  if(starts.some(start=>start>lines.length))fail('START_OUT_OF_RANGE');
+ spans=refineQuestionStarts(lines,spans,precedingPageTail);
  const blocks=spans.map((span,index)=>{
   const lastLine=index+1<spans.length?spans[index+1].firstLine-1:lines.length;
   return {blockType:span.blockType,sourceText:lines.slice(span.firstLine-1,lastLine).map(l=>l.text).join('\n'),sourcePage:pageNumber,sourceParagraph:`lines:${span.firstLine}-${lastLine}`,sourceBoundingBox:null};

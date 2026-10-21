@@ -49,3 +49,19 @@ assert.equal(wireCalls,1);
 console.log('PASS: actual SDK HTTP body preserves strict source-role enums and provider routing; mocked transport only');
 
 console.log('PASS: server-owned schemaVersion, omitted/incorrect model metadata handled without changing pedagogy; all shape failures still rejected with redacted paths');
+
+let repairCalls=0;
+const duplicate=structuredClone(providerMap) as any;duplicate.exercises[1].sourceBlockIndices=[1];
+const repaired=await generateCompleteMap(blocks,context,{complete:async req=>{
+ repairCalls++;
+ if(repairCalls===2){assert.ok(req.messages.at(-1)!.content.includes('DUPLICATE_OR_INVALID_SOURCE_EXERCISE'));assert.ok(req.messages.at(-1)!.content.includes('validationErrors'));}
+ return {choices:[{finish_reason:'stop',message:{content:JSON.stringify(repairCalls===1?duplicate:providerMap)}}]};
+}});
+assert.equal(repairCalls,2);assert.equal(repaired.generationAttempts,2);assert.equal(repaired.map.exercises.length,15);
+let rejectedCalls=0;
+await assert.rejects(()=>generateCompleteMap(blocks,context,{complete:async()=>{rejectedCalls++;return {choices:[{finish_reason:'stop',message:{content:JSON.stringify(duplicate)}}]};}}),SourceReferenceValidationError);
+assert.equal(rejectedCalls,2,'bounded correction must not loop or persist invalid work');
+let outageCalls=0;
+await assert.rejects(()=>generateCompleteMap(blocks,context,{complete:async()=>{outageCalls++;throw Error('provider unavailable');}}),/provider unavailable/);
+assert.equal(outageCalls,1,'transport failures are not validation retries');
+console.log('PASS one bounded corrective request for invalid references; persistent invalid output still rejected; transport errors not retried');

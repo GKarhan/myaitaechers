@@ -24,6 +24,6 @@ export function buildCompleteMapRequest(blocks:SourceBlock[],context:CompleteMap
  const request={model:'google/gemini-2.5-flash',temperature:0.1,max_tokens:24000,
   provider:{require_parameters:true},
   response_format:{type:'json_schema' as const,json_schema:{name:'complete_lesson_map',strict:true,schema}},
-  messages:[{role:'system' as const,content:COMPLETE_MAPPING_PROMPT+'\n'+adapter.instructions},{role:'user' as const,content:input}]};
+  messages:[{role:'system' as const,content:COMPLETE_MAPPING_PROMPT+'\n'+adapter.instructions+'\nClassify tasks belonging to a preceding OR following lesson as NEIGHBOR_SECTION, even if the block type is ACTIVITY. Never exclude a current-lesson task as NON_INSTRUCTIONAL. Each textbook exercise owns its source blocks exactly once. Link one source task to multiple nodes instead of duplicating it. An exercise cognitiveLevel MUST occur in EVERY linked node cognitivePath; otherwise choose a supported common level or leave uncertain node links empty and report the issue.'},{role:'user' as const,content:input}]};
  return {request,hash,adapter:adapter.id};
 }
