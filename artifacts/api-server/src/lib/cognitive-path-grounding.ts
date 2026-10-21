@@ -68,7 +68,7 @@ export function getHighConfidenceLearningObjectiveFloor(
   if (!objective) return null;
   const createVerb = /(?:^|\s)(?:create|design|compose|develop|construct|ստեղծ\p{L}*|նախագծ\p{L}*|կազմ\p{L}*|մշակ\p{L}*)(?:\s|$)/iu;
   const evaluateVerb = /(?:^|\s)(?:evaluate|justify|critique|assess|գնահատ\p{L}*|հիմնավոր\p{L}*|քննադատ\p{L}*)(?:\s|$)/iu;
-  const explicitAnalyzeVerb = /(?:^|\s)(?:analyze|differentiate|classify|վերլուծ\p{L}*|տարբերակ\p{L}*|դասակարգ\p{L}*)(?:\s|$)/iu;
+  const explicitAnalyzeVerb = /(?:^|\s)(?:analyze|differentiate|classify|վերլուծ\p{L}*|դասակարգ\p{L}*)(?:\s|$)/iu;
   // Comparison wording is not analytical by itself. Require an observable
   // analytical object or basis (parts, alternatives, evidence, relationships,
   // causes, errors, or structure) before it establishes an Analyze floor.
@@ -101,6 +101,13 @@ export function validateCognitivePathGrounding(
   // C1 validates whether the objective belongs to this source. C2 grounding
   // must independently prove every generated claim from textbook source only.
   const sourceAnchors = anchors(source);
+  // The learning objective supplies local context for otherwise generic criteria
+  // (e.g. «երկու հասկացությունների սահմանումները»); it must itself share
+  // a substantive topic anchor with the source before it can assist grounding.
+  const objectiveAnchors = anchors(learningObjective ?? "");
+  const hasObjectiveSourceAnchor = [...objectiveAnchors].some((token) => [...sourceAnchors].some((src) => token === src || (token.length >= 6 && src.length >= 6 && token.slice(0, 5) === src.slice(0, 5))));
+  const groundedAnchors = hasObjectiveSourceAnchor ? [...sourceAnchors, ...objectiveAnchors] : [...sourceAnchors];
+  const sharesTopicAnchor = (word: string) => groundedAnchors.some((anchor) => word === anchor || (word.length >= 6 && anchor.length >= 6 && word.slice(0, 5) === anchor.slice(0, 5)));
   const issueCounts: Record<string, number> = {};
   const add = (code: string) => { issueCounts[code] = (issueCounts[code] ?? 0) + 1; };
   if (isUnreadableSource(theoryContent ?? "")) add("UNREADABLE_SOURCE");
@@ -110,7 +117,7 @@ export function validateCognitivePathGrounding(
       if (!text) { add("EMPTY_REQUIRED_FIELD"); continue; }
       if (!armenianLetter.test(value) || latinLetter.test(value)) add("NON_ARMENIAN_REQUIRED_TEXT");
       if (numbers(text).some((number) => !sourceNumbers.has(number))) add("NOVEL_NUMERIC_CLAIM");
-      const overlap = [...anchors(text)].filter((token) => sourceAnchors.has(token)).length;
+      const overlap = [...anchors(text)].filter(sharesTopicAnchor).length;
       if (overlap === 0) add("LOW_SOURCE_ANCHOR");
       if (strongClaim.test(text) && !source.includes(text)) add("UNSUPPORTED_STRONG_CLAIM");
     }
