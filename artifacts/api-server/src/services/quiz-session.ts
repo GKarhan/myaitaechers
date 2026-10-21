@@ -9,7 +9,7 @@ import {
   quizSessionsTable,
   quizzesTable,
 } from "@workspace/db";
-import { resolveKnowledgeTreeStates } from "./knowledge-tree-state.js";
+
 
 export type QuizSessionProjection = {
   masteredNodeIds: number[];
@@ -50,7 +50,22 @@ export async function resolveQuizSessionProjection(
       .from(quizQuestionsTable).where(eq(quizQuestionsTable.quizId, rootQuizId));
     nodeIds = rows.map((row) => row.nodeId).filter((value): value is number => value !== null);
   }
-  return projectQuizSessionStates(nodeIds, await resolveKnowledgeTreeStates(learnerId, nodeIds));
+  // Local quiz practice tracks questions answered correctly in any completed
+  // attempt. This is distinct from the canonical C4/C5 mastery model.
+  const successful = await db
+    .select({ nodeId: quizAnswersTable.nodeId })
+    .from(quizAnswersTable)
+    .innerJoin(quizAttemptsTable, eq(quizAttemptsTable.id, quizAnswersTable.attemptId))
+    .innerJoin(quizSessionsTable, eq(quizSessionsTable.id, quizAttemptsTable.quizSessionId))
+    .where(and(
+      eq(quizSessionsTable.rootQuizId, rootQuizId),
+      eq(quizSessionsTable.studentId, learnerId),
+      eq(quizAnswersTable.isCorrect, true),
+    ));
+  const practiced = new Set(successful.map(row => row.nodeId).filter((id): id is number => id !== null));
+  return projectQuizSessionStates(nodeIds, new Map(nodeIds.map(id => [
+    id, { knowledgeState: practiced.has(id) ? "MASTERED" : "LEARNING" },
+  ])));
 }
 
 export async function ensureQuizSession(input: {
