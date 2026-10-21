@@ -38,7 +38,7 @@ type Feedback = {
   };
 };
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+const BASE = "https://myaitaechers-api.onrender.com";
 const OPTION_LABELS = ["Ա", "Բ", "Գ", "Դ", "Ե", "Զ"];
 
 export default function QuizTake() {
