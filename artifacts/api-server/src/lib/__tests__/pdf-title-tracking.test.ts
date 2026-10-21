@@ -1,0 +1,17 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import {fileURLToPath} from "node:url";
+import {buildLessonSourceSet,applyVisionTitleAnchor,validateBlocksAgainstLessonSourceSet} from "../lesson-source-set.js";
+const fixture=JSON.parse(fs.readFileSync(fileURLToPath(new URL("./fixtures/pdf-tracked-heading.json",import.meta.url)),"utf8"));
+const source=(text:string,title=fixture.title)=>buildLessonSourceSet({resourceId:26,resourceFileUrl:"/book.pdf",pagesFrom:13,pagesTo:16,lessonTitle:title,extractedPages:[{pageNumber:13,text}]});
+const s=source(fixture.heading);
+assert.equal(s.titleMatch.valid,true);assert.equal(s.titleMatch.matchedTokenCount,s.titleMatch.requiredTokenCount);
+assert.equal(source(fixture.heading,fixture.title+" Astronomy").titleMatch.valid,false);
+assert.equal(source(fixture.heading.split("\n")[0]).titleMatch.valid,false);
+assert.equal(source(fixture.heading.toLocaleLowerCase("hy-AM")).titleMatch.valid,false,"tracking fallback is restricted to display headings");
+assert.equal(source("Դաս 1.1\nԴաս 1.2\nԴաս 1.3\n"+fixture.heading).titleMatch.valid,false,"contents title does not authorize source");
+assert.equal(validateBlocksAgainstLessonSourceSet(s,[{pageNumber:13,text:fixture.heading}],[{sourcePage:13,sourceText:fixture.heading}]).valid,true);
+assert.equal(validateBlocksAgainstLessonSourceSet(s,[{pageNumber:13,text:fixture.heading}],[{sourcePage:13,sourceText:"invented material"}]).valid,false);
+assert.equal(validateBlocksAgainstLessonSourceSet(s,[{pageNumber:13,text:fixture.heading}],[{sourcePage:17,sourceText:fixture.heading}]).valid,false);
+assert.equal(applyVisionTitleAnchor(source(""),fixture.title,[{sourcePage:13,sourceText:fixture.heading}]).titleMatch.valid,true);
+console.log("PASS real Physics 3 tracked heading; all title tokens required; lowercase/neighbor/TOC rejected; verbatim and physical-page guards preserved; vision anchor parity");

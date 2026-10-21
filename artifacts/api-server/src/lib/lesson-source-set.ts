@@ -116,6 +116,22 @@ function titleTokens(lessonTitle: string): string[] {
   )];
 }
 
+/** PDFs sometimes insert tracking spaces between syllables in display headings.
+ * Match long title tokens inside compact UPPERCASE heading lines only. This
+ * never changes source text, page identity, or verbatim block verification. */
+function countMatchedTitleTokens(tokens: string[], texts: readonly string[]): number {
+  const words = new Set(texts.flatMap(normalizedWords));
+  const headings = texts.flatMap(text => text.split(/\r?\n/u)).filter(line => {
+    const letters = [...line].filter(char => /\p{L}/u.test(char));
+    return letters.length >= 8 && letters.filter(char =>
+      char !== char.toLocaleLowerCase("hy-AM") && char === char.toLocaleUpperCase("hy-AM")
+    ).length / letters.length >= 0.7;
+  }).map(line => line.normalize("NFKC").toLocaleLowerCase("hy-AM").replace(/[^\p{L}\p{N}]/gu, ""));
+  return tokens.filter(token => words.has(token) ||
+    (token.length >= 6 && headings.some(heading => heading.includes(token)))
+  ).length;
+}
+
 function isLikelyTableOfContentsPage(text: string): boolean {
   const lessonEntryCount = (text.match(/(?:^|\n)\s*Դաս\s+\d+\.\d+/gu) ?? []).length;
   return lessonEntryCount >= 3 || /(?:^|\n)\s*Բովանդակություն(?:\s|$)/u.test(text);
@@ -137,8 +153,7 @@ export function buildLessonSourceSet(input: {
   for (let page = input.pagesFrom; page <= input.pagesTo; page++) requestedPages.add(page);
   const requiredTitleTokens = titleTokens(input.lessonTitle);
   const contentPages = input.extractedPages.filter((page) => !isLikelyTableOfContentsPage(page.text));
-  const contentPageWordSet = new Set(contentPages.flatMap((page) => normalizedWords(page.text)));
-  const matchedTokenCount = requiredTitleTokens.filter((token) => contentPageWordSet.has(token)).length;
+  const matchedTokenCount = countMatchedTitleTokens(requiredTitleTokens, contentPages.map(page => page.text));
   const tableOfContentsPageCount = input.extractedPages.length - contentPages.length;
 
   return {
@@ -375,8 +390,7 @@ export function applyVisionTitleAnchor(
   blocks: ReadonlyArray<SourceBlock>,
 ): LessonSourceSet {
   const requiredTokens = titleTokens(lessonTitle);
-  const blockTokens = new Set(blocks.flatMap((block) => normalizedWords(block.sourceText)));
-  const matchedTokenCount = requiredTokens.filter((token) => blockTokens.has(token)).length;
+  const matchedTokenCount = countMatchedTitleTokens(requiredTokens, blocks.map(block => block.sourceText));
   return {
     ...sourceSet,
     titleMatch: {
