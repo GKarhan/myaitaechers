@@ -2715,10 +2715,6 @@ function LessonNodesPanel({
           {nodes.length > 0 && <div className="rounded-lg border border-teal-400/20 bg-teal-400/5 p-3 text-xs text-teal-100">
             Հիմնական քարտեզ՝ {nodes.length} MicroNode։ Ուսուցիչը աշխատում է ստորև ցուցադրված հիմնական քարտեզի հետ։ Հին JSON-ը պահվում է միայն որպես համեմատության և խմբագրման արխիվ։
           </div>}
-          <details className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
-            <summary className="cursor-pointer text-xs text-amber-200 font-semibold">Տեխնիկական մանրամասներ · նախնական JSON քարտեզ</summary>
-            <div className="mt-3"><UnvalidatedMappingDraftPanel lessonId={lessonId} lessonStatus={authoringStatus} /></div>
-          </details>
           {nodes.length > 0 && !hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <CompleteMapApproval lessonId={lessonId} courseId={courseId} status={authoringStatus} />}
           {nodes.length > 0 && ["active","assigned","approved"].includes(authoringStatus) && <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-xs text-emerald-200">✓ Դասի քարտեզը ընդունված է փորձնական օգտագործման համար։ Դասագրքային չստուգված առաջադրանքները հաստատված չեն։ Կրկնակի հաստատում չի պահանջվում։</p>}
           {hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <UnvalidatedMappingDraftPanel lessonId={lessonId} lessonStatus={authoringStatus} approvalOnly />}
