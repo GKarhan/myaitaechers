@@ -48,6 +48,7 @@ export type QuizGenerationErrorDetails = {
 
 export type QuizGenerationRequestSnapshot = {
   schemaVersion: 1;
+  generationMode?: "canonical" | "standard";
   subjectId: number;
   classId: number | null;
   sourceBookId: number | null;
@@ -86,6 +87,7 @@ function uniqueSortedPositiveIntegers(values: number[] | undefined): number[] {
 }
 
 export function normalizeQuizGenerationRequest(input: {
+  generationMode?: "canonical" | "standard";
   subjectId: number;
   classId?: number | null;
   sourceBookId?: number | null;
@@ -98,6 +100,7 @@ export function normalizeQuizGenerationRequest(input: {
 }): QuizGenerationRequestSnapshot {
   return {
     schemaVersion: 1,
+    generationMode: input.generationMode ?? "canonical",
     subjectId: input.subjectId,
     classId: input.classId ?? null,
     sourceBookId: input.sourceBookId ?? null,
@@ -113,6 +116,7 @@ export function normalizeQuizGenerationRequest(input: {
 function stableJson(value: QuizGenerationRequestSnapshot): string {
   return JSON.stringify({
     schemaVersion: value.schemaVersion,
+    generationMode: value.generationMode ?? "canonical",
     subjectId: value.subjectId,
     classId: value.classId,
     sourceBookId: value.sourceBookId,
@@ -322,6 +326,7 @@ function snapshotToCreationInput(
     difficultyMode: snapshot.difficultyMode,
     quizType: snapshot.quizType,
     allowEmptyQuestions: true,
+    generationPurpose: snapshot.generationMode === "standard" ? "standard" : "normal",
   };
 }
 
@@ -332,6 +337,7 @@ function parseSnapshot(value: unknown): QuizGenerationRequestSnapshot {
   const candidate = value as Partial<QuizGenerationRequestSnapshot>;
   if (
     candidate.schemaVersion !== 1 ||
+    (candidate.generationMode !== undefined && !["standard", "canonical"].includes(candidate.generationMode)) ||
     !Number.isInteger(candidate.subjectId) ||
     !Number.isInteger(candidate.questionCount) ||
     !Array.isArray(candidate.lessonIds) ||

@@ -4947,6 +4947,7 @@ export default function TeacherDashboard() {
   const [quizBooks,     setQuizBooks]       = useState<{id:number;name:string}[]>([]);
   const [quizCreating,  setQuizCreating]    = useState(false);
   const [quizError,     setQuizError]       = useState<string|null>(null);
+  const [quizGenerationMode, setQuizGenerationMode] = useState<"standard" | "canonical">("standard");
   const [quizType,      setQuizType]        = useState<"lesson"|"summary">("lesson");
   // ── Node drill-down (single-lesson mode) ──────────────────────────────────
   const [quizNodeIds,      setQuizNodeIds]      = useState<number[]>([]);
@@ -5190,6 +5191,7 @@ export default function TeacherDashboard() {
           classId:        selectedClass?.id ?? undefined,
           sourceBookId:   quizBookId ?? undefined,
           quizType,
+          generationMode: quizGenerationMode,
           lessonIds:      sendNodeIds ? undefined : quizLessonIds,
           nodeIds:        sendNodeIds,
           questionCount:  quizCount,
@@ -7582,6 +7584,14 @@ export default function TeacherDashboard() {
               </div>
             </div>
 
+            <div className="mb-4 space-y-2">
+              <label className="block text-sm text-muted-foreground">Գեներացման եղանակ</label>
+              <select value={quizGenerationMode} onChange={(e) => setQuizGenerationMode(e.target.value as "standard" | "canonical")} className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white">
+                <option value="standard">Սովորական թեստ · դասի բովանդակությունից</option>
+                <option value="canonical">Գիտելիքահեն թեստ · MicroNode / Bloom (փորձնական)</option>
+              </select>
+              <p className="text-xs text-muted-foreground">Սովորական թեստի արդյունքը ինքնաբերաբար չի հաստատում MicroNode-ի յուրացումը։</p>
+            </div>
             {/* Title */}
             <div className="mb-4">
               <label className="block text-sm text-muted-foreground mb-1.5">

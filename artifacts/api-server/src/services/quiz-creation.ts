@@ -84,7 +84,7 @@ export type CreateQuizFromNodeScopeInput = {
   retestStrategy?: RetestStrategy;
   allowEmptyQuestions?: boolean;
   requireGeneratedNodeScope?: boolean;
-  generationPurpose?: "normal" | "retest";
+  generationPurpose?: "normal" | "retest" | "standard";
   generateQuestions?: (input: GenerateQuizInput) => Promise<GeneratedQuestion[]>;
   questionProvider?: GenerateQuizInput["questionProvider"];
   qualityReview?: GenerateQuizInput["qualityReview"];
@@ -191,7 +191,7 @@ export async function generateQuizFromNodeScope(
     throw new QuizCreationError("QUESTION_SCOPE_INVALID");
   }
 
-  const canonicalTargets = input.generationPurpose === "retest"
+  const canonicalTargets = input.generationPurpose === "retest" || input.generationPurpose === "standard"
     ? []
     : await resolveNormalQuizCanonicalTargets(nodeIds);
   let generated: GeneratedQuestion[];
