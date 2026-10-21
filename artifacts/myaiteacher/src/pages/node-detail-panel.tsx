@@ -1,3 +1,4 @@
+import { customFetch } from "@workspace/api-client-react";
 /**
  * KT-1.5 — MicroNode Detail Panel (Evidence Transparency)
  *
@@ -121,17 +122,14 @@ export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps)
     queryFn: async ({ signal }) => {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const resp = await fetch(`/api/knowledge-tree/nodes/${lessonNodeId}`, {
+      return customFetch<NodeDetail>(`/api/knowledge-tree/nodes/${lessonNodeId}`, {
         signal, headers, credentials: "include",
       });
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? `HTTP ${resp.status}`);
-      }
-      return resp.json() as Promise<NodeDetail>;
     },
     enabled: !!token && !!lessonNodeId,
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnWindowFocus: "always",
+    refetchInterval: 15_000,
   });
 
   // Hidden when nothing selected
@@ -213,7 +211,7 @@ export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps)
                     "Content-Type": "application/json",
                   };
                   if (token) headers.Authorization = `Bearer ${token}`;
-                  const response = await fetch("/api/lessons/start", {
+                  await customFetch<{ lessonId: number }>("/api/lessons/start", {
                     method: "POST",
                     headers,
                     credentials: "include",
@@ -223,12 +221,6 @@ export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps)
                       intent,
                     }),
                   });
-                  if (!response.ok) {
-                    const body = await response.json().catch(() => ({}));
-                    throw new Error(
-                      (body as { error?: string }).error ?? `HTTP ${response.status}`,
-                    );
-                  }
                   setLocation(`/lessons/${data.lesson.id}`);
                   onClose();
                 } catch (launchFailure) {

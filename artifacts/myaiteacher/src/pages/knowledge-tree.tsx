@@ -1,3 +1,4 @@
+import { customFetch } from "@workspace/api-client-react";
 import { useEffect, useState, useCallback } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -221,6 +222,7 @@ function LessonSection({
             );
           })}
 
+          {lesson.totalUnits === 0 && <p className="px-4 py-3 text-sm text-muted-foreground">Դեռ չի ուսումնասիրել · 0</p>}
           {/* Ungrouped nodes (topicId = null) */}
           {lesson.ungroupedNodes.length > 0 && (
             <div className="mb-2">
@@ -321,36 +323,33 @@ export default function KnowledgeTree() {
   }, [token, authLoading, setLocation]);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
-  const { data: ownTreeData, isLoading: ownTreeLoading } = useQuery<KTData>({
+  const { data: ownTreeData, isLoading: ownTreeLoading, error: ownTreeError } = useQuery<KTData>({
     queryKey: getGetKnowledgeTreeQueryKey(subjectId),
     queryFn: async ({ signal }) => {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const resp = await fetch(`/api/knowledge-tree/${subjectId}`, { signal, headers, credentials: "include" });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json() as Promise<KTData>;
+      return customFetch<KTData>(`/api/knowledge-tree/${subjectId}`, { signal, headers, credentials: "include" });
     },
     enabled: !!token && !isNaN(subjectId) && !isTeacherView,
     staleTime: 0,
-    refetchOnMount: true,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchInterval: 15_000,
   });
 
-  const { data: teacherTreeData, isLoading: teacherTreeLoading } = useQuery<KTData>({
+  const { data: teacherTreeData, isLoading: teacherTreeLoading, error: teacherTreeError } = useQuery<KTData>({
     queryKey: ["knowledge-tree-teacher", subjectId, studentId],
     queryFn: async () => {
       const url = `/api/knowledge-tree/${subjectId}?studentId=${studentId}`;
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const resp = await fetch(url, { headers, credentials: "include" });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? `HTTP ${resp.status}`);
-      }
-      return resp.json() as Promise<KTData>;
+      return customFetch<KTData>(url, { headers, credentials: "include" });
     },
     enabled: !!token && !isNaN(subjectId) && isTeacherView,
     staleTime: 0,
-    refetchOnMount: true,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchInterval: 15_000,
   });
 
   const rawData    = isTeacherView ? teacherTreeData  : ownTreeData;
@@ -390,6 +389,8 @@ export default function KnowledgeTree() {
     );
   }
 
+  const treeError = isTeacherView ? teacherTreeError : ownTreeError;
+  if (treeError) return <div role="alert" className="p-8 text-red-400">{treeError.message}</div>;
   if (!user || !rawData) return null;
 
   const treeData = rawData;  // KTData: narrowed by the null-check guard above

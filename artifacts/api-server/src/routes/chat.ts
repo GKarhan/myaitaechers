@@ -1008,9 +1008,7 @@ async function persistAndProjectChatEvidence(input: {
       },
     } as any)
     .where(eq(evidenceEventsTable.id, insertedEvidence.id));
-  updateTopicScoring(topicId, input.userId).catch((err) =>
-    logger.error({ err, topicId }, "chat evidence: scoring failed"),
-  );
+  await updateTopicScoring(topicId, input.userId);
   return { qualificationStatus, projection, taskReference: input.snapshot.activeTaskReference };
 }
 

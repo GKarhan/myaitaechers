@@ -56,6 +56,7 @@ import {
 import {
   collapseToLatestCompletedAttempt,
   getLatestCompletedQuizScoreStats,
+  summarizePracticeProgress,
 } from "../services/quiz-reporting.js";
 
 // ---------------------------------------------------------------------------
@@ -1003,6 +1004,7 @@ router.get("/quizzes/:id/results", requireTeacher, async (req: AuthRequest, res)
   const rows = await db
     .select({
       assignmentId:     quizAssignmentsTable.id,
+      attemptId:        quizAttemptsTable.id,
       studentId:        usersTable.id,
       studentName:      usersTable.fullName,
       assignmentStatus: quizAssignmentsTable.status,
@@ -1023,7 +1025,27 @@ router.get("/quizzes/:id/results", requireTeacher, async (req: AuthRequest, res)
     )
     .where(eq(quizAssignmentsTable.quizId, quizId));
 
-  const latestRows = collapseToLatestCompletedAttempt(rows);
+  const completedIds = rows.filter(r => r.completedAt !== null && r.attemptId !== null).map(r => r.attemptId!);
+  const answers = completedIds.length ? await db.select({
+    attemptId: quizAnswersTable.attemptId,
+    questionId: quizAnswersTable.questionId,
+    isCorrect: quizAnswersTable.isCorrect,
+  }).from(quizAnswersTable).where(inArray(quizAnswersTable.attemptId, completedIds)) : [];
+  const answersByAttempt = new Map<number, typeof answers>();
+  for (const answer of answers) {
+    const group = answersByAttempt.get(answer.attemptId) ?? [];
+    group.push(answer);
+    answersByAttempt.set(answer.attemptId, group);
+  }
+  const latestRows = collapseToLatestCompletedAttempt(rows).map(row => {
+    if (!row.completedAt) return row;
+    const progress = summarizePracticeProgress(rows
+      .filter(r => r.assignmentId === row.assignmentId && r.completedAt !== null && r.attemptId !== null)
+      .map(r => ({ attemptId: r.attemptId!, attemptSequence: r.attemptSequence ?? 1,
+        questions: answersByAttempt.get(r.attemptId!) ?? [] })));
+    return { ...row, totalCorrect: progress.totalCorrect, totalQuestions: progress.totalQuestions,
+      scorePercent: progress.scorePercent };
+  });
   // Sort: completed worst-score-first; non-completed at the bottom
   latestRows.sort((a, b) => {
     const aComp = a.completedAt !== null;
@@ -1112,23 +1134,33 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
       sourceQuestionId: q.questionId,
     })),
   );
-  const { nodeBreakdown, recommendations } = histories.at(-1)?.analysis
-    ?? await buildStudentResultAnalysis(attempt.id, studentId);
+  const progress = summarizePracticeProgress(histories.map(({ round, analysis }) => ({
+    attemptId: round.id,
+    attemptSequence: round.attemptSequence,
+    questions: analysis.questions,
+  })));
+  // Preserve every original node and take its latest attempted result.
+  const nodeMap = new Map<number, typeof histories[number]["analysis"]["nodeBreakdown"][number]>();
+  for (const { analysis } of histories) {
+    for (const node of analysis.nodeBreakdown) nodeMap.set(node.nodeId, node);
+  }
+  const nodeBreakdown = [...nodeMap.values()].map(node => {
+    const answers = progress.latestQuestions.filter(q => q.nodeId === node.nodeId);
+    const correct = answers.filter(q => q.isCorrect).length;
+    return { ...node, total: answers.length, correct, incorrect: answers.length - correct,
+      percent: answers.length ? Math.round(correct / answers.length * 100) : 0 };
+  });
+  const recommendations = histories.at(-1)?.analysis.recommendations ?? [];
   res.json({
     studentId,
-    totalCorrect: initial.totalCorrect,
-    totalQuestions: initial.totalQuestions,
-    scorePercent: initial.scorePercent,
+    totalCorrect: progress.totalCorrect,
+    totalQuestions: progress.totalQuestions,
+    scorePercent: progress.scorePercent,
+    initialScorePercent: initial.scorePercent,
     questions,
     nodeBreakdown,
     recommendations,
-    attemptHistory: histories.map(({ round }) => ({
-      attemptId: round.id,
-      attemptSequence: round.attemptSequence,
-      totalCorrect: round.totalCorrect,
-      totalQuestions: round.totalQuestions,
-      scorePercent: round.scorePercent,
-    })),
+    attemptHistory: progress.attempts,
   });
 });
 
@@ -2031,6 +2063,12 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     }
   }
 
+  // Commit supporting scores before returning: the client invalidates the tree
+  // immediately on success and must not fetch the previous scores.
+  await Promise.all(scoredTopicIds.map(topicId =>
+    updateTopicScoring(topicId, studentId, { quizId }),
+  ));
+
   const sessionState = await resolveQuizSessionProjection(quizId, studentId);
   res.json({
     attemptId: attempt.id,
@@ -2040,12 +2078,6 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     scorePercent,
     sessionState,
   });
-
-  for (const topicId of scoredTopicIds) {
-    updateTopicScoring(topicId, studentId, { quizId }).catch((err) =>
-      logger.error({ err, topicId, userId: studentId }, "quiz evidence: scoring failed"),
-    );
-  }
 });
 
 // ── GET /api/quizzes/:id/analysis ────────────────────────────────────────────

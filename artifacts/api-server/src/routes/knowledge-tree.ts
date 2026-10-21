@@ -91,7 +91,7 @@ router.get(
     }
 
     // Step 2: Fetch all visible MicroNodes across all enrolled subjects.
-    // Visibility gate: active lesson + approved node (KT-1.2).
+    // Accepted/assigned lessons are curriculum even before a chat session starts.
     // Use JOIN through classStudentsTable (avoids inArray with nullable lessons.courseId).
     // LEFT JOIN knowledge_nodes to get learner state (NULL → not_started).
     const nodes = await db
@@ -131,7 +131,7 @@ router.get(
       .where(
         and(
           isNotNull(lessonsTable.courseId),        // exclude lessons not linked to a course
-          eq(lessonsTable.status,     "active"),   // student-facing lessons only
+          inArray(lessonsTable.status, ["approved", "assigned", "active", "completed"]),   // student-facing lessons only
           eq(lessonNodesTable.status, "approved"), // teacher-approved nodes only
         )
       );
@@ -232,7 +232,7 @@ router.get(
     }
 
     // 4. Verify lesson is active
-    if (node.lessonStatus !== "active") {
+    if (!["approved", "assigned", "active", "completed"].includes(node.lessonStatus)) {
       return res.status(403).json({ error: "Даси не является активным" });
     }
 
@@ -520,6 +520,18 @@ router.get(
     }
     const courseIds = enrolledCourses.map((c) => c.courseId);
 
+    // Curriculum exists before any assessment or learner-state row. Keep
+    // newly created lessons visible even while their mapping awaits approval.
+    const curriculumLessons = await db.select({
+      lessonId: lessonsTable.id,
+      lessonTitle: lessonsTable.title,
+      lessonNumber: lessonsTable.lessonNumber,
+    }).from(lessonsTable).where(and(
+      inArray(lessonsTable.courseId, courseIds),
+      eq(lessonsTable.subjectId, subjectId),
+      inArray(lessonsTable.status, ["draft", "needs_review", "approved", "assigned", "active", "completed"]),
+    ));
+
     // ── Step 1: Fetch all visible MicroNodes with lesson + mastery info ───────
     // Drives from lesson_nodes so nodes with no knowledge_nodes row appear
     // as not_started (LEFT JOIN NULL).
@@ -553,7 +565,7 @@ router.get(
         eq(reviewScheduleTable.userId,  targetUserId),
       ))
       .where(and(
-        eq(lessonsTable.status,     "active"),
+        inArray(lessonsTable.status, ["approved", "assigned", "active", "completed"]),
         eq(lessonNodesTable.status, "approved"),
       ));
 
@@ -563,7 +575,7 @@ router.get(
     );
 
     // ── Step 2: Fetch lesson_topics for all involved lessons ─────────────────
-    const lessonIds = [...new Set(nodeRows.map(r => r.lessonId))];
+    const lessonIds = curriculumLessons.map(r => r.lessonId);
     const topicRows = lessonIds.length > 0
       ? await db
           .select()
@@ -637,7 +649,9 @@ router.get(
 
     // De-duplicate lessons (same lesson can appear multiple times if it has
     // multiple enrolled courses — rare but possible)
-    const lessonMeta = new Map<number, { lessonTitle: string; lessonNumber: number | null }>();
+    const lessonMeta = new Map<number, { lessonTitle: string; lessonNumber: number | null }>(
+      curriculumLessons.map(lesson => [lesson.lessonId, lesson]),
+    );
     for (const n of processedNodes) {
       if (!lessonMeta.has(n.lessonId)) {
         lessonMeta.set(n.lessonId, { lessonTitle: n.lessonTitle, lessonNumber: n.lessonNumber });
