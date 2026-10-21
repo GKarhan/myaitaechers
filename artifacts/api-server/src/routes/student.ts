@@ -235,7 +235,7 @@ router.get("/student/assigned-lessons", requireAuth, async (req: AuthRequest,res
  .innerJoin(subjectsTable,eq(coursesTable.subjectId,subjectsTable.id))
  .leftJoin(lessonSessionsTable,and(eq(lessonSessionsTable.lessonId,lessonsTable.id),
    eq(lessonSessionsTable.userId,userId)))
- .where(and(inArray(coursesTable.classId,enrolled.map(e=>e.classId)),eq(lessonsTable.status,"active")))
+ .where(and(inArray(coursesTable.classId,enrolled.map(e=>e.classId)),inArray(lessonsTable.status,["active","assigned"])))
  .orderBy(lessonsTable.assignedAt,lessonsTable.id);
  res.json(rows.map(r=>({...r,teacherName:""})));
 });
@@ -297,7 +297,7 @@ router.get("/student/course-lessons", requireAuth, async (req: AuthRequest, res)
     )
     .where(and(
       eq(lessonsTable.courseId, matchingCourse.id),
-      eq(lessonsTable.status, "active")
+      inArray(lessonsTable.status, ["active", "assigned"])
     ));
   const lessons = rows;
 
