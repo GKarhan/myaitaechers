@@ -3499,22 +3499,7 @@ function LessonAssignmentAction({
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
-  const [reviewIssues, setReviewIssues] = useState<AssignmentReviewIssue[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const readinessQuery = useQuery<AssignmentReadinessResponse>({
-    queryKey: ["lesson-final-approval-readiness", lessonId],
-    queryFn: async () => {
-      const response = await mappingApiResponse(`/api/lessons/${lessonId}/final-approval-readiness`, {
-        headers: { Authorization: `Bearer ${token ?? ""}` },
-      });
-      if (!response.ok) throw new Error("Չհաջողվեց ստուգել հանձնարարելու պատրաստ լինելը։");
-      return response.json();
-    },
-    enabled: !!token && authoringStatus !== "approved",
-    staleTime: 0,
-  });
-  const readiness = readinessQuery.data?.readiness;
-
   const refreshLessons = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) }),
@@ -3533,44 +3518,12 @@ function LessonAssignmentAction({
     await refreshLessons();
   };
 
-  const runAssignmentPreflight = async (overrideWarnings = false) => {
-    if (pending) return;
+  const runAssignmentPreflight = async () => {
+    if (pending || authoringStatus !== "approved") return;
     setPending(true);
     setError(null);
     try {
-      if (authoringStatus === "approved") {
-        await activateLesson();
-        return;
-      }
-      const response = await mappingApiResponse(`/api/lessons/${lessonId}/final-approve`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
-        body: JSON.stringify(overrideWarnings ? { overrideWarnings: true } : {}),
-      });
-      const data = await response.json().catch(() => ({})) as {
-        approved?: boolean;
-        canAssign?: boolean;
-        confirmationRequired?: boolean;
-        reviewIssues?: AssignmentReviewIssue[];
-        hardBlockers?: AssignmentReviewIssue[];
-        overrideable?: AssignmentReviewIssue[];
-        warnings?: AssignmentReviewIssue[];
-        errors?: AssignmentReviewIssue[];
-      };
-      if (data.approved) {
-        setReviewIssues(null);
-        await activateLesson();
-        return;
-      }
-      if (response.status === 409 && data.confirmationRequired) {
-        setReviewIssues(data.reviewIssues ?? [...(data.overrideable ?? []), ...(data.warnings ?? [])]);
-        return;
-      }
-      const issues = data.hardBlockers ?? data.errors ?? [];
-      setError(
-        issues.map((issue) => issue.messageArm ?? issue.message).filter(Boolean).join(" ")
-        || "Դասը դեռ պատրաստ չէ հանձնարարելու համար։",
-      );
+      await activateLesson();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Կապի սխալ։ Կրկին փորձեք։");
     } finally {
@@ -3579,75 +3532,17 @@ function LessonAssignmentAction({
   };
 
   return (
-    <>
-      <div className="flex flex-col items-end gap-1">
-        {readiness && (
-          <p className={`max-w-72 text-right text-[10px] leading-snug ${
-            readiness === "READY"
-              ? "text-teal-300"
-              : readiness === "CONFIRMATION_REQUIRED"
-                ? "text-amber-300"
-                : "text-destructive"
-          }`}>
-            {readiness === "READY"
-              ? "Պատրաստ է հանձնարարելու"
-              : readiness === "CONFIRMATION_REQUIRED"
-                ? "Կան խնդիրներ, բայց կարող եք հաստատել և հանձնարարել"
-                : "Հանձնարարումը հնարավոր չէ մինչև այս խնդիրների լուծումը"}
-          </p>
-        )}
-        <button
-          onClick={() => { void runAssignmentPreflight(); }}
-          disabled={pending}
-          className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 disabled:opacity-50"
-        >
-          {pending ? "Ստուգվում է..." : "Հանձնարարել սովորողին"}
-        </button>
-        {error && <p className="max-w-56 text-right text-[10px] leading-snug text-destructive">{error}</p>}
-      </div>
-      <AlertDialog
-        open={reviewIssues !== null}
-        onOpenChange={(open) => { if (!open && !pending) setReviewIssues(null); }}
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={() => { void runAssignmentPreflight(); }}
+        disabled={pending || authoringStatus !== "approved"}
+        title={authoringStatus !== "approved" ? "Նախ հաստատեք դասի ամբողջ քարտեզը" : undefined}
+        className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 disabled:opacity-50"
       >
-        <AlertDialogContent className="border-amber-400/20 bg-[#0f1117] text-white">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-base text-amber-200">
-              Դասում կան չլուծված կամ վերանայման ենթակա խնդիրներ
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-sm leading-relaxed text-white/70">
-              Կարող եք վերադառնալ և վերանայել, կամ մեկ անգամ հաստատել ու հանձնարարել դասը։
-              Հաստատելու դեպքում նշումները կպահպանվեն որպես ձեր տեղեկացված որոշում։
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
-            {(reviewIssues ?? []).slice(0, 6).map((issue, index) => (
-              <p key={index} className="rounded border border-amber-400/15 bg-amber-400/[0.06] px-2 py-1.5 text-[11px] leading-relaxed text-amber-100">
-                {issue.messageArm ?? issue.message ?? "Վերանայում է պահանջվում։"}
-              </p>
-            ))}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={pending}
-              onClick={() => setReviewIssues(null)}
-              className="border-white/15 bg-white/5 text-white hover:bg-white/10"
-            >
-              Վերադառնալ և խմբագրել
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={pending}
-              onClick={(event) => {
-                event.preventDefault();
-                void runAssignmentPreflight(true);
-              }}
-              className="bg-amber-500 text-black hover:bg-amber-400"
-            >
-              {pending ? "Հանձնարարում է..." : "Այնուամենայնիվ հանձնարարել"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+        {pending ? "Հանձնարարում է..." : "Հանձնարարել սովորողին"}
+      </button>
+      {error && <p role="alert" className="max-w-56 text-right text-[10px] leading-snug text-destructive">{error}</p>}
+    </div>
   );
 }
 
