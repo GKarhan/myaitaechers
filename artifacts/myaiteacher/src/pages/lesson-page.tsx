@@ -271,10 +271,12 @@ export default function LessonPage() {
           setLocation(`/chat/${lessonId}`);
         },
         onError: (error: unknown) => {
-          const response = error as {data?: {error?: string;message?: string;reasonCode?: string};message?: string};
-          const code = response?.data?.error;
+          const response = error as {data?: {error?: string;message?: string;reasonCode?: string};response?: {data?: {error?:string;message?:string;reasonCode?:string}};message?: string};
+          const details = response?.data ?? response?.response?.data;
+          const code = details?.error;
           if (code === "C6_TARGET_UNAVAILABLE") {
-            setStartError("Դասի ճանաչողական ուղիները դեռ չեն հաստատվել։ Ուսուցիչը պետք է հաստատի MicroNode-երի ճանաչողական ուղիները, որպեսզի ԱԲ ուսուցումը սկսվի։");
+            const reason = details?.reasonCode ? ` (${details.reasonCode})` : "";
+            setStartError(`${details?.message ?? "Դասի ճանաչողական ուղիների ստուգումը դեռ չի անցել։"}${reason}`);
           } else {
             setStartError(response?.data?.message ?? response?.message ?? "Չհաջողվեց սկսել դասը։");
           }
