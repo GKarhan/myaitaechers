@@ -66,6 +66,7 @@ export default function LessonPage() {
   const [message, setMessage] = useState("");
   const [autoStarted, setAutoStarted] = useState(false);
   const [gateMessage, setGateMessage] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const [progressIndicator, setProgressIndicator] = useState<ProgressIndicator | null>(null);
   const [p6Result, setP6Result] = useState<P6Result | null>(null);
   const [p6Loading, setP6Loading] = useState(false);
@@ -259,11 +260,24 @@ export default function LessonPage() {
   }, [hasSession, autoStarted, chatLoading, messages.length, sendMessage.isPending, triggerAI]);
 
   const handleStartLesson = () => {
+    setStartError(null);
     startSession.mutate(
       { data: { lessonId } },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: lessonKey });
+          void queryClient.invalidateQueries({ queryKey: lessonKey });
+          // Open the AI Teacher conversation only after the backend has
+          // successfully started the learner's lesson session.
+          setLocation(`/chat/${lessonId}`);
+        },
+        onError: (error: unknown) => {
+          const response = error as {data?: {error?: string;message?: string;reasonCode?: string};message?: string};
+          const code = response?.data?.error;
+          if (code === "C6_TARGET_UNAVAILABLE") {
+            setStartError("Դասի ճանաչողական ուղիները դեռ չեն հաստատվել։ Ուսուցիչը պետք է հաստատի MicroNode-երի ճանաչողական ուղիները, որպեսզի ԱԲ ուսուցումը սկսվի։");
+          } else {
+            setStartError(response?.data?.message ?? response?.message ?? "Չհաջողվեց սկսել դասը։");
+          }
         },
       }
     );
@@ -513,6 +527,7 @@ export default function LessonPage() {
             <div className="text-center">
               <p className="text-lg font-semibold mb-2">Պատրա՞ստ ես սովորել</p>
               <p className="text-sm text-muted-foreground mb-6">AI ուսուցիչը կառաջնորդի քեզ Սոկրատյան մեթոդով</p>
+              {startError && <p role="alert" className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">{startError}</p>}
               <button
                 onClick={handleStartLesson}
                 disabled={startSession.isPending}
