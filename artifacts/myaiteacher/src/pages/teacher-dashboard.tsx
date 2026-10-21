@@ -871,7 +871,7 @@ type PreviewMap = {
   excludedBlocks?:Array<{blockIndex?:number;reason?:string;kind?:string}>;
   reviewIssues?:string[];
 };
-function UnvalidatedMappingDraftPanel({lessonId,lessonStatus}:{lessonId:number;lessonStatus:string}){
+function UnvalidatedMappingDraftPanel({lessonId,lessonStatus,approvalOnly=false}:{lessonId:number;lessonStatus:string;approvalOnly?:boolean}){
   const {token}=useAuth();
   const qc=useQueryClient();
   const [editing,setEditing]=useState(false);
@@ -1011,6 +1011,20 @@ function UnvalidatedMappingDraftPanel({lessonId,lessonStatus}:{lessonId:number;l
   const item=(label:string,value:unknown)=>value!==null&&value!==undefined&&value!==''?(
     <p className="text-xs leading-relaxed break-words"><span className="text-muted-foreground">{label}՝ </span>{String(value)}</p>
   ):null;
+  if (approvalOnly) return !["active","assigned","approved"].includes(lessonStatus) ? ({!!data?.result?.manualStaging&&<div className="rounded-lg border border-emerald-500/30 p-3 space-y-2">
+        <p className="text-xs font-semibold text-emerald-200">Մեկ ընդհանուր հաստատում</p>
+        <p className="text-xs text-amber-100">Հաստատվում է քարտեզի ամբողջ փաթեթը՝ MicroNode-երը, ճանաչողական ուղիները և ուսումնական նյութերը։ Դասագրքային չստուգված առաջադրանքները չեն դառնում հաստատված։ Եթե ստուգումը չանցնի, դասը չի հաստատվի։</p>
+        <label className="flex items-start gap-2 text-xs">
+          <input type="checkbox" checked={approvalConfirmed} onChange={e=>setApprovalConfirmed(e.target.checked)} />
+          <span>Վերանայել եմ դասի քարտեզը և ցանկանում եմ հաստատել ամբողջ ուսումնական փաթեթը։</span>
+        </label>
+        <button type="button" disabled={!approvalConfirmed||approving||assetsConfirming}
+          onClick={()=>void (lessonStatus==="draft"?acceptStagedMap():confirmAssets())}
+          className="rounded border border-emerald-400/50 px-3 py-2 text-xs text-emerald-200 disabled:opacity-40">
+          {approving||assetsConfirming?"Ստուգվում է…":"Ստուգել և հաստատել ամբողջ քարտեզը"}
+        </button>
+        {(approvalMessage||assetsMessage)&&<p role="status" className="text-xs text-amber-200">{approvalMessage||assetsMessage}</p>}
+      </div>}) : null;
   return <section className="rounded-lg border border-amber-500/30 bg-amber-500/[0.04] p-3 space-y-3" data-testid="unvalidated-map-preview">
     <div className="space-y-1">
       <h3 className="text-sm font-semibold text-amber-300">Փորձնական քարտեզ՝ բազայում պահպանված JSON-ից</h3>
@@ -1079,20 +1093,6 @@ function UnvalidatedMappingDraftPanel({lessonId,lessonStatus}:{lessonId:number;l
             </details>)}
           </div>}
         </>}
-      </div>}
-      {!!data?.result?.manualStaging&&<div className="rounded-lg border border-emerald-500/30 p-3 space-y-2">
-        <p className="text-xs font-semibold text-emerald-200">Մեկ ընդհանուր հաստատում</p>
-        <p className="text-xs text-amber-100">Հաստատվում է քարտեզի ամբողջ փաթեթը՝ MicroNode-երը, ճանաչողական ուղիները և ուսումնական նյութերը։ Դասագրքային չստուգված առաջադրանքները չեն դառնում հաստատված։ Եթե ստուգումը չանցնի, դասը չի հաստատվի։</p>
-        <label className="flex items-start gap-2 text-xs">
-          <input type="checkbox" checked={approvalConfirmed} onChange={e=>setApprovalConfirmed(e.target.checked)} />
-          <span>Վերանայել եմ դասի քարտեզը և ցանկանում եմ հաստատել ամբողջ ուսումնական փաթեթը։</span>
-        </label>
-        <button type="button" disabled={!approvalConfirmed||approving||assetsConfirming}
-          onClick={()=>void (lessonStatus==="draft"?acceptStagedMap():confirmAssets())}
-          className="rounded border border-emerald-400/50 px-3 py-2 text-xs text-emerald-200 disabled:opacity-40">
-          {approving||assetsConfirming?"Ստուգվում է…":"Ստուգել և հաստատել ամբողջ քարտեզը"}
-        </button>
-        {(approvalMessage||assetsMessage)&&<p role="status" className="text-xs text-amber-200">{approvalMessage||assetsMessage}</p>}
       </div>}
       {editSuccess&&<p className="text-xs text-emerald-300">{editSuccess}</p>}
       {publishNote&&<p className="text-xs text-amber-200" role="status">{publishNote}</p>}
@@ -2716,12 +2716,12 @@ function LessonNodesPanel({
             Հիմնական քարտեզ՝ {nodes.length} MicroNode։ Ուսուցիչը աշխատում է ստորև ցուցադրված հիմնական քարտեզի հետ։ Հին JSON-ը պահվում է միայն որպես համեմատության և խմբագրման արխիվ։
           </div>}
           <details className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
-            <summary className="cursor-pointer text-xs text-amber-200 font-semibold">Նախնական JSON քարտեզ · տեխնիկական մանրամասներ և հատուկ հաստատում</summary>
+            <summary className="cursor-pointer text-xs text-amber-200 font-semibold">Տեխնիկական մանրամասներ · նախնական JSON քարտեզ</summary>
             <div className="mt-3"><UnvalidatedMappingDraftPanel lessonId={lessonId} lessonStatus={authoringStatus} /></div>
           </details>
           {nodes.length > 0 && !hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <CompleteMapApproval lessonId={lessonId} courseId={courseId} status={authoringStatus} />}
           {nodes.length > 0 && ["active","assigned","approved"].includes(authoringStatus) && <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-xs text-emerald-200">✓ Դասի քարտեզը հաստատված է։ Կրկնակի հաստատում չի պահանջվում։</p>}
-          {hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <p className="rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-amber-200">Այս դասի ամբողջական հաստատումը հասանելի է «Նախնական JSON քարտեզ» բաժնում՝ աղբյուրների ստուգումից հետո։</p>}
+          {hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <UnvalidatedMappingDraftPanel lessonId={lessonId} lessonStatus={authoringStatus} approvalOnly />}
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center justify-between">
