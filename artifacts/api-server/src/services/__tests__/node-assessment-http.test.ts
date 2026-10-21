@@ -24,8 +24,8 @@ try {
   const objective="Սովորողը բացատրում է ջրի կարևորությունը կյանքի համար։";
   const [node]=await db.insert(lessonNodesTable).values({lessonId:lesson.id,sequence:1,title:tag,status:"approved",theoryContent:"Ջուրը կարևոր է կյանքի համար և անհրաժեշտ է բույսերի աճի համար։",learningObjective:objective,cogPathStatus:"confirmed"}).returning();
   const [level]=await db.insert(lessonNodeCognitiveLevelsTable).values({lessonNodeId:node.id,cognitiveLevel:"remember",sequence:1,isApplicable:true,isTargetCeiling:true,performanceObjective:objective,successCriterion:"Ճիշտ է ներկայացնում ջրի կարևորությունը կյանքի համար։",minimumIndependentEvidence:3,preferredInteractionTypes:["multiple_choice"]}).returning();
-  const [targetLevel]=await db.insert(lessonNodeCognitiveLevelsTable).values({...level,id:undefined,cognitiveLevel:"understand",sequence:2,isTargetCeiling:true}).returning();
   await db.update(lessonNodeCognitiveLevelsTable).set({isTargetCeiling:false}).where(eq(lessonNodeCognitiveLevelsTable.id,level.id));
+  const [targetLevel]=await db.insert(lessonNodeCognitiveLevelsTable).values({...level,id:undefined,cognitiveLevel:"understand",sequence:2,isTargetCeiling:true}).returning();
   async function createQuiz(purpose:"CHECK"|"LEARNING", family:string, count=3) {
     const [q]=await db.insert(quizzesTable).values({teacherId,subjectId:subjectId!,title:tag,nodeIds:[node.id],questionCount:count,status:"ASSIGNED",assessmentConfig:{version:"NODE_V1",purpose,context:"CLASS_THEN_HOME"}}).returning();quizIds.push(q.id);
     await db.insert(quizQuestionsTable).values(Array.from({length:count},(_,i)=>i+1).map(i=>({quizId:q.id,nodeId:node.id,cognitiveLevelId:i===1?level.id:targetLevel.id,questionText:`${family} water task ${i}?`,options:["Correct","Wrong"],correctOptionIndex:0,optionExplanations:["Correct explanation","Wrong explanation"],difficultyLevel:"MEDIUM",interactionType:"multiple_choice",sequence:i})));

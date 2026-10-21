@@ -772,7 +772,11 @@ router.get(
       });
     }
 
-    const toReview = [...weak, ...inProgress];
+    const support = flatNodes.filter(n => n.assessment?.status === "NEEDS_SUPPORT");
+    for (const node of support.slice(0, 3)) recommendations.push({
+      type: "review", message: `Լրացուցիչ աջակցության կարիք՝ «${node.title}»`, topicName: node.title,
+    });
+    const toReview = [...weak, ...inProgress].filter(n => n.assessment?.status !== "NEEDS_SUPPORT");
     if (toReview.length > 0) {
       const weakest = toReview.reduce((a, b) => (a.masteryScore < b.masteryScore ? a : b));
       recommendations.push({
