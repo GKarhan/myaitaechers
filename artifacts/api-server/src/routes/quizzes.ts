@@ -1088,17 +1088,47 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
     res.status(404).json({ error: "Attempt record not found" }); return;
   }
 
-  const { questions, nodeBreakdown, recommendations } =
-    await buildStudentResultAnalysis(attempt.id, studentId);
-
+  // Teacher view shows every completed practice round, not just the last
+  // one-question retry. Preserve the original first-round score separately.
+  const completedAttempts = await db.select()
+    .from(quizAttemptsTable)
+    .where(and(
+      eq(quizAttemptsTable.quizAssignmentId, assignment.id),
+      isNotNull(quizAttemptsTable.completedAt),
+    ))
+    .orderBy(asc(quizAttemptsTable.attemptSequence));
+  const histories = await Promise.all(completedAttempts.map(async (round) => ({
+    round,
+    analysis: await buildStudentResultAnalysis(round.id, studentId),
+  })));
+  const initial = histories[0]?.round ?? attempt;
+  const questions = histories.flatMap(({ round, analysis }) =>
+    analysis.questions.map((q) => ({
+      ...q,
+      // A question may reappear in multiple rounds: use unique UI key.
+      questionId: round.id * 1_000_000 + q.questionId,
+      questionText: `Փորձ ${round.attemptSequence} · ${q.questionText}`,
+      attemptSequence: round.attemptSequence,
+      sourceQuestionId: q.questionId,
+    })),
+  );
+  const { nodeBreakdown, recommendations } = histories.at(-1)?.analysis
+    ?? await buildStudentResultAnalysis(attempt.id, studentId);
   res.json({
     studentId,
-    totalCorrect:   attempt.totalCorrect,
-    totalQuestions: attempt.totalQuestions,
-    scorePercent:   attempt.scorePercent,
+    totalCorrect: initial.totalCorrect,
+    totalQuestions: initial.totalQuestions,
+    scorePercent: initial.scorePercent,
     questions,
     nodeBreakdown,
     recommendations,
+    attemptHistory: histories.map(({ round }) => ({
+      attemptId: round.id,
+      attemptSequence: round.attemptSequence,
+      totalCorrect: round.totalCorrect,
+      totalQuestions: round.totalQuestions,
+      scorePercent: round.scorePercent,
+    })),
   });
 });
 
