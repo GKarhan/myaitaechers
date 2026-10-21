@@ -85,6 +85,8 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 
+const QUIZ_API_BASE = "https://myaitaechers-api.onrender.com";
+
 type MainView = "dashboard" | "class" | "course" | "student";
 type ClassTab = "subjects" | "students";
 type TeacherSection = "home" | "classes" | "quizzes" | "schedule" | "library" | "profile";
@@ -1448,7 +1450,7 @@ function LessonNodesPanel({
     if (!authToken) return;
     let cancelled = false;
     setLinkedTestsLoading(true);
-    fetch(`/api/lessons/${lessonId}/quizzes`, {
+    fetch(`${QUIZ_API_BASE}/api/lessons/${lessonId}/quizzes`, {
       headers: { Authorization: `Bearer ${authToken}` },
     })
       .then((r) => r.json())
@@ -5027,7 +5029,7 @@ export default function TeacherDashboard() {
     let cancelled = false;
     setCourseQuizzesLoading(true);
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
-    fetch(`/api/quizzes?subjectId=${selectedCourse.subjectId}`, {
+    fetch(`${QUIZ_API_BASE}/api/quizzes?subjectId=${selectedCourse.subjectId}`, {
       headers: { Authorization: `Bearer ${tok}` },
     })
       .then((r) => r.json())
@@ -5040,7 +5042,7 @@ export default function TeacherDashboard() {
   useEffect(() => {
     if (!quizModalOpen) return;
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
-    fetch(`/api/books`, { headers: { Authorization: `Bearer ${tok}` } })
+    fetch(`${QUIZ_API_BASE}/api/books`, { headers: { Authorization: `Bearer ${tok}` } })
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -5055,7 +5057,7 @@ export default function TeacherDashboard() {
     if (resultsQuizId === null) { setResultsData(null); setAnalysisData(null); setResultsActiveTab("students"); return; }
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
     setResultsLoading(true);
-    fetch(`/api/quizzes/${resultsQuizId}/results`, {
+    fetch(`${QUIZ_API_BASE}/api/quizzes/${resultsQuizId}/results`, {
       headers: { Authorization: `Bearer ${tok}` },
     })
       .then((r) => (r.ok ? r.json() : []))
@@ -5068,7 +5070,7 @@ export default function TeacherDashboard() {
     if (resultsQuizId === null) { setAnalysisData(null); return; }
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
     setAnalysisLoading(true);
-    fetch(`/api/quizzes/${resultsQuizId}/analysis`, {
+    fetch(`${QUIZ_API_BASE}/api/quizzes/${resultsQuizId}/analysis`, {
       headers: { Authorization: `Bearer ${tok}` },
     })
       .then((r) => (r.ok ? r.json() : null))
@@ -5128,7 +5130,7 @@ export default function TeacherDashboard() {
     let cancelled = false;
     setAllQuizzesLoading(true);
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
-    fetch("/api/quizzes/all", { headers: { Authorization: `Bearer ${tok}` } })
+    fetch(`${QUIZ_API_BASE}/api/quizzes/all`, { headers: { Authorization: `Bearer ${tok}` } })
       .then((r) => r.json())
       .then((data) => { if (!cancelled && Array.isArray(data)) setAllQuizzes(data); })
       .catch(() => {})
@@ -5154,7 +5156,7 @@ export default function TeacherDashboard() {
     let cancelled = false;
     setBooksLoading(true);
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
-    fetch("/api/books", { headers: { Authorization: `Bearer ${tok}` } })
+    fetch(`${QUIZ_API_BASE}/api/books`, { headers: { Authorization: `Bearer ${tok}` } })
       .then((r) => r.json())
       .then((data) => { if (!cancelled && Array.isArray(data)) setBooks(data); })
       .catch(() => {})
@@ -5176,9 +5178,13 @@ export default function TeacherDashboard() {
     const isSingleLesson = quizType === "lesson" && quizLessonIds.length === 1;
     const sendNodeIds = isSingleLesson && quizNodeIds.length > 0 ? quizNodeIds : undefined;
     try {
-      const resp = await fetch(`/api/quizzes`, {
+      const response = await fetch(`${QUIZ_API_BASE}/api/quizzes`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${tok}`,
+          "Idempotency-Key": crypto.randomUUID(),
+        },
         body: JSON.stringify({
           subjectId:      selectedCourse?.subjectId ?? undefined,
           classId:        selectedClass?.id ?? undefined,
@@ -5190,15 +5196,34 @@ export default function TeacherDashboard() {
           title:          quizTitle.trim() || undefined,
         }),
       });
-      // Guard: if the server returned HTML instead of JSON (e.g. a proxy error
-      // or an unhandled server crash), surface a clear Armenian error message
-      // rather than the cryptic "Unexpected token '<'" parse failure.
-      const contentType = resp.headers.get("content-type") ?? "";
-      if (!contentType.includes("application/json")) {
-        throw new Error("Թեստի ստեղծման հարցումը վերադարձրել է անսպասելի պատասխան։ Կրկին փորձեք։");
+      if (!(response.headers.get("content-type") ?? "").includes("application/json")) {
+        throw new Error(`Թեստերի API-ն վերադարձրել է ոչ JSON պատասխան (HTTP ${response.status})։`);
       }
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error ?? "Ձախողվեց");
+      const initial = await response.json();
+      if (!response.ok) throw new Error(initial.error ?? "Թեստի ստեղծման հարցումը ձախողվեց");
+      if (!Number.isInteger(initial.jobId)) {
+        throw new Error("Գեներացման առաջադրանքի նույնականացուցիչը բացակայում է։");
+      }
+      let createdQuizId: number | null = null;
+      for (let attempt = 0; attempt < 150; attempt++) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+        const statusResponse = await fetch(`${QUIZ_API_BASE}/api/quizzes/generation-jobs/${initial.jobId}`, {
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+        if (!statusResponse.ok) throw new Error(`Գեներացման վիճակը ստուգել չհաջողվեց (HTTP ${statusResponse.status})։`);
+        const status = await statusResponse.json();
+        if (status.status === "completed") {
+          createdQuizId = status.quizId;
+          break;
+        }
+        if (status.status === "failed") {
+          throw new Error(`Թեստի գեներացումը ձախողվեց՝ ${status.errorCode ?? "անհայտ պատճառ"}։`);
+        }
+      }
+      if (!createdQuizId) {
+        throw new Error("Թեստի գեներացումը երկարում է։ Նախագիծը չի ջնջվել. ստուգեք թեստերի ցանկը։");
+      }
+      const data = { id: createdQuizId };
       setQuizModalOpen(false);
       setQuizRefetchTick((t) => t + 1);
       setLocation(`/quiz/${data.id}/review?classId=${selectedClass?.id ?? ""}&subjectId=${selectedCourse?.subjectId ?? ""}`);
@@ -5237,7 +5262,7 @@ export default function TeacherDashboard() {
       const lessonId = quizLessonIds[0];
       setQuizNodesLoading(true);
       setQuizNodeIds([]);
-      fetch(`/api/lessons/${lessonId}/nodes`, { headers: { Authorization: `Bearer ${tok}` } })
+      fetch(`${QUIZ_API_BASE}/api/lessons/${lessonId}/nodes`, { headers: { Authorization: `Bearer ${tok}` } })
         .then((r) => r.ok ? r.json() : [])
         .then((data: {id:number;title:string;sequence:number}[]) => {
           setQuizLessonNodes(data);
@@ -5250,7 +5275,7 @@ export default function TeacherDashboard() {
       setQuizNodeIds([]);
       Promise.all(
         quizLessonIds.map((lid) =>
-          fetch(`/api/lessons/${lid}/nodes`, { headers: { Authorization: `Bearer ${tok}` } })
+          fetch(`${QUIZ_API_BASE}/api/lessons/${lid}/nodes`, { headers: { Authorization: `Bearer ${tok}` } })
             .then((r) => r.ok ? r.json() : [])
             .catch(() => [])
         )
@@ -6225,7 +6250,7 @@ export default function TeacherDashboard() {
                             <button
                               onClick={async () => {
                                 const tok = localStorage.getItem("myaiteacher_token") ?? "";
-                                const r = await fetch(`/api/quizzes/${qz.id}/assign`, {
+                                const r = await fetch(`${QUIZ_API_BASE}/api/quizzes/${qz.id}/assign`, {
                                   method: "POST",
                                   headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
                                   body: JSON.stringify({ classId: qz.classId }),
@@ -6259,7 +6284,7 @@ export default function TeacherDashboard() {
                             onClick={async () => {
                               if (!confirm("ծնդլել թեստը?")) return;
                               const tok = localStorage.getItem("myaiteacher_token") ?? "";
-                              const r = await fetch(`/api/quizzes/${qz.id}`, {
+                              const r = await fetch(`${QUIZ_API_BASE}/api/quizzes/${qz.id}`, {
                                 method: "DELETE",
                                 headers: { Authorization: `Bearer ${tok}` },
                               });
@@ -7007,7 +7032,7 @@ export default function TeacherDashboard() {
                             <button
                               onClick={async () => {
                                 const tok = localStorage.getItem("myaiteacher_token") ?? "";
-                                const r = await fetch(`/api/quizzes/${qz.id}/assign`, {
+                                const r = await fetch(`${QUIZ_API_BASE}/api/quizzes/${qz.id}/assign`, {
                                   method: "POST",
                                   headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
                                   body: JSON.stringify({ classId: qz.classId }),
