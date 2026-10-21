@@ -50,7 +50,7 @@ type Result = {
   attempts?: AttemptHistory[];
 };
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+const BASE = "https://myaitaechers-api.onrender.com";
 
 export default function QuizResult() {
   const { id } = useParams<{ id: string }>();
