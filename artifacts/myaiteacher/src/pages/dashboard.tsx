@@ -334,88 +334,24 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Active lesson hero */}
+      {/* All lessons assigned to this learner, including historical assigned status. */}
       <div>
         <h2 className="text-xs font-semibold tracking-widest text-muted-foreground mb-4">
-          📝 Իմ դասերը
+          📝 Իմ դասերը ({assignedLessons.length})
         </h2>
         {lessonLoadError ? lessonErrorView : allLessons === undefined ? (
           <div className="rounded-2xl border border-white/10 bg-card/40 p-8 flex items-center justify-center gap-3 text-muted-foreground text-sm">
             <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : activeLesson ? (
-          <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-background/60 to-secondary/5 p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-              <div className="flex-1 space-y-3 min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/20">
-                    {activeLesson.subject}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    👨‍🏫 {activeLesson.teacherName}
-                  </span>
-                </div>
-                <h3 className="text-xl font-bold leading-snug">{activeLesson.title}</h3>
-                <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                  {activeLesson.chapterTitle && <span>📂 {activeLesson.chapterTitle}</span>}
-                  {activeLesson.paragraphNumber && <span>§{activeLesson.paragraphNumber}</span>}
-                  {(activeLesson.pagesFrom || activeLesson.pagesTo) && (
-                    <span>
-                      Էջեր {activeLesson.pagesFrom ?? "?"}–{activeLesson.pagesTo ?? "?"}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <Link
-                href={`/lessons/${activeLesson.id}`}
-                className="flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-base hover:opacity-90 active:scale-[0.98] transition-all shadow-xl shadow-primary/25 whitespace-nowrap shrink-0"
-              >
-                ▶ ՍԿՍԵԼ ԴԱՍԸ
-              </Link>
-            </div>
-
-            {/* Linked tests for the active lesson — only actionable (not yet completed) */}
-            {(() => {
-              const actionable = (lessonQuizzes[activeLesson.id] ?? [])
-                .filter((q) => !(q.isReleased && q.isCompleted));
-              if (actionable.length === 0) return null;
-              return (
-                <div className="border-t border-white/8 pt-4 mt-2">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">
-                    📝 Թեստեր ({actionable.length})
-                  </p>
-                  <div className="flex flex-col gap-2">
-                    {actionable.map((q) => (
-                      <div
-                        key={q.id}
-                        className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 bg-white/4 border border-white/6"
-                      >
-                        <div className="min-w-0">
-                          <span className="text-sm text-white/90 truncate block">{q.title}</span>
-                          {q.quizType && (
-                            <span className="text-xs text-muted-foreground/70">
-                              {q.quizType === "lesson" ? "Դասի թեստ" : q.quizType === "summary" ? "Ամփոփիչ" : null}
-                            </span>
-                          )}
-                        </div>
-                        {q.isReleased ? (
-                          <Link
-                            href={`/quiz/${q.id}/take`}
-                            className="px-3 py-1.5 bg-secondary/90 hover:bg-secondary text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0"
-                          >
-                            ▶ Սկսել թեստը
-                          </Link>
-                        ) : (
-                          <span className="text-xs text-muted-foreground/60 italic whitespace-nowrap shrink-0">
-                            Դեռ հասանելի չէ
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+        ) : assignedLessons.length > 0 ? (
+          <div className="space-y-4">
+            {assignedLessons.map((lesson) => (
+              <StudentLessonCard
+                key={lesson.id}
+                lesson={lesson}
+                quizzes={(lessonQuizzes[lesson.id] ?? [])}
+              />
+            ))}
           </div>
         ) : (
           <div className="rounded-2xl border border-white/10 bg-card/40 p-8 text-center text-muted-foreground">
@@ -424,7 +360,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-
 
       {/* Assigned quizzes */}
       {(assignedQuizzes ?? []).length > 0 && (
