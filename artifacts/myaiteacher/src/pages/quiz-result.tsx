@@ -26,7 +26,10 @@ type AttemptHistory = {
   totalCorrect: number;
   totalQuestions: number;
   scorePercent: number | null;
-  completedAt: string | null;
+  completedAt?: string | null;
+  cumulativeCorrect?: number;
+  cumulativeTotal?: number;
+  cumulativePercent?: number;
 };
 
 type SessionProjection = {
@@ -48,6 +51,8 @@ type Result = {
   recommendations?: Array<{ nodeId: number; nodeTitle: string; prerequisiteBlocked: boolean }>;
   session?: SessionProjection | null;
   attempts?: AttemptHistory[];
+  attemptHistory?: AttemptHistory[];
+  initialScorePercent?: number;
 };
 
 const BASE = "https://myaitaechers-api.onrender.com";
@@ -120,6 +125,7 @@ export default function QuizResult() {
   }
 
   const backHref = isTeacherView ? "/teacher?section=quizzes" : STUDENT_RESULTS_FINISH_PATH;
+  const teacherAttempts = result.attemptHistory ?? [];
   const scoreColor = result.scorePercent >= 80 ? "text-teal-400" : result.scorePercent >= 50 ? "text-amber-400" : "text-red-400";
 
   return (
@@ -137,6 +143,26 @@ export default function QuizResult() {
           <div className={`text-5xl font-black ${scoreColor}`}>{result.scorePercent}%</div>
           <p className="mt-2 text-white/80">{result.totalCorrect}/{result.totalQuestions} ճիշտ պատասխան</p>
         </section>
+
+        {isTeacherView && teacherAttempts.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/75">Փորձերի պատմություն</h2>
+            <div className="overflow-x-auto rounded-2xl border border-white/10">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-card/60 text-white/75"><tr>
+                  <th className="p-3">Փորձ</th><th className="p-3">Արդյունքներ</th><th className="p-3">առաջընթացը</th>
+                </tr></thead>
+                <tbody>{teacherAttempts.map(attempt => (
+                  <tr key={attempt.attemptId} className="border-t border-white/10">
+                    <td className="p-3">{attempt.attemptSequence}</td>
+                    <td className="p-3">{attempt.totalCorrect}/{attempt.totalQuestions} · {attempt.scorePercent}%</td>
+                    <td className="p-3 text-teal-300">{attempt.cumulativeCorrect}/{attempt.cumulativeTotal} · {attempt.cumulativePercent}%</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {!isTeacherView && result.session && (
           <section className="rounded-3xl border border-primary/20 bg-card/60 p-6 space-y-5">

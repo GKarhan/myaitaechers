@@ -1,3 +1,4 @@
+import { customFetch } from "@workspace/api-client-react";
 /**
  * KT Subject Selection Screen
  *
@@ -48,19 +49,13 @@ export default function KtSubjectSelect() {
     queryFn: async () => {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const resp = await fetch("/api/knowledge-tree/subjects", {
-        headers,
-        credentials: "include",
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? `HTTP ${resp.status}`);
-      }
-      return resp.json() as Promise<SubjectsResponse>;
+      return customFetch<SubjectsResponse>("/api/knowledge-tree/subjects", { headers, credentials: "include" });
     },
     enabled: !!token && !authLoading,
     staleTime: 0,
-    refetchOnMount: true,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchInterval: 15_000,
   });
 
   if (authLoading || isLoading) {

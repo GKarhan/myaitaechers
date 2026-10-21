@@ -63,3 +63,37 @@ export async function getLatestCompletedQuizScoreStats(quizIds: readonly number[
     .where(inArray(quizAssignmentsTable.quizId, [...quizIds]))
     .groupBy(quizAssignmentsTable.quizId);
 }
+/** Practice progress uses each question's latest completed answer. Historical
+ * round accuracy keeps its own denominator; it is never averaged with retries.
+ * This report does not grant canonical cognitive mastery. */
+export function summarizePracticeProgress<T extends { questionId: number; isCorrect: boolean }>(
+  rounds: readonly { attemptId: number; attemptSequence: number; questions: readonly T[] }[],
+) {
+  const latest = new Map<number, T>();
+  const sorted = [...rounds].sort((a, b) => a.attemptSequence - b.attemptSequence);
+  const scope = new Set(sorted.flatMap(round => round.questions.map(q => q.questionId)));
+  const attempts = sorted.map(round => {
+    for (const question of round.questions) latest.set(question.questionId, question);
+    const cumulativeCorrect = [...latest.values()].filter(q => q.isCorrect).length;
+    const totalCorrect = round.questions.filter(q => q.isCorrect).length;
+    return {
+      attemptId: round.attemptId,
+      attemptSequence: round.attemptSequence,
+      totalCorrect,
+      totalQuestions: round.questions.length,
+      scorePercent: round.questions.length ? Math.round(totalCorrect / round.questions.length * 100) : 0,
+      cumulativeCorrect,
+      cumulativeTotal: scope.size,
+      cumulativePercent: scope.size ? Math.round(cumulativeCorrect / scope.size * 100) : 0,
+      remainingIncorrect: scope.size - cumulativeCorrect,
+    };
+  });
+  const totalCorrect = [...latest.values()].filter(q => q.isCorrect).length;
+  return {
+    totalCorrect,
+    totalQuestions: scope.size,
+    scorePercent: scope.size ? Math.round(totalCorrect / scope.size * 100) : 0,
+    attempts,
+    latestQuestions: [...latest.values()],
+  };
+}
