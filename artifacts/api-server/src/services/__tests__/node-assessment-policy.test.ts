@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {allocateNodeQuestions,summarizeIndependentAnswers,currentIndependentAssessment,parseAssessmentConfig, type AssessmentEvent} from "../node-assessment-policy.js";
+import {filterRequiredPrerequisites,allocateNodeQuestions,summarizeIndependentAnswers,currentIndependentAssessment,parseAssessmentConfig, type AssessmentEvent} from "../node-assessment-policy.js";
 for(let n=1;n<=16;n++) for(let count=n;count<=n*3;count++) {
   const allocation=[...allocateNodeQuestions(Array.from({length:n},(_,i)=>i+1),count).values()];
   assert.equal(allocation.reduce((s,v)=>s+v,0),count);assert.ok(allocation.every(v=>v>=1&&v<=3));
@@ -24,3 +24,8 @@ assert.equal(parseAssessmentConfig({version:"NODE_V1",purpose:"CHECK",context:"C
 assert.equal(parseAssessmentConfig({version:"NODE_V1",purpose:"bad",context:"ANYWHERE"}),null);
 assert.equal(currentIndependentAssessment([{...e(1,true,"q"),metadata:{}}]),null);
 console.log("PASS balanced N..3N allocations, all assessment ratios/certainties, support stop, no exposed/repeated inflation, cognitive scope, legacy preservation");
+
+const required=[{fromNodeId:1,toNodeId:2},{fromNodeId:2,toNodeId:3}];
+assert.deepEqual(filterRequiredPrerequisites([1,2,3],required,new Map([[1,{knowledgeState:"NOT_KNOWN"}],[2,{knowledgeState:"MASTERED"}]])),[1]);
+assert.deepEqual(filterRequiredPrerequisites([3],required,new Map([[1,{knowledgeState:"MASTERED"}],[2,{knowledgeState:"MASTERED"}]])),[3]);
+console.log("PASS unresolved direct and transitive prerequisites block automatic follow-up");

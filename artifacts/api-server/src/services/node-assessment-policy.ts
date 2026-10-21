@@ -59,3 +59,19 @@ export function aggregateAssessments(nodes: readonly {assessment?:AssessmentSumm
   const totalQuestions=assessments.reduce((sum,a)=>sum+a.attempted,0);
   return {totalCorrect,totalQuestions,scorePercent:totalQuestions?Math.round(totalCorrect/totalQuestions*100):0};
 }
+
+/** Automatic follow-up never skips an unresolved required prerequisite. */
+export function filterRequiredPrerequisites(
+  nodeIds: readonly number[], edges: readonly {fromNodeId:number;toNodeId:number}[],
+  states: ReadonlyMap<number,{knowledgeState:string}>,
+): number[] {
+  const prerequisites=new Map<number,number[]>();
+  for(const e of edges)prerequisites.set(e.toNodeId,[...(prerequisites.get(e.toNodeId)??[]),e.fromNodeId]);
+  return nodeIds.filter(id=>{
+    const seen=new Set<number>();const queue=[...(prerequisites.get(id)??[])];
+    while(queue.length){const parent=queue.pop()!;if(seen.has(parent))continue;seen.add(parent);
+      if(states.get(parent)?.knowledgeState!=="MASTERED")return false;
+      queue.push(...(prerequisites.get(parent)??[]));
+    }return true;
+  });
+}

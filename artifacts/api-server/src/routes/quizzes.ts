@@ -1,3 +1,4 @@
+import { filterAutomaticAssessmentScope } from "../services/quiz-session.js";
 import { normalizeQuestionText } from "../services/quiz-question-quality.js";
 import { resolveKnowledgeTreeStates } from "../services/knowledge-tree-state.js";
 import { parseAssessmentConfig, allocateNodeQuestions, aggregateAssessments } from "../services/node-assessment-policy.js";
@@ -1214,8 +1215,8 @@ router.post("/quizzes/:id/reconfirm", requireStudent, asyncHandler(async (req:Au
   if(!completed){res.status(409).json({error:"COMPLETE_PRACTICE_FIRST"});return;}
   const ids=Array.isArray(source.nodeIds)?source.nodeIds as number[]:[];
   const states=await resolveKnowledgeTreeStates(req.userId!,ids);
-  const nodeIds=ids.filter(id=>states.get(id)?.assessment?.status!=="NEEDS_SUPPORT" &&
-    (states.get(id)?.knowledgeState!=="MASTERED"||states.get(id)?.assessment?.certainty!=="HIGH"));
+  const nodeIds=await filterAutomaticAssessmentScope(req.userId!,ids.filter(id=>states.get(id)?.assessment?.status!=="NEEDS_SUPPORT" &&
+    (states.get(id)?.knowledgeState!=="MASTERED"||states.get(id)?.assessment?.certainty!=="HIGH")));
   if(!nodeIds.length){res.status(409).json({error:"NO_INDEPENDENT_CHECK_SCOPE"});return;}
   const links=await db.select({lessonId:quizLessonLinksTable.lessonId}).from(quizLessonLinksTable).where(eq(quizLessonLinksTable.quizId,quizId));
   const snapshot=normalizeQuizGenerationRequest({generationMode:"canonical",studentId:req.userId!,
