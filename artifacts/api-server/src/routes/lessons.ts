@@ -989,6 +989,41 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
+  // Legacy staged lessons were explicitly accepted by their teacher before
+  // cognitive-path confirmation was wired into that single approval action.
+  // Repair only that missing technical sync; never accept a new/unreviewed map.
+  const approvalMetadata = (lesson.mappingMetadata ?? {}) as Record<string, any>;
+  const pilotAcceptance = approvalMetadata.stagedPilotApproval;
+  if (
+    ["active", "assigned", "approved"].includes(lesson.status) &&
+    approvalMetadata.pipeline === "STAGED_UNVERIFIED_MAP" &&
+    pilotAcceptance?.mode === "TEACHER_ACCEPTED_UNVERIFIED_MAP" &&
+    Number.isSafeInteger(pilotAcceptance.acceptedBy) &&
+    !pilotAcceptance.assetsConfirmedAt
+  ) {
+    const repair = await confirmMappedLessonAssets(lessonId);
+    if (!repair.ok) {
+      logger.warn({ lessonId, reason: repair.reason }, "lesson/start: accepted pilot asset validation failed");
+      res.status(409).json({
+        error: "C6_TARGET_UNAVAILABLE",
+        reasonCode: repair.reason,
+        message: "Դասի ուսումնական փաթեթի ստուգումը չանցավ։ Ուսուցիչը պետք է վերանայի քարտեզի ճանաչողական ուղիները։",
+      });
+      return;
+    }
+    await db.update(lessonsTable).set({
+      mappingMetadata: {
+        ...approvalMetadata,
+        stagedPilotApproval: {
+          ...pilotAcceptance,
+          assetsConfirmedAt: new Date().toISOString(),
+          assetsConfirmedBy: pilotAcceptance.acceptedBy,
+        },
+      } as any,
+    }).where(eq(lessonsTable.id, lessonId));
+    logger.info({ lessonId, nodeCount: repair.nodeCount }, "lesson/start: repaired teacher-accepted pilot assets");
+  }
+
   const existing = await db
     .select()
     .from(lessonSessionsTable)
