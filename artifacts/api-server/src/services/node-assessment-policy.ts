@@ -34,7 +34,9 @@ export function summarizeIndependentAnswers(answers: readonly boolean[]): Assess
 }
 export type AssessmentEvent = { id: number; wasCorrect: boolean | null; createdAt: Date | null;
   taskReference: string | null; metadata: unknown; cognitiveLevelId: number | null };
-export function currentIndependentAssessment(events: readonly AssessmentEvent[], targetLevelId?: number | null): AssessmentSummary | null {
+// NODE_V1 pilot assesses the node across all question levels. Cognitive
+// ceiling evidence stays separate and is never inferred from this percentage.
+export function currentIndependentAssessment(events: readonly AssessmentEvent[]): AssessmentSummary | null {
   const versioned = events.filter(e => (e.metadata as any)?.assessmentVersion === "NODE_V1" && e.wasCorrect !== null && (e.metadata as any)?.independentAssessment === true)
     .sort((a,b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) || a.id - b.id);
   if (!versioned.length) return null;
@@ -46,7 +48,7 @@ export function currentIndependentAssessment(events: readonly AssessmentEvent[],
   for (const e of versioned) {
     const m = e.metadata as any;
     if (m.assessmentCycle !== cycle || m.independentAssessment !== true || m.answerPreviouslyExposed === true ||
-      !e.taskReference || (targetLevelId != null && e.cognitiveLevelId !== targetLevelId)) continue;
+      !e.taskReference) continue;
     const family = m.assessmentFamily ?? e.taskReference;
     if (!first.has(family)) first.set(family, e.wasCorrect!);
   }

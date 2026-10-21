@@ -136,7 +136,7 @@ function TopicGroup({
         </span>
         {/* KT-1.4A: coverage % — invariant to UI filter */}
         <span className={`text-xs font-semibold ml-2 ${coverageColour(topic.coveragePercent)}`}>
-          {formatCoverage(topic.coveragePercent)}
+          Ստուգված՝ {topic.studiedCount}/{topic.totalUnits}
         </span>
       </button>
 
@@ -200,7 +200,7 @@ function LessonSection({
         <div className="text-right shrink-0">
           <div className="text-xs text-muted-foreground">{lesson.totalUnits} հanγ.</div>
           <div className={`text-sm font-bold ${coverageColour(lesson.coveragePercent)}`}>
-            {formatCoverage(lesson.coveragePercent)}
+            Ստուգված՝ {lesson.studiedCount}/{lesson.totalUnits}
           </div>
         </div>
       </button>
@@ -242,7 +242,7 @@ function LessonSection({
                 </span>
                 {/* KT-1.4A: ungrouped coverage % — from backend, invariant to filter */}
                 <span className={`text-xs font-semibold ml-2 ${coverageColour(lesson.ungroupedCoverage.coveragePercent)}`}>
-                  {formatCoverage(lesson.ungroupedCoverage.coveragePercent)}
+                  Ստուգված՝ {lesson.ungroupedCoverage.studiedCount}/{lesson.ungroupedCoverage.totalUnits}
                 </span>
               </button>
               {expandedTopics.has(`ungrouped-${lesson.lessonId}`) && (
@@ -449,7 +449,7 @@ export default function KnowledgeTree() {
               <span className="text-xs text-muted-foreground">Գիտելիքի ծառ</span>
               {treeData.coveragePercent !== null && (
                 <span className={`text-xs font-bold ${coverageColour(treeData.coveragePercent)}`}>
-                  · Ուսումնասիրված՝ {treeData.studiedCount} / {treeData.totalUnits} · {treeData.coveragePercent}%
+                  · Ստուգված՝ {treeData.studiedCount} / {treeData.totalUnits} · {treeData.coveragePercent}%
                 </span>
               )}
             </div>

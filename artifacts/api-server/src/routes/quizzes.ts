@@ -137,9 +137,14 @@ async function buildStudentResultAnalysis(
     .where(eq(quizAnswersTable.attemptId, attemptId))
     .orderBy(asc(quizQuestionsTable.sequence));
 
-  // Distinct nodeIds (skip nulls — questions without a node mapping)
+  const [attemptScope] = await db.select({config:quizzesTable.assessmentConfig,nodeIds:quizzesTable.nodeIds})
+    .from(quizAttemptsTable).innerJoin(quizAssignmentsTable,eq(quizAssignmentsTable.id,quizAttemptsTable.quizAssignmentId))
+    .innerJoin(quizzesTable,eq(quizzesTable.id,quizAssignmentsTable.quizId)).where(eq(quizAttemptsTable.id,attemptId)).limit(1);
+  const fullNodeScope = parseAssessmentConfig(attemptScope?.config) && Array.isArray(attemptScope?.nodeIds)
+    ? (attemptScope.nodeIds as number[]).filter(id=>Number.isInteger(id)&&id>0) : [];
+  // Question review is attempt-specific; the independent node summary covers the root quiz.
   const nodeIds = [
-    ...new Set(rawAnswers.map((a) => a.nodeId).filter((id): id is number => id !== null)),
+    ...new Set([...fullNodeScope,...rawAnswers.map((a) => a.nodeId).filter((id): id is number => id !== null)]),
   ];
 
   // lesson_nodes — for title + explanation fallback (spec priority #2)
@@ -233,7 +238,7 @@ async function buildStudentResultAnalysis(
   });
 
   // Per-node answer aggregation
-  const nodeAgg = new Map<number, { total: number; correct: number; nodeTitle: string }>();
+  const nodeAgg = new Map<number, { total: number; correct: number; nodeTitle: string }>(fullNodeScope.map(id=>[id,{total:0,correct:0,nodeTitle:lnMap.get(id)?.title??`Node ${id}`} ]));
   for (const a of rawAnswers) {
     if (a.nodeId == null) continue;
     if (!nodeAgg.has(a.nodeId)) {
@@ -1193,6 +1198,8 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
     initialScorePercent: initial.scorePercent,
     assessmentConfig:quiz.assessmentConfig,
     practiceScorePercent: progress.scorePercent,
+    practiceTotalCorrect: progress.totalCorrect,
+    practiceTotalQuestions: progress.totalQuestions,
     ...(aggregateAssessments(nodeBreakdown) ?? {}),
     questions,
     nodeBreakdown,
@@ -1224,7 +1231,11 @@ router.post("/quizzes/:id/reconfirm", requireStudent, asyncHandler(async (req:Au
     sourceBookId:source.sourceBookId,quizType:source.quizType,lessonIds:links.map(l=>l.lessonId),
     nodeIds,questionCount:Math.min(3,Math.floor(50/nodeIds.length))*nodeIds.length,difficultyMode:source.difficultyMode as any,title:source.title});
   const result=await createOrReuseQuizGenerationJob({teacherId:source.teacherId,
-    idempotencyKey:`reconfirm:${assignment.id}:${completed.id}`,snapshot});
+    idempotencyKey:`reconfirm-v2:${assignment.id}:${completed.id}`,snapshot});
+  // Reuse pending/running/completed jobs; an explicit retry may restart a
+  // failed job atomically without creating duplicate quizzes.
+  if(result.job.status==="failed") await db.update(quizGenerationJobsTable).set({status:"pending",errorCode:null,errorDetails:null,updatedAt:new Date()})
+    .where(and(eq(quizGenerationJobsTable.id,result.job.id),eq(quizGenerationJobsTable.status,"failed")));
   scheduleQuizGenerationJob(result.job.id);
   res.status(202).json({jobId:result.job.id,status:result.job.status});
 }));
@@ -1305,6 +1316,8 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
     totalQuestions: attempt.totalQuestions,
     scorePercent:   attempt.scorePercent,
     practiceScorePercent: attempt.scorePercent,
+    practiceTotalCorrect: attempt.totalCorrect,
+    practiceTotalQuestions: attempt.totalQuestions,
     ...(aggregateAssessments(nodeBreakdown) ?? {}),
     questions,
     nodeBreakdown,
@@ -2065,7 +2078,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
           source: "quiz",
           ...(config ? { assessmentVersion:config.version, assessmentPurpose:config.purpose,
             assessmentCycle:`quiz:${quizId}:attempt:${attempt.id}`,
-            independentAssessment:!exposed.has(question.id) && qualificationStatus === "qualified", answerPreviouslyExposed:exposed.has(question.id),
+            independentAssessment:!exposed.has(question.id), answerPreviouslyExposed:exposed.has(question.id),
             assessmentFamily:normalizeQuestionText(question.questionText) } : {}),
           quizId,
           questionId: question.id,

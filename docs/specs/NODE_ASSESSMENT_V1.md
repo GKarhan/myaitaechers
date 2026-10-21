@@ -40,3 +40,9 @@ This versioned policy is an explicit update to quiz assessment, not a rewrite of
 ### Acceptance evidence
 
 `node-assessment-policy.test.ts` exercises allocations, all requested ratios, exposure handling, target scope and legacy preservation. `node-assessment-http.test.ts` exercises CHECK secrecy, resume, LEARNING feedback, result/tree agreement, copied-task protection, support stopping and delayed review advancement against an isolated test database. Running the latter requires matching DATABASE_URL and TEST_DATABASE_URL.
+
+### Approved node-only pilot clarification
+
+For the current pilot, count all 1–3 independent questions bound to each node, regardless of Bloom level. Do not filter node percentages or confirmation by the cognitive target. Preserve cognitive evidence and ceiling calculations separately; a successful node percentage does not demonstrate a higher cognitive ceiling. This supersedes target-scoped quiz aggregation for NODE_V1 only.
+
+The current quiz summary covers all root quiz nodes even after a practice attempt covers a subset. Attempt history retains each attempt's actual raw score. Learning counts cover all learning nodes; prerequisite-eligible practice scope is separate. Nodes with 0/3 are reported separately as needing support. Exposed practice never replaces or increases the independent result.
