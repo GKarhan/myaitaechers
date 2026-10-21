@@ -415,6 +415,7 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     lessonIds,   // array of lesson ids — route maps to nodeIds internally
     nodeIds: explicitNodeIds,
     quizType: requestedQuizType,
+    generationMode = "canonical",
     questionCount = 10,
     difficultyMode = "MIXED",
     title,
@@ -425,11 +426,16 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     lessonIds?: number[];
     nodeIds?: number[];
     quizType?: string;
+    generationMode?: "canonical" | "standard";
     questionCount?: number;
     difficultyMode?: string;
     title?: string;
   };
 
+  if (!["canonical", "standard"].includes(generationMode)) {
+    res.status(400).json({ error: "Invalid quiz generation mode" });
+    return;
+  }
   if (!subjectId) {
     res.status(400).json({ error: "subjectId is required" });
     return;
@@ -590,6 +596,7 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
         difficultyMode: difficultyMode as "SIMPLE" | "MEDIUM" | "HARD" | "MIXED",
         quizType: derivedQuizType,
         allowEmptyQuestions: true,
+        generationPurpose: generationMode === "standard" ? "standard" : "normal",
       });
 
       res.status(201).json({
@@ -646,6 +653,7 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
   }
 
   const snapshot = normalizeQuizGenerationRequest({
+    generationMode,
     subjectId,
     classId,
     sourceBookId,
