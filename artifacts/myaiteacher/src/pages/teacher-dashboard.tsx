@@ -2720,7 +2720,7 @@ function LessonNodesPanel({
             <div className="mt-3"><UnvalidatedMappingDraftPanel lessonId={lessonId} lessonStatus={authoringStatus} /></div>
           </details>
           {nodes.length > 0 && !hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <CompleteMapApproval lessonId={lessonId} courseId={courseId} status={authoringStatus} />}
-          {nodes.length > 0 && ["active","assigned","approved"].includes(authoringStatus) && <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-xs text-emerald-200">✓ Դասի քարտեզը հաստատված է։ Կրկնակի հաստատում չի պահանջվում։</p>}
+          {nodes.length > 0 && ["active","assigned","approved"].includes(authoringStatus) && <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-xs text-emerald-200">✓ Դասի քարտեզը ընդունված է փորձնական օգտագործման համար։ Դասագրքային չստուգված առաջադրանքները հաստատված չեն։ Կրկնակի հաստատում չի պահանջվում։</p>}
           {hasStagedMapPreview && !["active","assigned","approved"].includes(authoringStatus) && <UnvalidatedMappingDraftPanel lessonId={lessonId} lessonStatus={authoringStatus} approvalOnly />}
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
@@ -6801,7 +6801,7 @@ export default function TeacherDashboard() {
                     <div className="space-y-2">
                       {passItems.map(({ tbHeader, topicHeader, lesson: l, isFirstLesson }, _idx) => {
                         const isCompleted  = (l as any).status === "completed";
-                        const isActive     = (l as any).status === "active";
+                        const isActive     = ["active", "assigned"].includes((l as any).status);
                         const isMapped     = Boolean((l as any).coreIdea) || ((l as any).nodeCount ?? 0) > 0;
                         // P3.5: null = never auto-mapped (no coverage data), true = passed, false = coverage failed
                         const coverageValid: boolean | null = (l as any).coverageValid ?? null;
