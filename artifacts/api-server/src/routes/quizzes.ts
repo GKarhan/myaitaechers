@@ -266,6 +266,13 @@ async function buildStudentResultAnalysis(
       else                         { masteryLevel = "weak";         masteryScore = Math.round(correctRate * 100); confidenceScore = 70; }
     }
 
+    const assessment = canonicalStates.get(nodeId)?.assessment;
+    if (assessment && assessment.attempted > 0) {
+      masteryScore = assessment.percent;
+      masteryLevel = assessment.status === "SUCCESS" ? (kn?.dueAt && kn.dueAt < new Date() ? "needs_review" : "mastered")
+        : assessment.correct ? "weak" : "in_progress";
+      isProvisional = assessment.certainty !== "HIGH";
+    }
     const percent    = agg.total > 0 ? Math.round((agg.correct / agg.total) * 100) : 0;
     const nextAction = getPersonalizedNextAction({ masteryLevel, masteryScore });
 
@@ -1013,7 +1020,7 @@ router.get("/quizzes/:id/results", requireTeacher, async (req: AuthRequest, res)
 
   // Verify ownership
   const [quiz] = await db
-    .select({ id: quizzesTable.id })
+    .select({ id: quizzesTable.id, assessmentConfig:quizzesTable.assessmentConfig })
     .from(quizzesTable)
     .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
     .limit(1);
@@ -1104,7 +1111,7 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
   }
 
   const [quiz] = await db
-    .select({ id: quizzesTable.id })
+    .select({ id: quizzesTable.id, assessmentConfig:quizzesTable.assessmentConfig })
     .from(quizzesTable)
     .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
     .limit(1);
@@ -1183,6 +1190,7 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
     totalQuestions: progress.totalQuestions,
     scorePercent: progress.scorePercent,
     initialScorePercent: initial.scorePercent,
+    assessmentConfig:quiz.assessmentConfig,
     practiceScorePercent: progress.scorePercent,
     ...(aggregateAssessments(nodeBreakdown) ?? {}),
     questions,
@@ -1424,7 +1432,7 @@ router.patch("/quizzes/:id/questions/:questionId", requireTeacher, async (req: A
 
   // Verify quiz ownership
   const [quiz] = await db
-    .select({ id: quizzesTable.id })
+    .select({ id: quizzesTable.id, assessmentConfig:quizzesTable.assessmentConfig })
     .from(quizzesTable)
     .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
     .limit(1);
@@ -2178,7 +2186,7 @@ router.get("/quizzes/:id/analysis", requireTeacher, async (req: AuthRequest, res
 
   // Verify ownership
   const [quiz] = await db
-    .select({ id: quizzesTable.id })
+    .select({ id: quizzesTable.id, assessmentConfig:quizzesTable.assessmentConfig })
     .from(quizzesTable)
     .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
     .limit(1);
@@ -2465,7 +2473,7 @@ router.delete("/quizzes/:id/lessons/:lessonId", requireTeacher, async (req: Auth
   }
 
   const [quiz] = await db
-    .select({ id: quizzesTable.id })
+    .select({ id: quizzesTable.id, assessmentConfig:quizzesTable.assessmentConfig })
     .from(quizzesTable)
     .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
     .limit(1);

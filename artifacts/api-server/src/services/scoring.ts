@@ -244,7 +244,9 @@ export async function updateTopicScoring(
       if (!assessment || !assessment.attempted) return;
       await db.update(knowledgeNodesTable).set({
         masteryScore: assessment.percent!,
-        confidenceScore: assessment.correct / 3 * 100,
+        // Legacy score consumers use confidence as a status gate. Certainty
+        // is carried separately by the versioned assessment, never inferred here.
+        confidenceScore: assessment.status === "SUCCESS" ? 100 : assessment.correct ? 67 : 10,
         status: assessment.status === "SUCCESS" ? "mastered" : assessment.correct ? "weak" : "in_progress",
         isProvisional: assessment.certainty !== "HIGH", updatedAt: new Date(),
       }).where(eq(knowledgeNodesTable.id, topicId));

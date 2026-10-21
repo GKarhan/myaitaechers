@@ -24,9 +24,9 @@ try {
   const objective="Սովորողը բացատրում է ջրի կարևորությունը կյանքի համար։";
   const [node]=await db.insert(lessonNodesTable).values({lessonId:lesson.id,sequence:1,title:tag,status:"approved",theoryContent:"Ջուրը կարևոր է կյանքի համար և անհրաժեշտ է բույսերի աճի համար։",learningObjective:objective,cogPathStatus:"confirmed"}).returning();
   const [level]=await db.insert(lessonNodeCognitiveLevelsTable).values({lessonNodeId:node.id,cognitiveLevel:"remember",sequence:1,isApplicable:true,isTargetCeiling:true,performanceObjective:objective,successCriterion:"Ճիշտ է ներկայացնում ջրի կարևորությունը կյանքի համար։",minimumIndependentEvidence:3,preferredInteractionTypes:["multiple_choice"]}).returning();
-  async function createQuiz(purpose:"CHECK"|"LEARNING", family:string) {
-    const [q]=await db.insert(quizzesTable).values({teacherId,subjectId:subjectId!,title:tag,nodeIds:[node.id],questionCount:3,status:"ASSIGNED",assessmentConfig:{version:"NODE_V1",purpose,context:"CLASS_THEN_HOME"}}).returning();quizIds.push(q.id);
-    await db.insert(quizQuestionsTable).values([1,2,3].map(i=>({quizId:q.id,nodeId:node.id,cognitiveLevelId:level.id,questionText:`${family} water task ${i}?`,options:["Correct","Wrong"],correctOptionIndex:0,optionExplanations:["Correct explanation","Wrong explanation"],difficultyLevel:"MEDIUM",interactionType:"multiple_choice",sequence:i})));
+  async function createQuiz(purpose:"CHECK"|"LEARNING", family:string, count=3) {
+    const [q]=await db.insert(quizzesTable).values({teacherId,subjectId:subjectId!,title:tag,nodeIds:[node.id],questionCount:count,status:"ASSIGNED",assessmentConfig:{version:"NODE_V1",purpose,context:"CLASS_THEN_HOME"}}).returning();quizIds.push(q.id);
+    await db.insert(quizQuestionsTable).values(Array.from({length:count},(_,i)=>i+1).map(i=>({quizId:q.id,nodeId:node.id,cognitiveLevelId:level.id,questionText:`${family} water task ${i}?`,options:["Correct","Wrong"],correctOptionIndex:0,optionExplanations:["Correct explanation","Wrong explanation"],difficultyLevel:"MEDIUM",interactionType:"multiple_choice",sequence:i})));
     await db.insert(quizAssignmentsTable).values({quizId:q.id,studentId,status:"ASSIGNED"});return q.id;
   }
   async function answer(quizId:number,correct:boolean[],deferred:boolean){
@@ -41,11 +41,21 @@ try {
       if(deferred){assert.equal(f.correctAnswer,null);assert.equal(f.correctOptionIndex,null);assert.equal(f.feedback.whyCorrect,null);}
     }
     const resume:any=await(await fetch(`${base}/quizzes/${quizId}/take`,{headers})).json();
-    assert.equal(resume.attemptId,take.attemptId);assert.equal(resume.finalizedAnswers.length,3);
+    assert.equal(resume.attemptId,take.attemptId);assert.equal(resume.finalizedAnswers.length,take.questions.length);
     if(deferred)for(const f of resume.finalizedAnswers){assert.equal(f.isCorrect,null);assert.equal(f.correctAnswer,null);}
     const hidden=await fetch(`${base}/quizzes/${quizId}/my-result?attemptId=${take.attemptId}`,{headers});assert.equal(hidden.status,404);
     const submit=await fetch(`${base}/quizzes/${quizId}/submit`,{method:"POST",headers,body:JSON.stringify({attemptId:take.attemptId,answers})});assert.equal(submit.status,200,await submit.text());
     const r=await fetch(`${base}/quizzes/${quizId}/my-result`,{headers});assert.equal(r.status,200);return await r.json() as any;
+  }
+  for (const [count,certainty] of [[1,"LOW"],[2,"MEDIUM"]] as const) {
+    const q=await createQuiz("CHECK",`initial ${count}`,count);
+    const r=await answer(q,Array(count).fill(true),true);
+    assert.equal(r.scorePercent,100);assert.equal(r.nodeBreakdown[0].assessment.certainty,certainty);
+    assert.equal(r.nodeBreakdown[0].masteryLevel,"mastered");
+    const teacherResponse=await fetch(`${base}/quizzes/${q}/results/${studentId}`,{headers:auth(teacherId!,"teacher")});
+    assert.equal(teacherResponse.status,200);const teacherResult:any=await teacherResponse.json();
+    assert.equal(teacherResult.scorePercent,100);assert.equal(teacherResult.nodeBreakdown[0].assessment.certainty,certainty);
+    assert.equal(teacherResult.assessmentConfig.purpose,"CHECK");
   }
   const first=await createQuiz("CHECK","independent");
   const result=await answer(first,[true,true,false],true);
