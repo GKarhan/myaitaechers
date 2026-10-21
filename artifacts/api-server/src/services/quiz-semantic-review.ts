@@ -128,7 +128,7 @@ export async function reviewGeneratedQuestion(
         },
       },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: `${SYSTEM_PROMPT}\nThe delivered format is ${input.context.deliveryInteractionType ?? "multiple_choice"}. Preferred interaction types are recommendations, not mandatory formats. Judge interactionCompatible by whether THIS candidate naturally measures the specified objective and cognitive operation in the delivered format. A format differing from preferredInteractionTypes is not by itself a failure. Never waive objective, source, criterion, or cognitive-level alignment.` },
         {
           role: "user",
           content: JSON.stringify({
@@ -140,6 +140,7 @@ export async function reviewGeneratedQuestion(
               successCriterion: input.context.successCriterion,
               preferredInteractionTypes: input.context.preferredInteractionTypes,
             },
+            deliveryInteractionType: input.context.deliveryInteractionType ?? "multiple_choice",
             operationalContract: input.operationalContract,
             microNode: {
               title: input.context.microNodeTitle,

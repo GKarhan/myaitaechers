@@ -39,6 +39,9 @@ type SessionProjection = {
   masteredNodeIds: number[];
   learningNodeIds: number[];
   knowsCount: number;
+  practiceNodeIds?: number[];
+  supportNodeIds?: number[];
+  supportCount?: number;
   learningCount: number;
 };
 
@@ -49,6 +52,8 @@ type Result = {
   totalQuestions: number;
   scorePercent: number;
   practiceScorePercent?:number;
+  practiceTotalCorrect?:number;
+  practiceTotalQuestions?:number;
   questions: QuestionResult[];
   nodeBreakdown?: Array<{ nodeId: number; nodeTitle: string; percent: number; masteryLevel: string; assessment?:AssessmentView }>;
   recommendations?: Array<{ nodeId: number; nodeTitle: string; prerequisiteBlocked: boolean }>;
@@ -114,13 +119,13 @@ export default function QuizResult() {
     setReconfirming(true);setReconfirmError(null);
     try {
       const response=await fetch(`${BASE}/api/quizzes/${id}/reconfirm`,{method:"POST",headers:{Authorization:`Bearer ${token}`}});
-      const created=await response.json();if(!response.ok)throw new Error(created.error);
+      const created=await response.json();if(!response.ok)throw new Error(created.error==="NO_INDEPENDENT_CHECK_SCOPE" ? "Այս պահին նոր ստուգման համար հասանելի թեմա չկա։" : "Ստուգումը չհաջողվեց ստեղծել։ Խնդրում ենք փորձել կրկին։");
       for(let i=0;i<150;i++) {
         const r=await fetch(`${BASE}/api/quizzes/assessment-jobs/${created.jobId}`,{headers:{Authorization:`Bearer ${token}`}});
         if(!r.ok)throw new Error("Չհաջողվեց ստուգել առաջադրանքի ընթացքը");
         const job=await r.json();
         if(job.status==="completed"&&job.quizId){setLocation(`/quiz/${job.quizId}/take`);return;}
-        if(job.status==="failed")throw new Error(job.errorCode??"Ստուգումը չհաջողվեց ստեղծել");
+        if(job.status==="failed")throw new Error("Ստուգումը չհաջողվեց ստեղծել։ Խնդրում ենք փորձել կրկին։");
         await new Promise(resolve=>setTimeout(resolve,2000));
       }
       throw new Error("Ստուգումը դեռ պատրաստվում է։ Կարող եք կրկին բացել։");
@@ -150,7 +155,8 @@ export default function QuizResult() {
 
   const backHref = isTeacherView ? "/teacher?section=quizzes" : STUDENT_RESULTS_FINISH_PATH;
   const teacherAttempts = result.attemptHistory ?? [];
-  const scoreColor = result.scorePercent >= 80 ? "text-teal-400" : result.scorePercent >= 50 ? "text-amber-400" : "text-red-400";
+  const displayedScore = result.practiceScorePercent ?? result.scorePercent;
+  const scoreColor = displayedScore >= 80 ? "text-teal-400" : displayedScore >= 50 ? "text-amber-400" : "text-red-400";
 
   return (
     <div className="min-h-screen bg-background text-white">
@@ -164,9 +170,10 @@ export default function QuizResult() {
 
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-8">
         <section className="rounded-3xl border border-white/10 bg-card/60 p-8 text-center">
-          <div className={`text-5xl font-black ${scoreColor}`}>{result.scorePercent}%</div>
-          {result.assessmentConfig && <p className="text-sm text-muted-foreground mb-2">Գիտելիքի անկախ ստուգման արդյունք</p>}
-          <p className="mt-2 text-white/80">{result.totalCorrect}/{result.totalQuestions} ճիշտ պատասխան</p>
+          <div className={`text-5xl font-black ${scoreColor}`}>{displayedScore}%</div>
+          {result.assessmentConfig && <p className="text-sm text-muted-foreground mb-2">{isTeacherView ? "Վարժանքի ընդհանուր առաջընթաց" : "Այս փորձի արդյունքը"}</p>}
+          <p className="mt-2 text-white/80">{result.practiceTotalCorrect ?? result.totalCorrect}/{result.practiceTotalQuestions ?? result.totalQuestions} ճիշտ պատասխան</p>
+          {result.assessmentConfig && <p className="mt-3 text-sm text-muted-foreground">Գիտելիքի անկախ ստուգման արդյունք՝ {result.totalCorrect}/{result.totalQuestions} · {result.scorePercent}%</p>}
         </section>
 
         {isTeacherView && teacherAttempts.length > 0 && (
@@ -175,7 +182,7 @@ export default function QuizResult() {
             <div className="overflow-x-auto rounded-2xl border border-white/10">
               <table className="w-full text-sm text-left">
                 <thead className="bg-card/60 text-white/75"><tr>
-                  <th className="p-3">Փորձ</th><th className="p-3">Արդյունքներ</th><th className="p-3">առաջընթացը</th>
+                  <th className="p-3">Փորձ</th><th className="p-3">Արդյունքներ</th><th className="p-3">Վարժանքի ընդհանուր առաջընթաց</th>
                 </tr></thead>
                 <tbody>{teacherAttempts.map(attempt => (
                   <tr key={attempt.attemptId} className="border-t border-white/10">
@@ -195,7 +202,7 @@ export default function QuizResult() {
               <h2 className="font-bold">Իմ ընթացիկ պատկերը</h2>
               <p className="text-sm text-muted-foreground mt-1">Այս պատկերը հաշվարկվում է ձեր բոլոր գրանցված փորձերից։</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid gap-3 ${result.session.supportCount ? "grid-cols-3" : "grid-cols-2"}`}>
               <div className="rounded-2xl border border-teal-400/25 bg-teal-400/10 p-4">
                 <p className="text-sm text-teal-300">Գիտի</p>
                 <p className="text-2xl font-black mt-1">{result.session.knowsCount}</p>
@@ -204,6 +211,10 @@ export default function QuizResult() {
                 <p className="text-sm text-amber-300">Սովորելու</p>
                 <p className="text-2xl font-black mt-1">{result.session.learningCount}</p>
               </div>
+              {!!result.session.supportCount && <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 p-4">
+                <p className="text-sm text-rose-300">Լրացուցիչ աջակցության կարիք</p>
+                <p className="text-2xl font-black mt-1">{result.session.supportCount}</p>
+              </div>}
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
               {result.session.knowsCount > 0 && (
@@ -211,7 +222,7 @@ export default function QuizResult() {
                   {showKnowsOnly ? "Ցույց տալ բոլոր հարցերը" : "Դիտել «Գիտի»-ի հարցերը"}
                 </button>
               )}
-              {result.session.learningCount > 0 && result.session.status === "ACTIVE" && (
+              {(result.session.practiceNodeIds?.length ?? result.session.learningCount) > 0 && result.session.status === "ACTIVE" && (
                 <Link href={`/quiz/${id}/take`} className="rounded-xl bg-gradient-to-r from-primary to-secondary px-4 py-3 text-center text-sm font-bold">
                   Շարունակել սովորել
                 </Link>
@@ -242,8 +253,8 @@ export default function QuizResult() {
         )}
 
         {!isTeacherView && result.assessmentConfig && result.nodeBreakdown?.some(n=>n.assessment && n.assessment.nextAction!=="TEACHER_REVIEW" && n.assessment.nextAction!=="REVIEW") && <section className="space-y-3">
-          <p className="text-sm text-muted-foreground">Վարժանքի կրկնությունը չի ավելացնում անկախ հաստատումների քանակը։</p>
-          <button disabled={reconfirming} onClick={reconfirm} className="rounded-xl bg-primary px-5 py-3 disabled:opacity-50">{reconfirming?"Պատրաստվում է...":"Նոր անկախ ստուգում"}</button>
+          <p className="text-sm text-muted-foreground">Ստուգել սովորածը՝ նոր հարցերով։</p>
+          <button disabled={reconfirming} onClick={reconfirm} className="rounded-xl bg-primary px-5 py-3 disabled:opacity-50">{reconfirming?"Պատրաստվում է...":"Ստուգել սովորածը"}</button>
           {reconfirmError&&<p className="text-red-400">{reconfirmError}</p>}
         </section>}
         {result.nodeBreakdown && result.nodeBreakdown.length > 0 && (

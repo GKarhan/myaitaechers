@@ -24,9 +24,11 @@ try {
   const objective="Սովորողը բացատրում է ջրի կարևորությունը կյանքի համար։";
   const [node]=await db.insert(lessonNodesTable).values({lessonId:lesson.id,sequence:1,title:tag,status:"approved",theoryContent:"Ջուրը կարևոր է կյանքի համար և անհրաժեշտ է բույսերի աճի համար։",learningObjective:objective,cogPathStatus:"confirmed"}).returning();
   const [level]=await db.insert(lessonNodeCognitiveLevelsTable).values({lessonNodeId:node.id,cognitiveLevel:"remember",sequence:1,isApplicable:true,isTargetCeiling:true,performanceObjective:objective,successCriterion:"Ճիշտ է ներկայացնում ջրի կարևորությունը կյանքի համար։",minimumIndependentEvidence:3,preferredInteractionTypes:["multiple_choice"]}).returning();
+  await db.update(lessonNodeCognitiveLevelsTable).set({isTargetCeiling:false}).where(eq(lessonNodeCognitiveLevelsTable.id,level.id));
+  const [targetLevel]=await db.insert(lessonNodeCognitiveLevelsTable).values({...level,id:undefined,cognitiveLevel:"understand",sequence:2,isTargetCeiling:true}).returning();
   async function createQuiz(purpose:"CHECK"|"LEARNING", family:string, count=3) {
     const [q]=await db.insert(quizzesTable).values({teacherId,subjectId:subjectId!,title:tag,nodeIds:[node.id],questionCount:count,status:"ASSIGNED",assessmentConfig:{version:"NODE_V1",purpose,context:"CLASS_THEN_HOME"}}).returning();quizIds.push(q.id);
-    await db.insert(quizQuestionsTable).values(Array.from({length:count},(_,i)=>i+1).map(i=>({quizId:q.id,nodeId:node.id,cognitiveLevelId:level.id,questionText:`${family} water task ${i}?`,options:["Correct","Wrong"],correctOptionIndex:0,optionExplanations:["Correct explanation","Wrong explanation"],difficultyLevel:"MEDIUM",interactionType:"multiple_choice",sequence:i})));
+    await db.insert(quizQuestionsTable).values(Array.from({length:count},(_,i)=>i+1).map(i=>({quizId:q.id,nodeId:node.id,cognitiveLevelId:i===1?level.id:targetLevel.id,questionText:`${family} water task ${i}?`,options:["Correct","Wrong"],correctOptionIndex:0,optionExplanations:["Correct explanation","Wrong explanation"],difficultyLevel:"MEDIUM",interactionType:"multiple_choice",sequence:i})));
     await db.insert(quizAssignmentsTable).values({quizId:q.id,studentId,status:"ASSIGNED"});return q.id;
   }
   async function answer(quizId:number,correct:boolean[],deferred:boolean){
@@ -74,6 +76,33 @@ try {
   const reviews=await db.select().from(reviewScheduleTable);const review=reviews.find(r=>r.userId===studentId);assert.ok(review);assert.equal(review.intervalDays,1);
   const later=await createQuiz("CHECK","same day success");await answer(later,[true,true,true],true);
   const [unchanged]=await db.select().from(reviewScheduleTable).where(eq(reviewScheduleTable.id,review.id));assert.equal(unchanged.reviewCount,review.reviewCount);assert.equal(unchanged.dueAt.getTime(),review.dueAt.getTime());
+  // Full quiz summary survives a later practice attempt limited to one node.
+  const roots=[node.id];
+  for(let i=1;i<4;i++){
+    const [extra]=await db.insert(lessonNodesTable).values({lessonId:lesson.id,sequence:i+1,title:`${tag}_${i}`,status:"approved",theoryContent:node.theoryContent,learningObjective:objective,cogPathStatus:"confirmed"}).returning();roots.push(extra.id);
+    for(const source of [level,targetLevel])await db.insert(lessonNodeCognitiveLevelsTable).values({...source,id:undefined,lessonNodeId:extra.id,isTargetCeiling:source.id===targetLevel.id});
+  }
+  const full=await createQuiz("CHECK","full root");
+  await db.update(quizzesTable).set({nodeIds:roots,questionCount:12}).where(eq(quizzesTable.id,full));
+  for(let n=1;n<4;n++){
+    const levels=await db.select().from(lessonNodeCognitiveLevelsTable).where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId,roots[n]!));
+    await db.insert(quizQuestionsTable).values(Array.from({length:3},(_,i)=>({quizId:full,nodeId:roots[n]!,cognitiveLevelId:levels.find(l=>l.cognitiveLevel===(i===0?"remember":"understand"))!.id,questionText:`full root ${n} task ${i}?`,options:["Correct","Wrong"],correctOptionIndex:0,optionExplanations:["Correct explanation","Wrong explanation"],difficultyLevel:"MEDIUM",interactionType:"multiple_choice",sequence:n*3+i+1})));
+  }
+  const fullResult=await answer(full,[true,false,false,true,false,false,false,true,true,false,false,false],true);
+  assert.equal(fullResult.scorePercent,33);assert.equal(fullResult.totalCorrect,4);assert.equal(fullResult.totalQuestions,12);
+  assert.deepEqual(fullResult.nodeBreakdown.map((n:any)=>n.assessment.percent),[33,33,67,0]);
+  assert.equal(fullResult.session.knowsCount,0);assert.equal(fullResult.session.learningCount,3);assert.equal(fullResult.session.supportCount,1);
+  const fullTeacher:any=await(await fetch(`${base}/quizzes/${full}/results/${studentId}`,{headers:auth(teacherId!,"teacher")})).json();assert.equal(fullTeacher.scorePercent,33);assert.equal(fullTeacher.nodeBreakdown.length,4);
+  const practice=await answer(full,Array(9).fill(true),true);
+  assert.equal(practice.practiceScorePercent,100);assert.equal(practice.practiceTotalQuestions,9);
+  assert.equal(practice.scorePercent,33);assert.equal(practice.totalQuestions,12);assert.equal(practice.nodeBreakdown.length,4);
+  const subset=await createQuiz("LEARNING","subset",1);
+  await db.update(quizzesTable).set({nodeIds:roots}).where(eq(quizzesTable.id,subset));
+  const subsetResult=await answer(subset,[true],false);
+  assert.equal(subsetResult.nodeBreakdown.length,4);
+  assert.equal(subsetResult.totalQuestions,10); // latest one-question cycle plus the other three nodes
+  assert.equal(subsetResult.totalCorrect,4);
+  console.log("PASS mixed-level full-root student/teacher summary, learning/support counts, narrow-attempt root preservation");
   console.log("PASS HTTP CHECK secrecy/resume, LEARNING feedback, 2/3 result-tree agreement, copied-task non-inflation, 0/3 stop, 3/3 mastery, delayed-only review advancement");
 }finally{
   for(const id of quizIds)await db.delete(quizzesTable).where(eq(quizzesTable.id,id));
