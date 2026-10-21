@@ -5043,7 +5043,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     });
     const result=await persistCompleteMap({lessonId,resourceId:resource.id,map:generated.map,blocks:pass1.blocks,
       hash:generated.hash,sourceFingerprint,adapter:generated.adapter,expectedSnapshot,sourceSet,sourceScope,provenance:physicalPageProvenance});
-    await db.update(mappingJobsTable).set({status:'completed',progress:null,result:{...result,usage:generated.usage,previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft:unvalidatedDraft,
+    await db.update(mappingJobsTable).set({status:'completed',progress:null,result:{...result,usage:generated.usage,generationAttempts:generated.generationAttempts,attemptUsages:generated.attemptUsages,previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft:unvalidatedDraft,
       verifiedSourceSnapshot:{blocks:pass1.blocks,resourceId:resource.id,hash:sourceHash(pass1.blocks),
         sourceFingerprint,adapter:'P1.2.2-verified-pass1',expectedSnapshot,sourceSet,sourceScope,
         provenance:physicalPageProvenance}} as any,updatedAt:new Date()}).where(eq(mappingJobsTable.id,job.id));
@@ -5164,10 +5164,11 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       .set({
         status: "failed",
         ...(completeMapFailureCode?{result:{reason:completeMapFailureCode,existingMapPreserved:true} as any}:{}),
-        ...(unvalidatedDraft!==null?{result:{
+        ...(unvalidatedDraft!==null?{result:sql`coalesce(${mappingJobsTable.result}, '{}'::jsonb) || ${JSON.stringify({
           previewKind:'UNVALIDATED_PROVIDER_DRAFT',draft:unvalidatedDraft,
           existingMapPreserved:true,reason:completeMapFailureCode??'MAPPING_VALIDATION_FAILED',
-        } as any}:{}),
+          ...(err instanceof Error && err.name==='SourceReferenceValidationError' && 'diagnostics' in err ? {validationDiagnostics:err.diagnostics}:{}),
+        })}::jsonb`}:{}),
         error: err instanceof UploadedFileMissingError ? err.message : getTeacherFacingMappingFailure(err),
         ...(preservedDiagnosticFailure ? {
           progress: preservedDiagnosticFailure.progress,

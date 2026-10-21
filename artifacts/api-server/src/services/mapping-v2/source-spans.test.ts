@@ -111,3 +111,26 @@ assert.equal(bulletResult.blocks[0].sourceParagraph,'lines:1-3');
 assert.equal(bulletResult.blocks[1].sourceParagraph,'lines:4-5');
 assert.equal(bulletResult.blocks.map(b=>b.sourceText).join('\n'),actualBulletPracticals);
 console.log('PASS: two Armenian bullet-led practical assignments survive as distinct source spans');
+
+// Exact page text and rejected provider boundaries from Physics lesson 3/job 229.
+const physicsPages=JSON.parse((await import('node:fs')).readFileSync(new URL('./fixtures/physics-questions.json',import.meta.url),'utf8'));
+const physicsBlocks=physicsPages.flatMap((page:any,index:number)=>{
+ const result=materializeSourceSpans(page.text,page.pageNumber,page.providerPlan,index?physicsPages[index-1].text.slice(-2000):null);
+ assert.equal(result.blocks.map(b=>b.sourceText).join('\n'),page.text);
+ assert.equal(bindTextBlocksToPhysicalPages([{pageNumber:page.pageNumber,text:page.text}],result.blocks).audit.quarantinedBlockCount,0);
+ return result.blocks;
+});
+const numbered=physicsBlocks.filter((b:any)=>b.blockType==='EXERCISE'&&/^\s*[1-7]\./u.test(b.sourceText));
+assert.deepEqual(numbered.map((b:any)=>Number(/^\s*(\d+)/u.exec(b.sourceText)![1])),[1,2,3,4,5,6,7]);
+assert.deepEqual(numbered.map((b:any)=>b.sourcePage),[15,15,15,15,16,16,16]);
+assert.ok(physicsBlocks.some((b:any)=>b.sourcePage===13&&/^❶/u.test(b.sourceText)&&b.blockType==='NOTE'));
+assert.equal(materializeSourceSpans('Theory\n5. A numbered statement',16,{firstBlockType:'NOTE',blocks:[]}).blocks.length,1);
+assert.equal(materializeSourceSpans('1. An unrelated list',17,{firstBlockType:'NOTE',blocks:[]},physicsPages[3].text).blocks.length,1,'next section ends inherited question context');
+console.log('PASS real job 229: seven separate questions over two pages, theory subsection not an exercise, next lesson boundary, exact source and physical pages preserved');
+
+const headerOptions='Questions and tasks\n1. Match the options\n1. Option A\n2. Option B\n3. Option C\n4. Option D\n2. Next question?';
+const withOptions=materializeSourceSpans(headerOptions,15,{firstBlockType:'NOTE',blocks:[]});
+assert.equal(withOptions.blocks.filter(b=>b.blockType==='EXERCISE').length,2);
+assert.ok(withOptions.blocks[1].sourceText.includes('4. Option D'));
+assert.equal(withOptions.blocks.map(b=>b.sourceText).join('\n'),headerOptions);
+console.log('PASS explicit question headers do not split restarted numeric answer options');

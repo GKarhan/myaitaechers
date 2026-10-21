@@ -10,5 +10,5 @@ export async function prepareTextSource(text:string,pageNumber:number,precedingP
   messages:[{role:'system',content:TEXT_SOURCE_SPAN_PROMPT},{role:'user',content:input}]});
  if(response.choices[0]?.finish_reason!=='stop')throw Error('SOURCE_SPAN_RESPONSE_INCOMPLETE');
  let value:unknown;try{value=JSON.parse(response.choices[0].message.content??'');}catch{throw Error('SOURCE_SPAN_RESPONSE_INVALID_JSON');}
- return materializeSourceSpans(text,pageNumber,value);
+ return materializeSourceSpans(text,pageNumber,value,precedingPageTail);
 }
