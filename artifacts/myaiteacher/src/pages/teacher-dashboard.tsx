@@ -885,6 +885,8 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
   const [approvalConfirmed,setApprovalConfirmed]=useState(false);
   const [approving,setApproving]=useState(false);
   const [approvalMessage,setApprovalMessage]=useState("");
+  const [assetsConfirming,setAssetsConfirming]=useState(false);
+  const [assetsMessage,setAssetsMessage]=useState("");
   const [selectedExercise,setSelectedExercise]=useState("");
   const [selectedPage,setSelectedPage]=useState("");
   const [sourceText,setSourceText]=useState("");
@@ -991,6 +993,19 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
     }catch(e){setApprovalMessage(e instanceof Error?e.message:String(e));}
     finally{setApproving(false);}
   };
+  const confirmAssets=async()=>{
+    setAssetsConfirming(true);setAssetsMessage("");
+    try{
+      const result=await customFetch<{confirmed:boolean;nodeCount:number}>(`/api/lessons/${lessonId}/confirm-mapped-assets`,{
+        method:"POST",headers:{Authorization:`Bearer ${token??""}`,"Content-Type":"application/json"},
+        body:JSON.stringify({confirmMappedAssets:true}),responseType:"json"
+      });
+      if(!result.confirmed)throw Error("Չհաջողվեց հաստատել ուղիներն ու ուսումնական նյութը");
+      setAssetsMessage(`Հաստատված են ${result.nodeCount} MicroNode-ի ճանաչողական ուղիները և ուսումնական նյութերը։`);
+      await qc.invalidateQueries();
+    }catch(e){setAssetsMessage(e instanceof Error?e.message:String(e));}
+    finally{setAssetsConfirming(false);}
+  };
   const topics=Array.isArray(draft.topics)?draft.topics:[];
   const exercises=Array.isArray(draft.exercises)?draft.exercises:[];
   const item=(label:string,value:unknown)=>value!==null&&value!==undefined&&value!==''?(
@@ -1077,6 +1092,15 @@ function UnvalidatedMappingDraftPanel({lessonId}:{lessonId:number}){
           {approving?"Հաստատվում է…":"Հաստատել քարտեզը"}
         </button>
         {approvalMessage&&<p role="status" className="text-xs text-amber-100">{approvalMessage}</p>}
+      </div>}
+      {!!data?.result?.manualStaging&&<div className="rounded border border-teal-500/30 p-3 space-y-2">
+        <p className="text-xs font-semibold">Ճանաչողական ուղիների և ուսումնական նյութի միասնական հաստատում</p>
+        <p className="text-xs text-amber-100">Արդեն հաստատված դասերի ճանաչողական ուղիներն ու քարտեզագրված ուսումնական նյութերը ստուգելու և միասին հաստատելու համար։ Սխալ ուղիները չեն հաստատվի առանց շտկման։</p>
+        <button type="button" onClick={()=>void confirmAssets()} disabled={assetsConfirming}
+          className="rounded border border-teal-400/40 px-3 py-2 text-xs text-teal-200 disabled:opacity-50">
+          {assetsConfirming?"Ստուգվում է…":"Ստուգել և հաստատել ուղիներն ու ուսումնական նյութը"}
+        </button>
+        {assetsMessage&&<p className="text-xs text-amber-100" role="status">{assetsMessage}</p>}
       </div>}
       {editSuccess&&<p className="text-xs text-emerald-300">{editSuccess}</p>}
       {publishNote&&<p className="text-xs text-amber-200" role="status">{publishNote}</p>}
