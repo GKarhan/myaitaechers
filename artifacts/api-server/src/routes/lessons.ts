@@ -1050,6 +1050,7 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     // re-enter C6. An authoritative task is deliberately never replaced.
     if (!hasAuthoritativeActiveTask && (lessonNodeId !== null || s.currentPhase === 2)) {
       const c6Decision = await resolveCanonicalC6Decision({
+        teachingSessionId: s.id,
         learnerId: req.userId!,
         lessonId,
         requestedMicroNodeId:
