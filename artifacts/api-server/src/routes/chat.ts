@@ -63,6 +63,7 @@ import { updateTopicScoring } from "../services/scoring";
 import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
 import {
   computeSessionBudgetExhausted,
+  PILOT_MAX_FAILED_TEACHING_ATTEMPTS,
   ACTIVE_INTERVAL_CAP_SECONDS,
   getNextHelpEscalation,
   type CognitiveLevelRow,
@@ -4117,6 +4118,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         }
 
         const _decisionPlan = coordinatePedagogicalDecision({
+          maxFailedTeachingAttempts: _stage3BoundedAnswerTurn ? PILOT_MAX_FAILED_TEACHING_ATTEMPTS : undefined,
           lessonNodeId: session.currentNodeId,
           lessonId,
           sessionId: session.id,
