@@ -495,7 +495,7 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
   }
   resolvedNodeIds = [...new Set(resolvedNodeIds)];
   if (assessmentConfig) {
-    try { allocateNodeQuestions(resolvedNodeIds, questionCount); }
+    try { allocateNodeQuestions(resolvedNodeIds, questionCount, assessmentConfig); }
     catch { res.status(400).json({error:"QUESTION_COUNT_OUTSIDE_NODE_RANGE",min:resolvedNodeIds.length,max:Math.min(50,resolvedNodeIds.length*3)});return; }
   }
 
