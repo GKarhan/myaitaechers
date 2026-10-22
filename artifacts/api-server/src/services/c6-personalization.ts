@@ -2,12 +2,14 @@
  * C6 — Canonical personalization / next-learning decisions.
  *
  * This service decides WHAT the learner should work on next. It deliberately
- * consumes C2 acceptance, C4-backed C5 state, and persisted dependencies; it
+ * consumes C2 acceptance, C4-backed C5 state, persisted dependencies, and
+ * optional session-scoped instructional coverage. Coverage is not mastery; it
  * never qualifies evidence, calculates a ceiling, or selects teaching tactics.
  */
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, gte } from "drizzle-orm";
 import {
   db,
+  evidenceEventsTable, lessonSessionsTable,
   lessonNodeCognitiveLevelsTable,
   lessonNodeDependenciesTable,
   lessonNodesTable,
@@ -17,6 +19,8 @@ import {
   resolveKnowledgeTreeStates,
   type KnowledgeState,
 } from "./knowledge-tree-state.js";
+
+import { summarizeTeachingProgress } from "../lib/teaching-progress.js";
 
 export const C6_ENTRY_INTENTS = ["NORMAL_LEARNING", "EXPLICIT_REVIEW"] as const;
 export type C6EntryIntent = (typeof C6_ENTRY_INTENTS)[number];
@@ -37,6 +41,8 @@ export type C6PrerequisiteStatus =
   | "INVALID_GRAPH";
 
 export type C6ReasonCode =
+  | "TEACHING_PROGRESS"
+  | "TEACHING_PREREQUISITE_UNCONFIRMED"
   | "NO_MEANINGFUL_ATTEMPT"
   | "ATTEMPTED_WITHOUT_TRUSTWORTHY_CEILING"
   | "DEMONSTRATED_BELOW_TARGET"
@@ -70,6 +76,7 @@ export type C6NodeSnapshot = {
   demonstratedCognitiveLevelId: number | null;
   pathAccepted: boolean;
   cognitivePath: readonly C6PathLevel[];
+  teachingProgress?: ReturnType<typeof summarizeTeachingProgress>;
 };
 
 export type C6DependencySnapshot = {
@@ -79,6 +86,7 @@ export type C6DependencySnapshot = {
 };
 
 export type C6Decision = {
+  teachingOnly?: boolean;
   learnerId: number;
   lessonId: number;
   microNodeId: number | null;
@@ -97,6 +105,8 @@ export function isC6DeliveryBlocked(decision: C6Decision): boolean {
 }
 
 export type ResolveC6DecisionInput = {
+  /** Trusted server session scope, never learner-supplied progress. */
+  teachingSessionId?: number;
   learnerId: number;
   lessonId: number;
   entryIntent?: C6EntryIntent;
@@ -195,6 +205,7 @@ function unavailableDecision(
   reasonCode: Extract<
     C6ReasonCode,
     | "NO_ELIGIBLE_MICRONODE"
+    | "TEACHING_PREREQUISITE_UNCONFIRMED"
     | "C2_PATH_UNAVAILABLE"
     | "DEPENDENCY_CYCLE"
     | "DEPENDENCY_TARGET_MISSING"
@@ -324,20 +335,21 @@ export function resolveC6DecisionFromSnapshot(
 
   let candidate: C6NodeSnapshot | null = requested;
   let advancing = input.afterMicroNodeId != null;
-  if (candidate?.knowledgeState === "MASTERED" && intent === "NORMAL_LEARNING") {
+  if ((candidate?.knowledgeState === "MASTERED" || candidate?.teachingProgress?.covered) && intent === "NORMAL_LEARNING") {
     const currentIndex = nodes.findIndex((node) => node.id === candidate!.id);
     candidate = nodes.slice(currentIndex + 1).find(
-      (node) => node.knowledgeState !== "MASTERED",
+      (node) => node.knowledgeState !== "MASTERED" && !node.teachingProgress?.covered,
     ) ?? null;
     advancing = true;
   }
   if (!candidate) {
     candidate = candidatesAfterAnchor.find(
-      (node) => node.knowledgeState !== "MASTERED",
+      (node) => node.knowledgeState !== "MASTERED" && !node.teachingProgress?.covered,
     ) ?? null;
   }
   if (!candidate) {
-    return unavailableDecision(input, "NO_ELIGIBLE_MICRONODE", "NOT_APPLICABLE");
+    const done = unavailableDecision(input, "NO_ELIGIBLE_MICRONODE", "NOT_APPLICABLE");
+    return nodes.some((node) => node.teachingProgress) ? { ...done, teachingOnly: true } : done;
   }
 
   const prerequisite = resolveRequiredPrerequisites(candidate, byId, dependencies);
@@ -358,6 +370,9 @@ export function resolveC6DecisionFromSnapshot(
   const isExplicitReview =
     intent === "EXPLICIT_REVIEW" && target.id === requested?.id &&
     target.knowledgeState === "MASTERED";
+  if (prerequisite.redirected && target.teachingProgress?.covered) {
+    return unavailableDecision(input, "TEACHING_PREREQUISITE_UNCONFIRMED", "REDIRECTED");
+  }
   const next = resolveNextCognitiveLevel(target);
   if (next.reasonCode === "C2_PATH_UNAVAILABLE") {
     // A C6 target without an accepted C2 path is not a safe learner-delivery
@@ -372,10 +387,14 @@ export function resolveC6DecisionFromSnapshot(
 
   const hasAcceptedCognitiveTarget =
     target.curriculumTargetCognitiveLevelId !== null;
-  const nextTargetCognitiveLevelId = isExplicitReview && hasAcceptedCognitiveTarget
+  const nextTargetCognitiveLevelId = !isExplicitReview && target.teachingProgress
+    ? target.teachingProgress.nextLevelId
+    : isExplicitReview && hasAcceptedCognitiveTarget
     ? target.curriculumTargetCognitiveLevelId
     : next.levelId;
-  const reasonCode: C6ReasonCode = prerequisite.redirected
+  const reasonCode: C6ReasonCode = !isExplicitReview && target.teachingProgress && !prerequisite.redirected
+    ? "TEACHING_PROGRESS"
+    : prerequisite.redirected
     ? "REQUIRED_PREREQUISITE_UNSATISFIED"
     : isExplicitReview
       ? "EXPLICIT_REVIEW"
@@ -384,6 +403,7 @@ export function resolveC6DecisionFromSnapshot(
         : next.reasonCode;
 
   return {
+    ...(target.teachingProgress && !isExplicitReview ? { teachingOnly: true } : {}),
     learnerId: input.learnerId ?? 0,
     lessonId: input.lessonId ?? 0,
     microNodeId: target.id,
@@ -471,6 +491,15 @@ export async function resolveCanonicalC6Decision(
     pathByNodeId.set(level.lessonNodeId, path);
   }
 
+  const [teachingSession] = input.teachingSessionId && input.entryIntent !== "EXPLICIT_REVIEW" ? await db.select()
+    .from(lessonSessionsTable).where(and(eq(lessonSessionsTable.id, input.teachingSessionId),
+      eq(lessonSessionsTable.userId, input.learnerId), eq(lessonSessionsTable.lessonId, input.lessonId))).limit(1) : [];
+  const teachingEvidence = teachingSession ? await db.select().from(evidenceEventsTable).where(and(
+    eq(evidenceEventsTable.lessonSessionId, teachingSession.id),
+    eq(evidenceEventsTable.userId, input.learnerId),
+    gte(evidenceEventsTable.createdAt, teachingSession.startedAt),
+  )).orderBy(asc(evidenceEventsTable.createdAt), asc(evidenceEventsTable.id)) : [];
+
   const snapshots: C6NodeSnapshot[] = nodes.map((node) => {
     const cognitivePath = pathByNodeId.get(node.id) ?? [];
     const acceptance = assessAcceptedCognitivePath({
@@ -480,7 +509,15 @@ export async function resolveCanonicalC6Decision(
       levels: cognitivePath,
     });
     const state = states.get(node.id);
+    const ceilingIndex = cognitivePath.findIndex((level) => level.isTargetCeiling);
+    const teachingProgress = teachingSession && acceptance.accepted && ceilingIndex >= 0
+      ? summarizeTeachingProgress(teachingEvidence, {
+          lessonId: input.lessonId, nodeId: node.id,
+          levelIds: cognitivePath.slice(0, ceilingIndex + 1).filter((level) => level.isApplicable).map((level) => level.id),
+          ceilingId: cognitivePath[ceilingIndex].id,
+        }) : undefined;
     return {
+      ...(teachingProgress ? { teachingProgress } : {}),
       id: node.id,
       sequence: node.sequence,
       knowledgeState: state?.knowledgeState ?? "NOT_STUDIED",
