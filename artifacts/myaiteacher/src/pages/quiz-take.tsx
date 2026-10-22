@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { BalloonQuizGame } from "@/components/BalloonQuizGame";
 import { invalidateKnowledgeTreeQueries } from "@/lib/knowledge-tree-cache";
 
 type TakeQuestion = {
@@ -59,6 +60,7 @@ export default function QuizTake() {
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [feedback, setFeedback] = useState<Record<number, Feedback>>({});
   const [reviewIndex,setReviewIndex]=useState(0);
+  const [practiceMode,setPracticeMode]=useState<"test"|"game"|null>(null);
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -90,6 +92,9 @@ export default function QuizTake() {
         if (!payload) return;
         setData(payload);
         setCurrentIndex(0);
+        let savedMode:string|null=null;
+        try{savedMode=localStorage.getItem(`quiz-practice-mode:${payload.attemptId}`);}catch{}
+        setPracticeMode(payload.learningPhase==="PRACTICE" && (savedMode==="test"||savedMode==="game")?savedMode:null);
         let savedReview=0;
         try{savedReview=Number(localStorage.getItem(`quiz-review:${payload.attemptId}`)??0);}catch{}
         setReviewIndex(Math.max(0,Math.min(Number.isFinite(savedReview)?savedReview:0,payload.reviewCards?.length??0)));
@@ -212,10 +217,42 @@ export default function QuizTake() {
   const reviewCard=data.reviewCards?.[reviewIndex];
   const phaseLabel=data.learningPhase==="FINAL"?"Ամփոփիչ ստուգում":data.learningPhase==="PRACTICE"?"Սխալների ուսուցում":"Սկզբնական թեստ";
   const steps=data.learningPhase && <div className="text-xs text-muted-foreground mb-4">Սկզբնական թեստ → Սխալների ուսուցում → Ամփոփիչ ստուգում<p className="text-primary font-semibold mt-2">{phaseLabel}</p></div>;
+  const isPractice=data.learningPhase==="PRACTICE" && data.assessmentConfig?.purpose==="LEARNING";
+  function chooseMode(mode:"test"|"game") {
+    setPracticeMode(mode);
+    try{localStorage.setItem(`quiz-practice-mode:${data!.attemptId}`,mode);}catch{}
+  }
+  const modeControls=isPractice && practiceMode && <div className="flex flex-wrap items-center justify-between gap-3 text-xs mb-4">
+    <span className="text-primary">{practiceMode==="game"?"Սովորել խաղով":"Սովորել թեստով"}</span>
+    <button type="button" disabled={checking} className="text-white/70 underline underline-offset-4 disabled:opacity-50" onClick={()=>setPracticeMode(null)}>Փոխել սովորելու ձևը</button>
+  </div>;
+  if(isPractice && !practiceMode)return <div className="min-h-[100dvh] bg-background text-white px-5 py-8">
+    <div className="max-w-2xl mx-auto space-y-6">
+      <Link href={`/quiz/${quizId}/result`} className="text-sm text-muted-foreground">← Պահել և դուրս գալ</Link>
+      {steps}
+      {modeControls}
+      <section className="rounded-3xl border border-white/10 bg-card/60 p-6 sm:p-8 space-y-5">
+        <h1 className="text-xl font-bold">Ինչպե՞ս ես ուզում սովորել</h1>
+        <p className="text-sm text-muted-foreground">Նախ կդիտես բացատրությունները, հետո կպատասխանես մնացած սխալ հարցերին։</p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <button type="button" onClick={()=>chooseMode("test")} className="rounded-2xl border border-indigo-400/30 bg-indigo-400/10 px-5 py-7 text-left hover:bg-indigo-400/20 transition-colors">
+            <span className="block text-3xl mb-3" aria-hidden="true">📝</span><span className="font-bold">Սովորել թեստով</span>
+            <span className="block text-sm text-white/60 mt-2">Ընտրիր ճիշտ պատասխանը։</span>
+          </button>
+          <button type="button" onClick={()=>chooseMode("game")} className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 px-5 py-7 text-left hover:bg-cyan-400/20 transition-colors">
+            <span className="block text-3xl mb-3" aria-hidden="true">🎈</span><span className="font-bold">Սովորել խաղով</span>
+            <span className="block text-sm text-white/60 mt-2">Սեղմիր ճիշտ պատասխանի փուչիկին։</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  </div>;
+  const isGame=isPractice && practiceMode==="game";
   if(reviewCard)return <div className="min-h-[100dvh] bg-background text-white px-5 py-8">
     <div className="max-w-2xl mx-auto space-y-5">
       <Link href={`/quiz/${quizId}/result`} className="text-sm text-muted-foreground">← Պահել և դուրս գալ</Link>
       {steps}
+      {modeControls}
       <section className="rounded-3xl border border-white/10 bg-card/60 p-6 space-y-4">
         <p className="text-xs text-primary">Բացատրություն {reviewIndex+1}/{data.reviewCards!.length}</p>
         <h1 className="text-lg font-semibold">{reviewCard.questionText}</h1>
@@ -243,6 +280,7 @@ export default function QuizTake() {
 
       <main className="max-w-2xl mx-auto px-5 py-8">
         {steps}
+        {modeControls}
         {data.learningPhase==="PRACTICE" && !!data.reviewCards?.length && <button
           className="mb-4 rounded-xl border border-primary/40 px-4 py-2 text-sm text-primary"
           onClick={()=>{setReviewIndex(0);try{localStorage.setItem(`quiz-review:${data.attemptId}`,"0");}catch{}}}
@@ -250,6 +288,9 @@ export default function QuizTake() {
         <section className="rounded-3xl border border-white/10 bg-card/60 p-6">
           {data.assessmentConfig && <p className="text-xs text-muted-foreground mb-2">{data.assessmentConfig.purpose === "CHECK" ? "Գիտելիքի անկախ ստուգում" : "Ուսուցողական"} · {({IN_CLASS:"Միայն դասարանում",AT_HOME:"Միայն տանը",CLASS_THEN_HOME:"Դասարանում սկսել, տանը շարունակել",ANYWHERE:"Ցանկացած վայրում"} as Record<string,string>)[data.assessmentConfig.context]}</p>}
           <p className="text-xs text-primary mb-3">Հարց {currentIndex + 1}</p>
+          {isGame ? <BalloonQuizGame key={question.id} question={question.questionText} options={question.options}
+            selectedIndex={answers[question.id]} correctIndex={currentFeedback?.correctOptionIndex??null}
+            answered={!!currentFeedback} disabled={checking} onChoose={commitAnswer} /> : <>
           <h1 className="text-lg font-semibold leading-relaxed">{question.questionText}</h1>
           <div className="mt-6 space-y-3">
             {question.options.map((option, optionIndex) => {
@@ -275,6 +316,7 @@ export default function QuizTake() {
               );
             })}
           </div>
+          </>}
 
           {currentFeedback?.deferred && <p className="mt-4 text-primary">Պատասխանը պահպանված է։ Արդյունքը՝ թեստի ավարտից հետո։</p>}
           {currentFeedback && !currentFeedback.deferred && (
@@ -308,7 +350,7 @@ export default function QuizTake() {
         </section>
       </main>
 
-      <div className="fixed bottom-0 inset-x-0 border-t border-white/10 bg-card/90 backdrop-blur px-5 py-4">
+      {(!isGame || currentFeedback || submitError) && <div className="fixed bottom-0 inset-x-0 border-t border-white/10 bg-card/90 backdrop-blur px-5 py-4">
         <div className="max-w-2xl mx-auto">
           {submitError && <p className="text-sm text-red-400 text-center mb-2">{submitError}</p>}
           {currentFeedback && currentIndex < data.questions.length - 1 && (
@@ -321,9 +363,9 @@ export default function QuizTake() {
               {submitting ? "Գրանցվում է..." : "Ավարտել փորձը"}
             </button>
           )}
-          {!currentFeedback && <p className="text-center text-xs text-muted-foreground">{data.learningPhase==="FINAL"?"Ընտրեք պատասխանը։ Արդյունքը՝ ամբողջ թեստի ավարտից հետո։":"Ընտրեք պատասխանը՝ անմիջապես ստուգելու համար"}</p>}
+          {!currentFeedback && <p className="text-center text-xs text-muted-foreground">{data.learningPhase==="FINAL"?"Ընտրեք պատասխանը։ Արդյունքը՝ ամբողջ թեստի ավարտից հետո։":isGame?"Սեղմիր ճիշտ պատասխանի փուչիկին։":"Ընտրեք պատասխանը՝ անմիջապես ստուգելու համար"}</p>}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
