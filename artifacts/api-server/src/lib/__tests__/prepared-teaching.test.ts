@@ -20,4 +20,11 @@ assert.equal(result.student_message, "Node\n\ncontent-10\n\ncontent-13\n\nconten
 assert.equal(selectPreparedTeachingItems(items, target, "HINT")[0].id, 16);
 assert.equal(selectPreparedTeachingItems([row(18), row(19, { cognitiveLevel: "understand" })], target, "MAIN_EXPLANATION")[0].id, 19);
 assert.deepEqual(composePreparedTheory([row(1)], target, "Node").itemIds, [1]);
+assert.throws(() => composePreparedTheory(items, target, "Node", 1), PreparedTeachingUnavailableError);
+const withAlternative=[...items,row(20,{itemType:"ALTERNATIVE_EXPLANATION",content:"alternative explanation"})];
+const repair=composePreparedTheory(withAlternative,target,"Node",1);
+assert.equal(repair.itemIds[0],20);
+assert.equal(repair.student_message.includes("content-10"),false);
+assert.equal(repair.itemIds[1],15);
+assert.equal(composePreparedTheory(withAlternative,target,"Node",2).itemIds[0],20);
 console.log("Prepared teaching: scope, approval, cognitive level, primary selection, ordering, no legacy fallback and help selection passed.");
