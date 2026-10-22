@@ -46,10 +46,20 @@ try {
       assert.equal(q.correctOptionIndex,undefined);
       const selectedOptionIndex=q.options.indexOf(correct[i]?"Correct":"Wrong");answers.push({questionId:q.id,selectedOptionIndex});
       const r=await fetch(`${base}/quizzes/${quizId}/attempts/${take.attemptId}/feedback`,{method:"POST",headers,body:JSON.stringify(answers.at(-1))});assert.equal(r.status,200);const f:any=await r.json();
+      if(i===0 && take.learningPhase==="PRACTICE"){
+        const partial:any=await(await fetch(`${base}/quizzes/${quizId}/take`,{headers})).json();
+        assert.equal(partial.attemptId,take.attemptId);
+        assert.equal(partial.finalizedAnswers.length,1);
+        assert.deepEqual(partial.reviewCards,take.reviewCards);
+      }
       assert.equal(f.deferred,deferred);assert.equal(f.isCorrect,deferred?null:correct[i]);
       if(deferred){assert.equal(f.correctAnswer,null);assert.equal(f.correctOptionIndex,null);assert.equal(f.feedback.whyCorrect,null);}
     }
     const resume:any=await(await fetch(`${base}/quizzes/${quizId}/take`,{headers})).json();
+    if(take.learningPhase==="PRACTICE"){
+      assert.equal(resume.reviewCards.length,take.questions.length);
+      assert.deepEqual(resume.reviewCards,take.reviewCards);
+    }
     assert.equal(resume.attemptId,take.attemptId);assert.equal(resume.finalizedAnswers.length,take.questions.length);
     if(deferred)for(const f of resume.finalizedAnswers){assert.equal(f.isCorrect,null);assert.equal(f.correctAnswer,null);}
     const hidden=await fetch(`${base}/quizzes/${quizId}/my-result?attemptId=${take.attemptId}`,{headers});assert.equal(hidden.status,404);

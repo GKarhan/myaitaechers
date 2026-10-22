@@ -1628,7 +1628,7 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
   const finalizedAnswerMap = new Map(finalizedAnswers.map((answer) => [answer.questionId, answer]));
 
   let reviewCards:Array<{questionId:number;questionText:string;correctAnswer:string|null;selectedAnswer:string|null;whyWrong:string|null;explanation:string|null}>=[];
-  if(learningPhase==="PRACTICE" && finalizedAnswers.length===0){
+  if(learningPhase==="PRACTICE"){
     const previous=await db.select({questionId:quizAnswersTable.questionId,selectedOptionIndex:quizAnswersTable.selectedOptionIndex})
       .from(quizAnswersTable).innerJoin(quizAttemptsTable,eq(quizAttemptsTable.id,quizAnswersTable.attemptId))
       .where(and(eq(quizAttemptsTable.quizSessionId,opened.session.id),isNotNull(quizAttemptsTable.completedAt)))
