@@ -41,10 +41,16 @@ export function composePreparedTheory(
   items: readonly PreparedTeachingItem[],
   target: PreparedTeachingTarget,
   title: string,
+  reteachStep = 0,
 ): { student_message: string; itemIds: number[] } {
-  const main = selectPreparedTeachingItems(items, target, "MAIN_EXPLANATION")[0];
+  const explanations = selectPreparedTeachingItems(items, target,
+    reteachStep > 0 ? "ALTERNATIVE_EXPLANATION" : "MAIN_EXPLANATION");
+  const main = explanations.length ? explanations[Math.max(0, reteachStep - 1) % explanations.length] : undefined;
   if (!main) throw new PreparedTeachingUnavailableError();
-  const examples = selectPreparedTeachingItems(items, target, "EXAMPLE").slice(0, 2);
+  const availableExamples = selectPreparedTeachingItems(items, target, "EXAMPLE");
+  const examples = reteachStep > 0 && availableExamples.length
+    ? [availableExamples[(reteachStep + 1) % availableExamples.length]]
+    : availableExamples.slice(0, 2);
   return {
     student_message: [title, main.content, ...examples.map((item) => item.content)].join("\n\n"),
     itemIds: [main.id, ...examples.map((item) => item.id)],
