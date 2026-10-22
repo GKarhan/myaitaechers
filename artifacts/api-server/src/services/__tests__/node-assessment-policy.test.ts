@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {filterRequiredPrerequisites,allocateNodeQuestions,summarizeIndependentAnswers,currentIndependentAssessment,parseAssessmentConfig,aggregateAssessments, type AssessmentEvent} from "../node-assessment-policy.js";
+import {filterRequiredPrerequisites,allocateNodeQuestions,summarizeIndependentAnswers,currentIndependentAssessment,parseAssessmentConfig,resolveQuizGenerationMode,aggregateAssessments, type AssessmentEvent} from "../node-assessment-policy.js";
 for(let n=1;n<=16;n++) for(let count=n;count<=n*3;count++) {
   const allocation=[...allocateNodeQuestions(Array.from({length:n},(_,i)=>i+1),count).values()];
   assert.equal(allocation.reduce((s,v)=>s+v,0),count);assert.ok(allocation.every(v=>v>=1&&v<=3));
@@ -38,3 +38,11 @@ assert.deepEqual(aggregateAssessments(summaries.map(assessment=>({assessment})))
 assert.equal(summaries.filter(s=>s.status==="SUCCESS").length,0);
 assert.equal(summaries.filter(s=>s.status==="NEEDS_SUPPORT").length,1);
 console.log("PASS quiz 287 mixed-level regression: 4/12, 33%, node scores 33/33/67/0");
+
+const nodePilot={version:"NODE_V1",purpose:"LEARNING",context:"ANYWHERE"};
+assert.equal(resolveQuizGenerationMode(undefined,nodePilot),"standard");
+assert.equal(resolveQuizGenerationMode(undefined,null),"canonical");
+assert.equal(resolveQuizGenerationMode("canonical",nodePilot),"canonical");
+assert.equal(resolveQuizGenerationMode("standard",nodePilot),"standard");
+assert.equal(resolveQuizGenerationMode("invalid",nodePilot),null);
+console.log("PASS NODE_V1 defaults to standard; legacy and explicit canonical modes remain unchanged");

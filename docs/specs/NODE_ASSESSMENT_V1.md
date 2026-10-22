@@ -61,3 +61,5 @@ Presentation separates selected-attempt/practice progress from independent asses
 - Question ambiguity/distractor quality and AI teacher integration remain outside this revision.
 
 Teacher-created NODE_V1 follow-up checks use the same standard, balanced node-only generation pipeline as the initial pilot quizzes, rather than forcing a canonical Bloom ceiling assessment. This is an explicit pilot scope choice, not a fallback that accepts a rejected canonical candidate. Previously answered question texts remain excluded; duplicate/out-of-scope batches receive at most one replacement request before failing. Bloom-specific assessment and question-content quality improvements remain deferred by user decision.
+
+The primary teacher creation form and server requests with NODE_V1 but no explicit mode default to standard node-only generation. Explicit experimental canonical selection still enforces its full cognitive contract; it is never silently downgraded after rejection. Legacy unversioned requests retain canonical default. The form must not claim standard NODE_V1 quiz results cannot update node assessment.
