@@ -5187,8 +5187,8 @@ export default function TeacherDashboard() {
 
   useEffect(()=>{
     const n=quizType==="lesson" && quizNodeIds.length>0 ? quizNodeIds.length : quizLeafCount;
-    if(n>0&&n<=50)setQuizCount(count=>Math.max(n,Math.min(count,Math.min(50,n*3))));
-  },[quizLeafCount,quizNodeIds,quizType]);
+    if(n>0&&n<=50)setQuizCount(count=>assessmentPurpose==="FINAL_CHECK" ? n*3 : Math.max(n,Math.min(count,Math.min(50,n*3))));
+  },[quizLeafCount,quizNodeIds,quizType,assessmentPurpose]);
 
   async function handleCreateQuiz() {
     // Type-specific frontend validation
@@ -5217,7 +5217,7 @@ export default function TeacherDashboard() {
           sourceBookId:   quizBookId ?? undefined,
           quizType,
           generationMode: quizGenerationMode,
-          assessmentConfig: { version:"NODE_V1", purpose:assessmentPurpose, context:assessmentContext },
+          assessmentConfig: { version:"NODE_V1", purpose:assessmentPurpose === "FINAL_CHECK" ? "CHECK" : assessmentPurpose, context:assessmentContext, ...(assessmentPurpose === "FINAL_CHECK" ? {fullConfirmation:true} : {}) },
           lessonIds:      sendNodeIds ? undefined : quizLessonIds,
           nodeIds:        sendNodeIds,
           questionCount:  quizCount,
@@ -7765,7 +7765,7 @@ export default function TeacherDashboard() {
 
             <div className="grid grid-cols-2 gap-3 mb-4">
               <label>Թեստի նպատակը<select className="block w-full bg-background p-2 rounded-xl" value={assessmentPurpose} onChange={e=>setAssessmentPurpose(e.target.value)}>
-                <option value="LEARNING">Ուսուցողական</option><option value="CHECK">Գիտելիքի անկախ ստուգում</option>
+                <option value="LEARNING">Ուսուցողական</option><option value="CHECK">Գիտելիքի անկախ ստուգում</option><option value="FINAL_CHECK">Ամփոփիչ ստուգում</option>
               </select></label>
               <label>Կատարման պայման<select className="block w-full bg-background p-2 rounded-xl" value={assessmentContext} onChange={e=>setAssessmentContext(e.target.value)}>
                 <option value="ANYWHERE">Ցանկացած վայրում</option><option value="IN_CLASS">Միայն դասարանում</option>
@@ -7783,6 +7783,7 @@ export default function TeacherDashboard() {
                   min={1}
                   max={50}
                   value={quizCount}
+                  disabled={assessmentPurpose === "FINAL_CHECK"}
                   onChange={(e) => setQuizCount(Math.max(1, parseInt(e.target.value) || 1))}
                   className="w-32 bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
                 />
@@ -7790,7 +7791,7 @@ export default function TeacherDashboard() {
                   const effectiveLeaf = quizType === "lesson" && quizNodeIds.length > 0
                     ? quizNodeIds.length
                     : quizLeafCount;
-                  const minQEff  = effectiveLeaf;
+                  const minQEff  = assessmentPurpose === "FINAL_CHECK" ? effectiveLeaf * 3 : effectiveLeaf;
                   const idealQEff = effectiveLeaf * 3;
                   return (
                     <span className="text-xs text-muted-foreground/80">
@@ -7836,7 +7837,7 @@ export default function TeacherDashboard() {
               <button
                 onClick={handleCreateQuiz}
                 disabled={
-                  quizCreating ||
+                  quizCreating || quizCount > 50 ||
                   (quizType === "lesson" && quizLessonIds.length !== 1) ||
                   (quizType === "summary" && quizLessonIds.length < 2)
                 }

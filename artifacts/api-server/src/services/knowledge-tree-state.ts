@@ -509,7 +509,7 @@ export async function resolveKnowledgeTreeStates(
     // The approved NODE_V1 pilot counts every independent question for the
     // node. C4 remains the owner of cognitive-level demonstrations.
     if (assessment && assessment.attempted > 0) {
-      classification.knowledgeState = assessment.status === "SUCCESS" ? "MASTERED"
+      classification.knowledgeState = assessment.fullyConfirmed ? "MASTERED"
         : assessment.correct > 0 ? "PARTIAL" : "NOT_KNOWN";
       classification.knowledgeStateLabel = LABELS[classification.knowledgeState];
       classification.stateReason = "NODE_ASSESSMENT_RESULT";

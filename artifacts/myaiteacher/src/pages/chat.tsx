@@ -5,7 +5,7 @@ import {
   useGetChatHistory, getGetChatHistoryQueryKey,
   useSendChatMessage
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invalidateKnowledgeTreeQueries } from "@/lib/knowledge-tree-cache";
 
 // ── Phase 2B Part 13: Progressive Help UI ─────────────────────────────────────
@@ -69,19 +69,24 @@ export default function Chat() {
   // ── Hydrate active-task state on mount / lessonId change ──────────────────
   // POST /chat responses update hasActiveTask in real time, but on a hard refresh
   // the server session still holds the true state — recover it here.
+  const sessionStateKey = ["teacher-session-state", lessonId, token];
+  const { data: sessionState, isFetching: sessionStateRefreshing } = useQuery({
+    queryKey: sessionStateKey,
+    enabled: !!lessonId && !!token,
+    queryFn: async () => {
+      const response = await fetch(`/api/chat/session-state?lessonId=${lessonId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("SESSION_STATE_UNAVAILABLE");
+      return response.json() as Promise<{ hasActiveTask: boolean; activeHelpCount: number;
+        finalAssessment?: {state:string;href:string|null} }>;
+    },
+  });
   useEffect(() => {
-    if (!lessonId || !token) return;
-    fetch(`/api/chat/session-state?lessonId=${lessonId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { hasActiveTask?: boolean; activeHelpCount?: number } | null) => {
-        if (!data) return;
-        if (data.hasActiveTask !== undefined) setHasActiveTask(data.hasActiveTask);
-        if (data.activeHelpCount !== undefined) setHelpLevel(data.activeHelpCount);
-      })
-      .catch(() => {}); // non-critical — button hidden until next message
-  }, [lessonId, token]);
+    if (!sessionState) return;
+    setHasActiveTask(sessionState.hasActiveTask);
+    setHelpLevel(sessionState.activeHelpCount);
+  }, [sessionState]);
 
   const historyParams = lessonId ? { lessonId } : undefined;
   const { data: chatHistory, isLoading: historyLoading } = useGetChatHistory(historyParams, {
@@ -92,6 +97,8 @@ export default function Chat() {
   });
 
   const sendMessageMutation = useSendChatMessage();
+  const chatError = sendMessageMutation.error as { data?: { error?: string } } | null;
+  const preparedMaterialMissing = chatError?.data?.error === "APPROVED_TEACHING_MATERIAL_UNAVAILABLE";
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -115,6 +122,7 @@ export default function Chat() {
       {
         onSuccess: (responseData) => {
           queryClient.invalidateQueries({ queryKey: getGetChatHistoryQueryKey(historyParams) });
+          void queryClient.invalidateQueries({ queryKey: sessionStateKey });
           void invalidateKnowledgeTreeQueries(queryClient);
           // Update hasActiveTask from server response (Phase 2B)
           const d = responseData as { hasActiveTask?: boolean; activeHelpCount?: number } | undefined;
@@ -146,7 +154,7 @@ export default function Chat() {
   };
 
   // ── Phase 2B: Request help ─────────────────────────────────────────────────
-  const requestHelp = async (revealAnswer = false) => {
+  const requestHelp = async (revealAnswer = false, materialKind: "hint" | "explanation" | "example" = "hint") => {
     if (!lessonId || helpLoading || helpRequestInFlightRef.current || sendMessageMutation.isPending) return;
     if (showRevealConfirm && !revealAnswer) return;
 
@@ -162,7 +170,7 @@ export default function Chat() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token ?? ""}`,
         },
-        body: JSON.stringify({ lessonId, revealAnswer }),
+        body: JSON.stringify({ lessonId, revealAnswer, materialKind }),
       });
 
       const data = await resp.json();
@@ -306,9 +314,22 @@ export default function Chat() {
       {/* Input */}
       <footer className="shrink-0 p-4 border-t border-card-border bg-card/50 backdrop-blur-lg">
         <div className="max-w-4xl mx-auto space-y-2">
+          {!sendMessageMutation.isPending && !sessionStateRefreshing && sessionState?.finalAssessment && sessionState.finalAssessment.state !== "NOT_READY" && (
+            <div className="rounded-xl border border-secondary p-3 space-y-2">
+              <p className="font-semibold">Ամփոփիչ ստուգում</p>
+              {sessionState.finalAssessment.href ? (
+                <Link href={sessionState.finalAssessment.href}
+                  className="inline-flex rounded-lg bg-primary px-4 py-2 font-semibold">
+                  {sessionState.finalAssessment.state === "COMPLETED" ? "Արդյունքներ" : "Սկսենք ստուգումը"}
+                </Link>
+              ) : <p className="text-sm text-muted-foreground">Save failed։ Դիմիր ուսուցչին։</p>}
+            </div>
+          )}
           {sendMessageMutation.isError && (
             <div className="text-destructive text-sm px-2">
-              Սխալ տեղի ունեցավ։ Խնդրում ենք փորձել կրկին։
+              {preparedMaterialMissing
+                ? "Հաստատված ուսումնական նյութը հասանելի չէ։ Դիմիր ուսուցչին։"
+                : "Սխալ տեղի ունեցավ։ Խնդրում ենք փորձել կրկին։"}
             </div>
           )}
           {helpError && (
@@ -330,6 +351,21 @@ export default function Chat() {
                 className="shrink-0 px-3 py-1 rounded-lg bg-card border border-card-border text-muted-foreground text-xs transition-colors"
               >
                 Չեղարկել
+              </button>
+            </div>
+          )}
+
+          {showHelpButton && !showRevealConfirm && (
+            <div className="flex flex-wrap gap-2 px-2 pb-2">
+              <button onClick={() => requestHelp(false, "explanation")}
+                disabled={helpLoading || sendMessageMutation.isPending}
+                className="px-3 py-2 rounded-lg border border-card-border text-sm disabled:opacity-40">
+                Ավելի պարզ
+              </button>
+              <button onClick={() => requestHelp(false, "example")}
+                disabled={helpLoading || sendMessageMutation.isPending}
+                className="px-3 py-2 rounded-lg border border-card-border text-sm disabled:opacity-40">
+                Այլ օրինակ
               </button>
             </div>
           )}

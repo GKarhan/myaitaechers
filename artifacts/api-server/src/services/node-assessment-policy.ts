@@ -1,19 +1,23 @@
 /** Versioned assessment outcomes. Certainty labels are product rules, not
  * calibrated probabilities. Never count a repeated, exposed answer as new proof. */
-export type AssessmentConfig = { version: "NODE_V1"; purpose: "LEARNING" | "CHECK"; context: "IN_CLASS" | "AT_HOME" | "CLASS_THEN_HOME" | "ANYWHERE" };
+export type AssessmentConfig = { version: "NODE_V1"; fullConfirmation?: boolean; purpose: "LEARNING" | "CHECK"; context: "IN_CLASS" | "AT_HOME" | "CLASS_THEN_HOME" | "ANYWHERE" };
 export function parseAssessmentConfig(value: unknown): AssessmentConfig | null {
   const v = value as Partial<AssessmentConfig> | null;
   if (!v || v.version !== "NODE_V1" || !["LEARNING", "CHECK"].includes(v.purpose ?? "") ||
     !["IN_CLASS", "AT_HOME", "CLASS_THEN_HOME", "ANYWHERE"].includes(v.context ?? "")) return null;
+  if (v.fullConfirmation !== undefined && typeof v.fullConfirmation !== "boolean") return null;
+  if (v.fullConfirmation && v.purpose !== "CHECK") return null;
   return v as AssessmentConfig;
 }
 /** Explicit advanced mode stays explicit; node-only pilot is the default. */
 export function resolveQuizGenerationMode(requested:unknown,config:unknown):"standard"|"canonical"|null {
+  if(parseAssessmentConfig(config)?.fullConfirmation)return requested === undefined || requested === "canonical" || requested === "standard" ? "canonical" : null;
   if(requested===undefined)return parseAssessmentConfig(config)?"standard":"canonical";
   return requested==="standard"||requested==="canonical"?requested:null;
 }
-export function allocateNodeQuestions(nodeIds: readonly number[], count: number): Map<number, number> {
+export function allocateNodeQuestions(nodeIds: readonly number[], count: number, config?: AssessmentConfig): Map<number, number> {
   const ids = [...new Set(nodeIds)];
+  if (config?.fullConfirmation && count !== ids.length * 3) throw new Error("FULL_CONFIRMATION_REQUIRES_THREE_PER_NODE");
   if (!ids.length || !Number.isInteger(count) || count < ids.length || count > Math.min(50, ids.length * 3))
     throw new Error("QUESTION_COUNT_OUTSIDE_NODE_RANGE");
   return new Map(ids.map((id, i) => [id, Math.floor(count / ids.length) + (i < count % ids.length ? 1 : 0)]));
@@ -24,6 +28,7 @@ export type AssessmentSummary = {
   status: "NOT_ASSESSED" | "SUCCESS" | "PARTIAL" | "NOT_KNOWN" | "NEEDS_SUPPORT";
   nextAction: "ASSESS" | "RECONFIRM" | "REVIEW" | "TARGETED_PRACTICE" | "LEARN" | "TEACHER_REVIEW";
   confirmation: string;
+  fullyConfirmed: boolean;
 };
 export function summarizeIndependentAnswers(answers: readonly boolean[]): AssessmentSummary {
   const sample = answers.slice(0, 3), attempted = sample.length;
@@ -32,7 +37,7 @@ export function summarizeIndependentAnswers(answers: readonly boolean[]): Assess
     : correct === attempted ? "SUCCESS" : "PARTIAL";
   return { correct, attempted, percent: attempted ? Math.round(correct / attempted * 100) : null,
     certainty: !correct ? "NONE" : correct === 1 ? "LOW" : correct === 2 ? "MEDIUM" : "HIGH",
-    status, confirmation: `${Math.min(correct, 3)}/3`,
+    status, confirmation: `${Math.min(correct, 3)}/3`, fullyConfirmed: attempted === 3 && correct === 3,
     nextAction: status === "NEEDS_SUPPORT" ? "TEACHER_REVIEW" : status === "NOT_ASSESSED" ? "ASSESS"
       : status === "NOT_KNOWN" ? "LEARN" : status === "PARTIAL" ? (correct === 1 ? "LEARN" : "TARGETED_PRACTICE")
       : attempted === 3 ? "REVIEW" : "RECONFIRM" };

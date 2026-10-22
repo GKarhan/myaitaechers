@@ -250,6 +250,43 @@ test("18 automatic advance into an invalid next path is unavailable, not complet
   assert.equal(result.reasonCode, "C2_PATH_UNAVAILABLE");
 });
 
+test("19 instructional advance keeps demonstrated knowledge unchanged", () => {
+  const first = node(1, 1, "PARTIAL", null, {
+    teachingProgress: { covered: true, nextLevelId: null, correctTasks: 2 },
+  });
+  const next = node(2, 2, "NOT_STUDIED", null, {
+    teachingProgress: { covered: false, nextLevelId: UNDERSTAND, correctTasks: 0 },
+  });
+  const result = decide([first, next], { requestedMicroNodeId: 1 });
+  assert.equal(result.microNodeId, 2);
+  assert.equal(result.teachingOnly, true);
+  assert.equal(first.knowledgeState, "PARTIAL");
+  assert.equal(first.demonstratedCognitiveLevelId, null);
+});
+test("20 instructional level selection does not invent a C4 ceiling", () => {
+  const result = decide([node(1, 1, "PARTIAL", null, {
+    teachingProgress: { covered: false, nextLevelId: APPLY, correctTasks: 1 },
+  })], { requestedMicroNodeId: 1 });
+  assert.equal(result.nextTargetCognitiveLevelId, APPLY);
+  assert.equal(result.demonstratedCognitiveLevelId, null);
+  assert.equal(result.reasonCode, "TEACHING_PROGRESS");
+});
+test("21 taught but unconfirmed prerequisite still blocks dependent material", () => {
+  const result = decide([
+    node(1, 1, "PARTIAL", null, { teachingProgress: {covered:true,nextLevelId:null,correctTasks:2} }),
+    node(2, 2, "NOT_STUDIED"),
+  ], { requestedMicroNodeId:1, dependencies:[{fromNodeId:1,toNodeId:2,dependencyType:"REQUIRED"}] });
+  assert.equal(result.microNodeId,null);
+  assert.equal(result.decisionType,null);
+  assert.equal(result.reasonCode,"TEACHING_PREREQUISITE_UNCONFIRMED");
+});
+test("22 finishing presentation is labeled instructional only", () => {
+  const result=decide([node(1,1,"PARTIAL",null,{teachingProgress:{covered:true,nextLevelId:null,correctTasks:2}})],
+    {requestedMicroNodeId:1});
+  assert.equal(result.reasonCode,"NO_ELIGIBLE_MICRONODE");
+  assert.equal(result.teachingOnly,true);
+});
+
 for (const { name, fn } of tests) {
   fn();
   console.log(`PASS ${name}`);

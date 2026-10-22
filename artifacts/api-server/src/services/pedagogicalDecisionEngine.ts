@@ -25,6 +25,8 @@ export type CognitiveLevel = typeof COGNITIVE_LEVEL_ORDER[number];
 
 /** Maximum remediation escalation steps before MARK_TARGET_NOT_REACHED fires. */
 export const MAX_REMEDIATION_STEPS = 5;
+/** Prepared-teaching pilot: failed evaluated checks, including the initial try. */
+export const PILOT_MAX_FAILED_TEACHING_ATTEMPTS = 3;
 
 /** Maximum persisted help events for one active learner task. */
 export const MAX_HELP_COUNT = 4;
@@ -229,6 +231,8 @@ export interface PedagogicalDecisionInput {
    * the legacy COMPLETE_NODE transition.
    */
   legacyCompletionAllowed?: boolean;
+  /** Server-owned cap; never supplied by model output or learner request. */
+  maxFailedTeachingAttempts?: number;
 }
 
 export type PedagogicalMetaAction =
@@ -544,7 +548,9 @@ export function decideNextPedagogicalAction(
   if (
     answerStatus === null ||
     answerStatus === "NOT_APPLICABLE" ||
-    answerStatus === "OFF_TOPIC"
+    answerStatus === "OFF_TOPIC" ||
+    (input.maxFailedTeachingAttempts !== undefined &&
+      (answerStatus === "UNCLEAR" || answerStatus === "NO_RESPONSE"))
   ) {
     return {
       metaAction:              "NON_ANSWER",
@@ -817,7 +823,10 @@ export function decideNextPedagogicalAction(
   }
 
   // ── Step 5: R3 hard ceiling (MAX_REMEDIATION_STEPS) ────────────────────
-  if (nextRemediationStep > MAX_REMEDIATION_STEPS) {
+  const configuredFailureCap = input.maxFailedTeachingAttempts;
+  const failureCap = Number.isInteger(configuredFailureCap) && configuredFailureCap! > 0
+    ? configuredFailureCap! : MAX_REMEDIATION_STEPS + 1;
+  if (nextRemediationStep >= failureCap) {
     // Learner actually attempted the level and bounded remediation failed.
     const blocked = nextNodeHasCriticalDependencyOnCurrentNode;
     return {

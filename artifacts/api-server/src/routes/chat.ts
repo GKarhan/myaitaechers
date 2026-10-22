@@ -1,3 +1,4 @@
+import { getLessonFinalAssessmentHandoff } from "../services/lesson-final-assessment.js";
 import { Router } from "express";
 import {
   db, chatMessagesTable, lessonsTable, lessonSessionsTable,
@@ -5,7 +6,7 @@ import {
   lessonNodeDependenciesTable, usersTable,
   evidenceEventsTable, knowledgeNodesTable,
   lessonNodeCognitiveLevelsTable, helpEventsTable,
-  lessonNodeCognitiveTasksTable,
+  lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonNodeTeachingPackageItemsTable,
 } from "@workspace/db";
 import { eq, and, asc, desc, inArray, gte, or, isNull, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
@@ -18,17 +19,34 @@ import {
   assertFeedbackMatchesAuthority,
   assertFeedbackOnly,
   assertTheoryOnly,
-  buildNodeTheoryFallback,
   callPhase2EvaluationJob,
   callPhase2FeedbackJob,
   callPhase2TaskJob,
-  callPhase2TheoryJob,
-  Phase2TheoryExhaustionError,
   serverOwnedFeedbackAcknowledgement,
   type Phase2EvaluationResult,
 } from "../services/phase2/bounded-jobs.js";
 import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
+import {
+  composePreparedTheory, preparedTeachingContext, selectPreparedTeachingItems,
+  PreparedTeachingUnavailableError, type PreparedTeachingTarget,
+} from "../lib/prepared-teaching.js";
+
+async function loadPreparedTeaching(target: PreparedTeachingTarget) {
+  return db.select().from(lessonNodeTeachingPackageItemsTable).where(and(
+    eq(lessonNodeTeachingPackageItemsTable.lessonId, target.lessonId),
+    eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, target.microNodeId),
+    eq(lessonNodeTeachingPackageItemsTable.status, "approved"),
+  ));
+}
+
+async function deliverPreparedTheory(target: C7ExecutionTarget, reteachStep = 0) {
+  const items = await loadPreparedTeaching(target);
+  const theory = composePreparedTheory(items, target, target.microNodeTitle, reteachStep);
+  assertTheoryOnly(theory);
+  logger.info({ lessonId: target.lessonId, nodeId: target.microNodeId, itemIds: theory.itemIds }, "approved Teaching Package delivered without model call");
+  return { student_message: `${theory.student_message}\n\nԵթե պատրաստ ես, գրիր «Շարունակենք»։` };
+}
 import {
   enforceActiveSourceExercise,
   isExerciseDeliveryTurn,
@@ -39,12 +57,14 @@ import {
 import {
   isLearnerDeliveryEligible,
   resolveLearnerExerciseContent,
+  validateLearnerExerciseText,
 } from "../lib/exercise-content-boundary.js";
 import { evaluateDeterministicSourceExerciseAnswer } from "../lib/deterministic-source-exercise-evaluation";
 import { updateTopicScoring } from "../services/scoring";
 import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
 import {
   computeSessionBudgetExhausted,
+  PILOT_MAX_FAILED_TEACHING_ATTEMPTS,
   ACTIVE_INTERVAL_CAP_SECONDS,
   getNextHelpEscalation,
   type CognitiveLevelRow,
@@ -55,7 +75,7 @@ import {
   deriveGeneratedMicroCheckActivation,
   buildMandatoryFeedbackStageUpdate,
   buildPostFeedbackTransitionUpdate,
-  buildTerminalRevisitStageUpdate,
+  buildFeedbackReleaseUpdate,
   deriveLegacyCompletionAllowed,
   derivePostFeedbackContinuationAction,
   derivePhase2ServerAction,
@@ -348,7 +368,8 @@ async function executeHelpRequest(
   },
   lessonId: number,
   userId: number,
-  revealAnswer = false
+  revealAnswer = false,
+  materialKind: "hint" | "explanation" | "example" = "hint",
 ): Promise<HelpRequestResult> {
   if (!session.activeTaskProvenance) {
     return { ok: false, errorCode: "NO_ACTIVE_TASK", statusHint: 409, message: "No active task" };
@@ -444,6 +465,7 @@ async function executeHelpRequest(
   const { helpLevel: nextHelpLevel, assistanceLevel } = helpEscalation;
 
   let taskText: string | null = null;
+  let hiddenHelpContent: { successCriteria?: string | null; correctAnswer?: string | null } = {};
   if (session.activeLessonExerciseId) {
     const [exRow] = await db
       .select({
@@ -495,6 +517,7 @@ async function executeHelpRequest(
       };
     }
     taskText = helpTask.taskText;
+    hiddenHelpContent = { successCriteria: exRow.successCriteria, correctAnswer: exRow.correctAnswer };
   } else if (session.lastQuestionAsked) {
     taskText = session.lastQuestionAsked;
   }
@@ -507,21 +530,36 @@ async function executeHelpRequest(
   };
 
   let hintContent = "";
-  try {
-    const helpPrompt = [
-      `You are an Armenian AI Teacher giving a level-${nextHelpLevel} hint.`,
-      buildC7TargetContext(helpTarget),
-      `Task: ${taskText ?? "(no task text available)"}`,
-      `Instruction: ${HINT_INSTRUCTIONS[nextHelpLevel] ?? HINT_INSTRUCTIONS[3]}`,
-      "Reply ONLY in Armenian. Do not repeat the task verbatim.",
-    ].join("\n");
-    hintContent = await callAI(
-      [{ role: "user" as const, content: helpPrompt }],
-      "\u0564\u0578\u0582 AI \u0578\u0582\u057d\u0578\u0582\u0581\u056b\u0579 \u0565\u057d\u0589 \u0570\u0561\u0575\u056f\u0561\u056f\u0561\u0576 \u0570\u0578\u0582\u0577 \u057f\u0578\u0582\u0580\u0589"
-    );
-  } catch (aiErr) {
-    logger.warn({ aiErr, sessionId: session.id }, "executeHelpRequest: AI hint failed");
-    hintContent = "\u0553\u0578\u0580\u056e\u056b\u0580 \u056f\u0580\u056f\u056b\u0576 \u0574\u057f\u0561\u056e\u0565\u056c \u056d\u0576\u0564\u056b\u0580\u056b \u0574\u0561\u057d\u056b\u0576, \u056f\u0561\u0574 \u0564\u056b\u0574\u056b\u0580 \u0578\u0582\u057d\u0578\u0582\u0581\u056c\u056b\u0579\u056b\u0576\u0589";
+  if (nextHelpLevel < 4) {
+    const items = await loadPreparedTeaching(helpTarget);
+    const itemType = materialKind === "explanation" ? "ALTERNATIVE_EXPLANATION"
+      : materialKind === "example" ? "EXAMPLE" : "HINT";
+    const candidates = selectPreparedTeachingItems(items, helpTarget, itemType);
+    // The first two examples were already included in the theory block.
+    const index = materialKind === "hint" ? currentHelpCount : materialKind === "example" ? 2 : 0;
+    const item = candidates[index];
+    if (!item) return {
+      ok: false, errorCode: "APPROVED_TEACHING_MATERIAL_UNAVAILABLE", statusHint: 409,
+      message: "Հաստատված ուսումնական նյութը հասանելի չէ։ Դիմիր ուսուցչին։",
+    };
+    const contentBoundary = validateLearnerExerciseText({ learnerText: item.content, ...hiddenHelpContent });
+    if (!contentBoundary.ok) return {
+      ok: false, errorCode: "PREPARED_HELP_CONTENT_UNSAFE", statusHint: 409,
+      message: "Հաստատված ուսումնական նյութը հասանելի չէ։ Դիմիր ուսուցչին։",
+    };
+    hintContent = item.content;
+    logger.info({ sessionId: session.id, itemId: item.id, itemType }, "prepared help selected without model call");
+  } else {
+    // Explicit answer reveal retains its separate confirmation and assistance policy.
+    try {
+      hintContent = await callAI([
+        { role: "user", content: [buildC7TargetContext(helpTarget), `Task: ${taskText ?? ""}`,
+          HINT_INSTRUCTIONS[4]].join("\n") },
+      ], "Reply only in Armenian.");
+    } catch (aiErr) {
+      logger.warn({ aiErr, sessionId: session.id }, "executeHelpRequest: answer reveal failed");
+      return { ok: false, errorCode: "ANSWER_REVEAL_UNAVAILABLE", statusHint: 503 };
+    }
   }
 
   // Commit the help event and assistance state only if the execution target is
@@ -697,6 +735,7 @@ async function advanceNodeInSession(
   c6BlockedReason?: "C2_PATH_UNAVAILABLE" | "DEPENDENCY_CYCLE" | "DEPENDENCY_TARGET_MISSING";
 }> {
   const c6Decision = canonicalC6Decision ?? await resolveCanonicalC6Decision({
+    teachingSessionId: sessionId,
     learnerId: userId,
     lessonId,
     afterMicroNodeId: currentNodeId,
@@ -1117,6 +1156,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let _activeCognitiveLevelRow: CognitiveLevelRow | null = null;
   let _c7ExecutionTarget: C7ExecutionTarget | null = null;
   let _nextNodeHasCriticalDep = false;
+  let _reteachAfterFeedback = false;
   let _deferredC7Action: "ADVANCE_COGNITIVE_LEVEL" | "COMPLETE_MICRONODE" | null = null;
   let _deferredC6Decision: Awaited<ReturnType<typeof resolveCanonicalC6Decision>> | null = null;
   let _deferredSafetyCapHit = false;
@@ -1320,6 +1360,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           }
         }
         const c6Decision = await resolveCanonicalC6Decision({
+    teachingSessionId: session.id,
           learnerId: req.userId!,
           lessonId,
           requestedMicroNodeId: session.currentNodeId,
@@ -1339,7 +1380,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           c6Decision.decisionType === "ADVANCE"
             ? 3
             : session.currentPhase;
-        if (nodeChanged && !resumeC4Projection?.reachedTarget) {
+        if (nodeChanged && !resumeC4Projection?.reachedTarget && !c6Decision.teachingOnly) {
           logger.warn(
             {
               sessionId: session.id,
@@ -1551,6 +1592,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           !c7HasActiveExecutionBoundary
         ) {
           const c6Decision = await resolveCanonicalC6Decision({
+    teachingSessionId: session.id,
             learnerId: req.userId!,
             lessonId: lessonId!,
             requestedMicroNodeId: _nodeId,
@@ -1669,6 +1711,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             ),
           );
         }
+        if (session.nodeTeachingStage === "TASK_REQUIRED" && classExercises.length) {
+          const used = await db.select({ exerciseId: evidenceEventsTable.lessonExerciseId })
+            .from(evidenceEventsTable).where(and(
+              eq(evidenceEventsTable.lessonSessionId, session.id),
+              eq(evidenceEventsTable.lessonNodeId, session.currentNodeId),
+              gte(evidenceEventsTable.createdAt, session.startedAt ?? new Date(0)),
+            ));
+          const usedIds = new Set(used.map((row) => row.exerciseId));
+          classExercises = classExercises.filter((exercise) => !usedIds.has(exercise.id));
+        }
         logger.info({
           phase,
           currentNodeId: session?.currentNodeId,
@@ -1735,30 +1787,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         }
       }
 
-      const toStrArr = (v: unknown) =>
-        Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-
-      const cfeBlock = currentNodeRecord?.childFriendlyExplanation
-        ? `\nAPPROVED_EXPLANATION (use near-verbatim):\n${currentNodeRecord.childFriendlyExplanation}`
-        : "";
-
+      const approvedTeachingItems = _c7ExecutionTarget
+        ? await loadPreparedTeaching(_c7ExecutionTarget) : [];
+      const preparedContentBlock = _c7ExecutionTarget
+        ? preparedTeachingContext(approvedTeachingItems, _c7ExecutionTarget) : "";
+      // Source text remains the source authority, never an approved teaching fallback.
       const verbatimAnchorBlock = currentNodeRecord?.verbatimTheoryAnchor
-        ? `\nVERBATIM_THEORY_ANCHOR (if non-empty, ground explanations in this exact wording — cite rules/definitions near-verbatim).\n${currentNodeRecord.verbatimTheoryAnchor}`
-        : "";
-
-      const examplesArr = toStrArr(currentNodeRecord?.basicExamples);
-      const examplesBlock = examplesArr.length > 0
-        ? `\nBASIC_EXAMPLES:\n${examplesArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
-        : "";
-
-      const nonExamplesArr = toStrArr(currentNodeRecord?.nonExamples);
-      const nonExamplesBlock = nonExamplesArr.length > 0
-        ? `\nNON_EXAMPLES (use as contrast and wrong-answer distractors in MICRO_CHECK).\n${nonExamplesArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
-        : "";
-
-      const misconceptionBlock = currentNodeRecord?.commonMisconception
-        ? `\nKNOWN_MISCONCEPTION (design MICRO_CHECK distractors around this):\n${currentNodeRecord.commonMisconception}`
-        : "";
+        ? `\nVERBATIM_THEORY_ANCHOR:\n${currentNodeRecord.verbatimTheoryAnchor}` : "";
 
       const knowledgeBoundariesBlock = knowledgeBoundaries.length > 0
         ? `\nKNOWLEDGE_BOUNDARIES (this lesson deliberately excludes these topics — redirect warmly if student asks).\n${knowledgeBoundaries.map((b: string, i: number) => `${i + 1}. ${b}`).join("\n")}`
@@ -1901,7 +1936,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       const _nodeObjective =
         currentNodeRecord?.learningObjective?.trim() ||
-        currentNodeRecord?.childFriendlyExplanation?.trim() ||
         (currentNodeRecord
           ? `Reach Bloom level ${currentNodeRecord.targetBloomLevel} understanding of «${currentNodeRecord.title}» in ~${currentNodeRecord.estimatedMinutes} min.`
           : null);
@@ -1952,7 +1986,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
 
       const completedNodesBlock = completedNodeTitles.length > 0
-        ? `COMPLETED_NODES (already mastered — do NOT reteach; only brief prerequisite references allowed):\n${completedNodeTitles.map((t) => `  - «${t}»`).join("\n")}`
+        ? `COMPLETED_NODES (teaching presentation only; mastery requires separate canonical evidence):\n${completedNodeTitles.map((t) => `  - «${t}»`).join("\n")}`
         : `COMPLETED_NODES: (none — this is the first node)`;
 
       const structuredHeader = [
@@ -1962,7 +1996,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         currentNodeRecord
           ? `CURRENT_NODE:     «${currentNodeRecord.title}»  ← the ONLY node you are teaching right now`
           : `CURRENT_NODE:     (none — all nodes completed or phase=${phase})`,
-        `INSTRUCTION: Completed nodes are already mastered. Do not reteach them. Do not restart explanations from completed nodes. Only refer to them briefly as prerequisites if needed.`,
+        `INSTRUCTION: Previous presentation does not imply mastery. Stay on the server-selected node and never claim unconfirmed mastery.`,
         _nodeObjective
           ? `NODE_OBJECTIVE:   ${_nodeObjective}`
           : `NODE_OBJECTIVE:   (not set for this node)`,
@@ -2029,11 +2063,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           ? `LESSON_OVERVIEW (context for this entire lesson — read before the current node):\n${(lesson as { description?: string | null }).description!.trim()}`
           : "",
         currentNodeRecord?.theoryContent ? `NODE_THEORY:\n${currentNodeRecord.theoryContent}` : "",
-        cfeBlock,
+        preparedContentBlock,
         verbatimAnchorBlock,
-        examplesBlock,
-        nonExamplesBlock,
-        misconceptionBlock,
         knowledgeBoundariesBlock,
         exBlock,
         hwBlock,
@@ -2118,6 +2149,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       _normalizeOk(trimmedLower) === "ok" ||
       new Set([
         "\u056c\u0561\u057e",                              // լավ (good)
+        "սկսենք",
+        "շարունակենք",
         "\u057a\u0561\u057f\u0580\u0561\u057d\u057f",      // պատրաստ
         "\u057a\u0561\u057f\u0580\u0561\u057d\u057f \u0565\u0574", // patrast em
       ]).has(trimmedLower);
@@ -2125,13 +2158,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
     if (!prevAssistant) {
       // First turn — return the deterministic intro; no AI call
-      const outcomes = Array.isArray(lesson.lessonOutcomes)
-        ? (lesson.lessonOutcomes as string[]).filter((x): x is string => typeof x === "string")
-        : [];
-      const outcomesBlock = outcomes.length > 0
-        ? outcomes.map((o) => `\u2022 ${o}`).join("\n")
-        : "(not specified)"; // placeholder
-      const goalBlock = lesson.lessonGoal?.trim() || "(not specified)";
+      // Canonical C1 curriculum only: legacy JSON must not silently substitute
+      // for reviewed outcomes. The start route remains the access authority.
+      const [approvedOutcomes, planNodes] = await Promise.all([
+        db.select({ text: lessonOutcomesTable.outcomeText })
+          .from(lessonOutcomesTable)
+          .where(and(eq(lessonOutcomesTable.lessonId, lessonId), eq(lessonOutcomesTable.status, "approved")))
+          .orderBy(asc(lessonOutcomesTable.sequence), asc(lessonOutcomesTable.id)),
+        db.select({ title: lessonNodesTable.title })
+          .from(lessonNodesTable)
+          .where(eq(lessonNodesTable.lessonId, lessonId))
+          .orderBy(asc(lessonNodesTable.sequence), asc(lessonNodesTable.id)),
+      ]);
+      const outcomesBlock = approvedOutcomes.map((o) => `• ${o.text}`).join("\n");
+      const goalBlock = lesson.lessonGoal?.trim();
+      const planBlock = planNodes.map((node, index) => `${index + 1}. ${node.title}`).join("\n");
       const greetLine = studentName
         ? `\u0532\u0561\u0580\u0587, ${studentName}: \ud83d\udc4b`
         : `\u0532\u0561\u0580\u0587: \ud83d\udc4b`;
@@ -2142,12 +2183,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         `\u0531\u0575\u057d\u0585\u0580\u057e\u0561 \u0564\u0561\u057d\u056b \u0569\u0565\u0574\u0561\u0576 \u0567. \u00ab${lesson.title}\u00bb`,
         "",
         "\u0531\u0575\u057d \u0564\u0561\u057d\u056b \u0576\u057a\u0561\u057f\u0561\u056f\u0576\u0565\u0580\u0576 \u0565\u0576.",
-        goalBlock,
+        goalBlock || "Սահմանված չէ",
         "",
         "\u0531\u0575\u057d \u0564\u0561\u057d\u056b \u0561\u057e\u0561\u0580\u057f\u056b\u0576 \u0564\u0578\u0582 \u056f\u057d\u0578\u057e\u0578\u0580\u0565\u057d.",
-        outcomesBlock,
+        outcomesBlock || "Սահմանված չէ",
         "",
-        "\u0535\u0569\u0565 \u057a\u0561\u057f\u0580\u0561\u057d\u057f \u0565\u057d \u057d\u056f\u057d\u0565\u056c\u0578\u0582, \u0563\u0580\u056b\u0580\u055d \u0555\u056f",
+        "Մեր պլանն է՝",
+        planBlock,
+        "",
+        "Եթե պատրաստ ես սկսել, գրիր «Սկսենք»։",
       ].join("\n");
 
       const [introMsg] = await db
@@ -2162,7 +2206,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
     // Subsequent turn while still un-confirmed — check for affirmative
     if (!isAffirmative) {
-      const reminder = "\u0535\u0580\u0562 \u057a\u0561\u057f\u0580\u0561\u057d\u057f \u0565\u057d, \u0563\u0580\u056b\u0580\u055d \u0555\u056f \ud83d\ude42";
+      const reminder = "Եթե պատրաստ ես սկսել, գրիր «Սկսենք»։";
       const [reminderMsg] = await db
         .insert(chatMessagesTable)
         .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: reminder })
@@ -2499,6 +2543,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       },
       "Stage-3 bounded Phase-2 job failed",
     );
+    if (error instanceof PreparedTeachingUnavailableError) {
+      res.status(409).json({ error: error.message,
+        message: "Հաստատված ուսումնական նյութը հասանելի չէ։ Դիմիր ուսուցչին։" });
+      return;
+    }
     res.status(503).json({
       error: "STRUCTURED_AI_REQUIRED",
       message: "Չհաջողվեց շարունակել դասը։ Խնդրում եմ կրկին փորձել։",
@@ -2774,12 +2823,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         freshNode.learningObjective ? `NODE_OBJECTIVE: ${freshNode.learningObjective}` : "",
         activeLevelBlock,
         freshNode.theoryContent ? `NODE_THEORY:\n${freshNode.theoryContent}` : "",
-        freshNode.childFriendlyExplanation
-          ? `APPROVED_EXPLANATION:\n${freshNode.childFriendlyExplanation}`
-          : "",
-        Array.isArray(freshNode.basicExamples) && freshNode.basicExamples.length > 0
-          ? `BASIC_EXAMPLES:\n${freshNode.basicExamples.join("\n")}`
-          : "",
+        preparedTeachingContext(await loadPreparedTeaching(continuationTarget), continuationTarget),
         "THEORY and TASK are separate bounded actions. Do not merge them. A visible task must be answerable and match persisted server state.",
       ].filter(Boolean).join("\n");
 
@@ -2820,11 +2864,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       );
 
       if (plan.action === "DELIVER_THEORY") {
-        const theory = await callPhase2TheoryJob(
-          continuationHistory.map((message) => ({ role: message.role as "user" | "assistant", content: message.content })),
-          continuationContext,
-        );
-        assertTheoryOnly(theory);
+        const theory = await deliverPreparedTheory(continuationTarget, freshSession.nodeTeachingStage === "RETEACH_REQUIRED" ? Math.max(1, freshSession.remediationStep) : 0);
+        const [theoryMessage] = await db
+          .insert(chatMessagesTable)
+          .values({ userId: req.userId!, lessonId, role: "assistant", content: theory.student_message })
+          .returning();
         await updateContinuationTargetSession({
             nodeTeachingStage: "TASK_REQUIRED",
             activeLessonExerciseId: null,
@@ -2836,10 +2880,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             activeHelpCount: 0,
             activeAssistanceLevel: "none",
           });
-        const [theoryMessage] = await db
-          .insert(chatMessagesTable)
-          .values({ userId: req.userId!, lessonId, role: "assistant", content: theory.student_message })
-          .returning();
         last = {
           lastContent: theory.student_message,
           lastMessageId: theoryMessage.id,
@@ -2957,9 +2997,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     _phase2ServerActionPlan.action === "DELIVER_THEORY"
   ) {
     try {
-      await assertPhase2TargetLocked();
-      const theory = await callPhase2TheoryJob(chatHistory, lessonContext);
-      assertTheoryOnly(theory);
+      const target = await assertPhase2TargetLocked();
+      if (!target) throw new Error("C7 execution target unavailable");
+      const theory = await deliverPreparedTheory(target, session.nodeTeachingStage === "RETEACH_REQUIRED" ? Math.max(1, session.remediationStep) : 0);
       const driftDetected = session.currentNodeId
         ? validateNoScopeDrift(theory.student_message, _allNodeTitles)
         : false;
@@ -2988,62 +3028,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       );
       return;
     } catch (error) {
-      // Stage 5.5 — narrow fallback: both bounded THEORY attempts included a
-      // visible task. Compose safe Armenian theory from approved node content
-      // and persist it, then reuse the existing continuation to deliver the
-      // next answerable task. No evidence, mastery, or cognitive-progression
-      // side effects occur here.
-      if (error instanceof Phase2TheoryExhaustionError && currentNodeRecord) {
-        try {
-          const fallback = buildNodeTheoryFallback({
-            title: currentNodeRecord.title,
-            learningObjective: currentNodeRecord.learningObjective,
-            theoryContent: currentNodeRecord.theoryContent,
-            childFriendlyExplanation: currentNodeRecord.childFriendlyExplanation,
-            basicExamples: currentNodeRecord.basicExamples as readonly string[] | null | undefined,
-          });
-          logger.warn(
-            {
-              sessionId: session.id,
-              nodeId: session.currentNodeId,
-              originalError: error.originalMessage,
-            },
-            "Stage-5.5: both THEORY attempts included a visible task — using safe node-content fallback",
-          );
-          const [fallbackMessage] = await db
-            .insert(chatMessagesTable)
-            .values({
-              userId: req.userId!,
-              lessonId: lessonId ?? null,
-              role: "assistant",
-              content: fallback.student_message,
-            })
-            .returning();
-          await updateC7TargetLockedSession(buildPostFeedbackTransitionUpdate() as any);
-          // C7.2 keeps the deterministic fallback identical to normal
-          // teaching: persist and display TEACH before a later task turn.
-          respondWithPersistedPhase2Message(
-            fallback.student_message,
-            fallbackMessage.id,
-            "TEACH",
-            false,
-          );
-          return;
-        } catch (fallbackError) {
-          // Fallback itself failed (e.g. approved node content contained a task
-          // marker). Treat as a normal bounded failure so the route stays
-          // fail-closed.
-          logger.error(
-            {
-              sessionId: session.id,
-              err: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
-            },
-            "Stage-5.5: node-content fallback also failed — closing with bounded failure",
-          );
-          boundedPhase2Failure(fallbackError, "THEORY");
-          return;
-        }
-      }
       boundedPhase2Failure(error, "THEORY");
       return;
     }
@@ -3203,6 +3187,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           "AUTHORITATIVE FEEDBACK FACTS:",
           `Evaluation: ${JSON.stringify(retryEvaluation)}`,
           `Evidence task reference: ${feedbackEvidence?.taskReference ?? "unknown"}`,
+          retryTransition?.c6Decision?.teachingOnly
+            ? "INSTRUCTIONAL PROGRESSION ONLY: do not claim mastery or confirmed knowledge."
+            : "",
           "The learner has already submitted an answer. Provide only concise feedback consistent with this evaluation.",
           "Do not ask a question, create a task, or change the current target.",
           "Server action: DELIVER_FEEDBACK",
@@ -3222,7 +3209,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           throw new Error("FEEDBACK recovery transition is missing its C6 level target");
         }
         await updateC7TargetLockedSession(
-          buildAuthorizedLevelTransitionUpdate(nextLevelId) as any,
+          { ...buildAuthorizedLevelTransitionUpdate(nextLevelId),
+            ...(retryTransition.c6Decision?.teachingOnly ? { nodeTeachingStage: "TASK_REQUIRED" } : {}),
+          } as any,
         );
       } else if (retryTransition?.action === "COMPLETE_MICRONODE") {
         const advanceResult = await advanceNodeInSession(
@@ -3239,7 +3228,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           throw new Error(`FEEDBACK recovery C6 target unavailable: ${advanceResult.c6BlockedReason}`);
         }
       } else {
-        await updateC7TargetLockedSession(buildPostFeedbackTransitionUpdate() as any);
+        await updateC7TargetLockedSession(
+          buildFeedbackReleaseUpdate(retryTransition?.action) as any);
       }
       respondWithPersistedPhase2Message(feedback.student_message, feedbackMessage.id, "FEEDBACK", false);
       return;
@@ -4149,6 +4139,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         }
 
         const _decisionPlan = coordinatePedagogicalDecision({
+          maxFailedTeachingAttempts: _stage3BoundedAnswerTurn ? PILOT_MAX_FAILED_TEACHING_ATTEMPTS : undefined,
           lessonNodeId: session.currentNodeId,
           lessonId,
           sessionId: session.id,
@@ -4281,6 +4272,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       let _authorizedC6Decision: Awaited<ReturnType<typeof resolveCanonicalC6Decision>> | null = null;
       if (_completionAuthorization?.authorized) {
         _authorizedC6Decision = await resolveCanonicalC6Decision({
+    teachingSessionId: session.id,
           learnerId: req.userId!,
           lessonId,
           requestedMicroNodeId: session.currentNodeId,
@@ -4290,12 +4282,36 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           _authorizedC6Decision = null;
         }
       }
-      const _authorizedLevelAdvance =
+      let teachingLevelAdvance = false;
+      let teachingNodeAdvance = false;
+      if (_stage3BoundedAnswerTurn && _turnProgress.isCorrect) {
+        const teachingDecision = await resolveCanonicalC6Decision({
+          learnerId: req.userId!, lessonId, teachingSessionId: session.id,
+          requestedMicroNodeId: session.currentNodeId, entryIntent: "NORMAL_LEARNING",
+        });
+        if (teachingDecision.teachingOnly && !isC6DeliveryBlocked(teachingDecision) &&
+          ["TEACHING_PROGRESS", "NO_ELIGIBLE_MICRONODE"].includes(teachingDecision.reasonCode)) {
+          teachingLevelAdvance = teachingDecision.microNodeId === session.currentNodeId &&
+            teachingDecision.nextTargetCognitiveLevelId !== session.activeCognitiveLevelId &&
+            teachingDecision.nextTargetCognitiveLevelId !== null;
+          teachingNodeAdvance = teachingDecision.microNodeId !== session.currentNodeId;
+          if (teachingLevelAdvance || teachingNodeAdvance) {
+            _authorizedC6Decision = teachingDecision;
+            _pedagogicalDecision = { ..._pedagogicalDecision!,
+              metaAction: teachingLevelAdvance ? "ADVANCE_COGNITIVE_LEVEL" : "COMPLETE_NODE",
+              newActiveCognitiveLevelId: teachingLevelAdvance ? teachingDecision.nextTargetCognitiveLevelId : null,
+              reasonCode: "TEACHING_PROGRESS_ONLY", mayWriteMastery: false,
+              levelConfirmed: false, confirmedLevel: null, targetReached: false,
+            };
+          }
+        }
+      }
+      const _authorizedLevelAdvance = teachingLevelAdvance ||
         _pedagogicalDecision?.metaAction === "ADVANCE_COGNITIVE_LEVEL" &&
         _completionAuthorization?.authorized === true &&
         _authorizedC6Decision?.microNodeId === session.currentNodeId &&
         _authorizedC6Decision.nextTargetCognitiveLevelId !== null;
-      const _authorizedNodeCompletion =
+      const _authorizedNodeCompletion = teachingNodeAdvance ||
         _progressionPlan.shouldCompleteNode &&
         _completionAuthorization?.authorized === true &&
         _authorizedC6Decision !== null &&
@@ -4335,6 +4351,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const _postAdvanceTeachingStage =
         _turnProgress.newTeachingStage ?? session.nodeTeachingStage;
       if (
+        !_stage3BoundedAnswerTurn &&
         shouldPreparePostFeedbackTaskContinuation({
           postFeedbackContinuationPlan: _postFeedbackContinuationPlan,
           hasActiveTask,
@@ -4401,18 +4418,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         "Phase-2 server action selected after authoritative evaluation",
       );
 
-      // C7.2 defers any already-authorized C7.1 transition until the bounded
-      // feedback message is actually persisted below.  C3 → C4 → C6
-      // authorization has already happened; this only keeps the selected
-      // C6 target locked through the visible feedback boundary.
-      if (
-        (_phase2ServerActionPlan.action === "ADVANCE_COGNITIVE_LEVEL" ||
-          _phase2ServerActionPlan.action === "COMPLETE_MICRONODE") &&
-        _authorizedC6Decision
-      ) {
-        _deferredC7Action = _phase2ServerActionPlan.action;
-        _deferredC6Decision = _authorizedC6Decision;
-        _deferredSafetyCapHit = safetyCapHit;
+      // Persist teaching/revisit intent with the same immutable evaluated task
+      // before feedback is attempted, so a provider failure cannot skip repair.
+      _reteachAfterFeedback = _phase2ServerActionPlan.action === "REMEDIATE";
+      if (_stage3BoundedAnswerTurn) {
+        if ((_phase2ServerActionPlan.action === "ADVANCE_COGNITIVE_LEVEL" ||
+          _phase2ServerActionPlan.action === "COMPLETE_MICRONODE") && _authorizedC6Decision) {
+          _deferredC7Action = _phase2ServerActionPlan.action;
+          _deferredC6Decision = _authorizedC6Decision;
+          _deferredSafetyCapHit = safetyCapHit;
+        }
         // C7.2 recovery must survive a feedback-provider or message-write
         // failure. Attach the already-authorized C7.1 transition to the same
         // immutable evidence record that owns the evaluator facts; never
@@ -4436,7 +4451,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               metadata: {
                 ...(evidenceRecord.metadata as Record<string, unknown>),
                 c7DeferredTransition: {
-                  action: _deferredC7Action,
+                  action: requiresPostFeedbackHold(_pedagogicalDecision?.metaAction)
+                    ? "REVISIT_REQUIRED" : _reteachAfterFeedback ? "RETEACH" : _deferredC7Action,
                   c6Decision: _deferredC6Decision,
                   safetyCapHit: _deferredSafetyCapHit,
                 },
@@ -4502,6 +4518,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
     if (newReviewCount >= PHASE1_CAP || earlyExit) {
       const c6Decision = await resolveCanonicalC6Decision({
+    teachingSessionId: session.id,
         learnerId: req.userId!,
         lessonId,
         entryIntent: "NORMAL_LEARNING",
@@ -4566,6 +4583,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           "AUTHORITATIVE FEEDBACK FACTS:",
           `Evaluation: ${JSON.stringify(aiResult.answer_evaluation)}`,
           `Decision Engine meta action: ${_pedagogicalDecision?.metaAction ?? "NONE"}`,
+          _deferredC6Decision?.teachingOnly
+            ? "INSTRUCTIONAL PROGRESSION ONLY: acknowledge the correct response, never claim mastery or confirmed knowledge."
+            : "",
           `Decision Engine remediation action: ${_pedagogicalDecision?.remediationAction ?? "NONE"}`,
           `Server action: ${_phase2ServerActionPlan.action}`,
           "The feedback must not include a new question, answer options, source exercise text, or a next task.",
@@ -4637,9 +4657,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     !_deferredC7Action
   ) {
     await updateC7TargetLockedSession(
-      (requiresPostFeedbackHold(_pedagogicalDecision?.metaAction)
-        ? buildTerminalRevisitStageUpdate()
-        : buildPostFeedbackTransitionUpdate()) as any,
+      buildFeedbackReleaseUpdate(requiresPostFeedbackHold(_pedagogicalDecision?.metaAction)
+        ? "REVISIT_REQUIRED" : _reteachAfterFeedback ? "RETEACH" : null) as any,
     );
   }
   if (
@@ -4655,7 +4674,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         throw new Error("C7.2 deferred cognitive transition lost its C6 level target");
       }
       await updateC7TargetLockedSession(
-        buildAuthorizedLevelTransitionUpdate(nextLevelId) as any,
+        { ...buildAuthorizedLevelTransitionUpdate(nextLevelId),
+          ...(_deferredC6Decision.teachingOnly ? { nodeTeachingStage: "TASK_REQUIRED" } : {}),
+        } as any,
       );
       logger.info(
         { sessionId: session.id, nodeId: session.currentNodeId, nextCognitiveLevelId: nextLevelId },
@@ -5148,7 +5169,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 // Help levels 1-3 never reveal the final answer.  Level 4 requires explicit consent.
 // Does NOT advance teaching stage or create evidence_events.
 router.post("/chat/help", requireAuth, async (req: AuthRequest, res) => {
-  const { lessonId, revealAnswer } = req.body as { lessonId?: number; revealAnswer?: boolean };
+  const { lessonId, revealAnswer, materialKind = "hint" } = req.body as {
+    lessonId?: number; revealAnswer?: boolean; materialKind?: "hint" | "explanation" | "example";
+  };
+  if (!["hint", "explanation", "example"].includes(materialKind)) {
+    res.status(400).json({ error: "INVALID_MATERIAL_KIND" }); return;
+  }
   if (!lessonId) { res.status(400).json({ error: "lessonId required" }); return; }
 
   const [sessionRow] = await db
@@ -5173,7 +5199,8 @@ router.post("/chat/help", requireAuth, async (req: AuthRequest, res) => {
     },
     lessonId,
     req.userId!,
-    revealAnswer ?? false
+    revealAnswer ?? false,
+    materialKind,
   );
 
   if (!helpRes.ok) {
@@ -5249,6 +5276,7 @@ router.get("/chat/session-state", requireAuth, async (req: AuthRequest, res) => 
     activeHelpCount:       (sessionRow as any).activeHelpCount       ?? 0,
     activeAssistanceLevel: (sessionRow as any).activeAssistanceLevel ?? "none",
     nodeTeachingStage,
+    finalAssessment: await getLessonFinalAssessmentHandoff(sessionRow),
     status:                sessionRow.status,
     currentPhase:          sessionRow.currentPhase,
     // V2-R1 canonical state additions
