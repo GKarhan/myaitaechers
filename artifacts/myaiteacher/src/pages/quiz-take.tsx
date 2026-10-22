@@ -236,7 +236,7 @@ export default function QuizTake() {
       <header className="sticky top-0 z-20 border-b border-white/10 bg-card/90 backdrop-blur">
         <div className="max-w-2xl mx-auto px-5 py-4 flex items-center justify-between gap-4">
           <button onClick={() => history.back()} className="text-sm text-muted-foreground hover:text-white">← Պահել և դուրս գալ</button>
-          <span className="text-xs text-muted-foreground">Փորձ {data.attemptSequence} · {currentIndex + 1}/{data.questions.length}</span>
+          <span className="text-xs text-muted-foreground">Փորձ {data.attemptSequence} · {data.learningPhase?`${phaseLabel} · `:""}{currentIndex + 1}/{data.questions.length}</span>
         </div>
         <div className="h-1 bg-white/5"><div className="h-full bg-gradient-to-r from-primary to-secondary transition-all" style={{ width: `${progress}%` }} /></div>
       </header>
