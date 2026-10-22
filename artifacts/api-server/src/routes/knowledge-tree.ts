@@ -586,6 +586,7 @@ router.get(
     type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
 
     interface MicroNode {
+      practiceProgress?: unknown;
       assessment?: AssessmentSummary | null;
       lessonNodeId: number;
       title: string;
@@ -616,6 +617,7 @@ router.get(
     const processedNodes = nodeRows.map((row) => {
       const canonical = stateMap.get(row.lessonNodeId) ?? {
         assessment: null,
+        practiceProgress: undefined,
         knowledgeState: "NOT_STUDIED" as const,
         knowledgeStateLabel: "Դեռ չի ուսումնասիրել",
         coverageState: "NOT_STUDIED" as const,
@@ -670,6 +672,7 @@ router.get(
       if (!lb.has(key)) lb.set(key, []);
       lb.get(key)!.push({
         assessment: node.assessment,
+        practiceProgress: node.practiceProgress,
         lessonNodeId: node.lessonNodeId,
         title:        node.title,
         sequence:     node.sequence,

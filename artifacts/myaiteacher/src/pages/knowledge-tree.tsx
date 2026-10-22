@@ -70,6 +70,7 @@ function NodeRow({
   isSelected: boolean;
 }) {
   const cfg = knowledgeStateConfig(node.knowledgeState);
+  const practice=(node as KTMicroNode & {practiceProgress?:{current:{correct:number;total:number;incorrect:number;percent:number};practiceComplete:boolean}}).practiceProgress;
   return (
     <button
       type="button"
@@ -92,7 +93,9 @@ function NodeRow({
       </span>
 
       {/* Title */}
-      <span className="flex-1 text-sm font-medium text-white">{node.title}<NodeAssessmentBadge assessment={(node as typeof node & {assessment?:AssessmentView}).assessment}/></span>
+      <span className="flex-1 text-sm font-medium text-white">{node.title}
+        {practice && <span className="block text-xs text-white/70">Վարժանք՝ 🟢 {practice.current.correct} ճիշտ · 🔴 {practice.current.incorrect} սխալ · {practice.current.percent}%{practice.practiceComplete?" · Վարժանքը հաջողվել է":""}</span>}
+        <span className="block text-xs text-muted-foreground">Անկախ հաստատման տվյալներ</span><NodeAssessmentBadge assessment={(node as typeof node & {assessment?:AssessmentView}).assessment}/></span>
 
       {/* Score */}
       <span className="text-sm font-semibold text-muted-foreground w-10 text-right">

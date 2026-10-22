@@ -1,3 +1,4 @@
+import { getLatestNodeLearningProgress } from "./quiz-learning-progress.js";
 import { currentIndependentAssessment, type AssessmentSummary } from "./node-assessment-policy.js";
 import { currentNodeResult, hasCurrentCeilingProvenance, type NodeAnswer } from "./current-node-result.js";
 /**
@@ -60,6 +61,7 @@ export type KnowledgeStateResult = {
 export type KnowledgeTreeState = KnowledgeStateResult & {
   lessonNodeId: number;
   assessment?: AssessmentSummary | null;
+  practiceProgress?: Awaited<ReturnType<typeof getLatestNodeLearningProgress>> extends Map<number,infer T> ? T : never;
   masteryScore: number;
   confidenceScore: number | null;
 };
@@ -443,6 +445,7 @@ export async function resolveKnowledgeTreeStates(
     evidenceByNode.set(nodeId, list);
   }
 
+  const practiceByNode = await getLatestNodeLearningProgress(userId,uniqueNodeIds);
   for (const nodeId of uniqueNodeIds) {
     const node = nodeMap.get(nodeId);
     if (!node) continue;
@@ -517,6 +520,7 @@ export async function resolveKnowledgeTreeStates(
         ...emptyStateForNode(node, classification, knowledgeNodeMap.get(nodeId)),
         masteryScore: assessment?.percent ?? currentNodeResult(nodeEvidence) ?? 0,
         assessment,
+        practiceProgress: practiceByNode.get(nodeId),
       },
     );
   }

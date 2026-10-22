@@ -251,10 +251,19 @@ export async function generateQuizFromNodeScope(
     const batches: GeneratedQuestion[] = [];
     for (const [nodeId, count] of allocation) {
       const generate = input.generateQuestions ?? generateQuizQuestions;
-      const batch = await generate({ nodeIds: [nodeId], questionCount: count, difficultyMode: input.difficultyMode,
-        avoidQuestionTexts, questionProvider: input.questionProvider, qualityReview: input.qualityReview });
-      if (batch.length !== count || batch.some(q => q.nodeId !== nodeId)) throw new QuizCreationError("QUESTION_SCOPE_INVALID");
-      batches.push(...batch);
+      let accepted: GeneratedQuestion[] | null = null;
+      const avoid = [...avoidQuestionTexts];
+      for (let attempt=0;attempt<2;attempt++) {
+        const batch = await generate({ nodeIds: [nodeId], questionCount: count, difficultyMode: input.difficultyMode,
+          avoidQuestionTexts:avoid, questionProvider: input.questionProvider, qualityReview: input.qualityReview });
+        const families=batch.map(q=>normalizeQuestionText(q.questionText));
+        if(batch.length===count && batch.every(q=>q.nodeId===nodeId) && new Set(families).size===count && !families.some(f=>exposedFamilies.has(f))) {
+          accepted=batch;break;
+        }
+        avoid.push(...batch.map(q=>q.questionText));
+      }
+      if(!accepted)throw new QuizCreationError("QUESTION_SCOPE_INVALID");
+      batches.push(...accepted);
     }
     generated = batches;
   } else {

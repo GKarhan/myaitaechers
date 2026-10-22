@@ -1,3 +1,4 @@
+import { getQuizLearningProgress } from "./quiz-learning-progress.js";
 import { filterRequiredPrerequisites, parseAssessmentConfig } from "./node-assessment-policy.js";
 import { resolveKnowledgeTreeStates } from "./knowledge-tree-state.js";
 import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
@@ -30,6 +31,8 @@ export type QuizSessionProjection = {
   practiceNodeIds?: number[];
   supportNodeIds?: number[];
   supportCount?: number;
+  remainingQuestionIds?: number[];
+  readyNodeIds?: number[];
   knowsCount: number;
   learningCount: number;
 };
@@ -71,8 +74,10 @@ export async function resolveQuizSessionProjection(
     const masteredNodeIds = nodeIds.filter(id=>states.get(id)?.knowledgeState === "MASTERED");
     const supportNodeIds = nodeIds.filter(id=>states.get(id)?.assessment?.status === "NEEDS_SUPPORT");
     const learningNodeIds = nodeIds.filter(id=>states.get(id)?.knowledgeState !== "MASTERED" && !supportNodeIds.includes(id));
-    const practiceNodeIds = await filterAutomaticAssessmentScope(learnerId,learningNodeIds);
-    return { masteredNodeIds,learningNodeIds,practiceNodeIds,supportNodeIds,supportCount:supportNodeIds.length,knowsCount:masteredNodeIds.length,learningCount:learningNodeIds.length };
+    const progress = await getQuizLearningProgress(rootQuizId,learnerId);
+    const practiceNodeIds = progress.nodes.filter(n=>!n.practiceComplete).map(n=>n.nodeId);
+    const readyNodeIds = progress.nodes.filter(n=>n.practiceComplete && !masteredNodeIds.includes(n.nodeId)).map(n=>n.nodeId);
+    return { remainingQuestionIds:progress.remainingQuestionIds,readyNodeIds,masteredNodeIds,learningNodeIds,practiceNodeIds,supportNodeIds,supportCount:supportNodeIds.length,knowsCount:masteredNodeIds.length,learningCount:learningNodeIds.length };
   }
   // Local quiz practice tracks questions answered correctly in any completed
   // attempt. This is distinct from the canonical C4/C5 mastery model.
@@ -217,11 +222,13 @@ export async function getOrCreateActiveAttempt(input: {
     .orderBy(desc(quizAttemptsTable.attemptSequence)).limit(1);
   const nextSequence = (completed[0]?.sequence ?? 0) + 1;
   const projection = await resolveQuizSessionProjection(input.rootQuizId, input.learnerId);
+  const remainingQuestionIds = nextSequence>1 ? projection.remainingQuestionIds : undefined;
+  if(remainingQuestionIds?.length===0)return { session, attempt:null, snapshots:[] };
   const scope = nextSequence === 1 ? null : (projection.practiceNodeIds ?? projection.learningNodeIds);
   if (scope?.length === 0) return { session, attempt: null, snapshots: [] };
 
   const questions = await db.select().from(quizQuestionsTable).where(
-    scope === null
+    remainingQuestionIds ? and(eq(quizQuestionsTable.quizId,input.rootQuizId),inArray(quizQuestionsTable.id,remainingQuestionIds)) : scope === null
       ? eq(quizQuestionsTable.quizId, input.rootQuizId)
       : and(
           eq(quizQuestionsTable.quizId, input.rootQuizId),

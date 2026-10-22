@@ -1,3 +1,4 @@
+import { generateQuizFromNodeScope } from "../quiz-creation.js";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
@@ -70,7 +71,7 @@ try {
   state=(await resolveKnowledgeTreeStates(studentId!,[node.id])).get(node.id)!;assert.equal(state.masteryScore,67);assert.equal(state.assessment?.certainty,"MEDIUM");
   const support=await createQuiz("CHECK","fresh support");await answer(support,[false,false,false],true);
   state=(await resolveKnowledgeTreeStates(studentId!,[node.id])).get(node.id)!;assert.equal(state.assessment?.status,"NEEDS_SUPPORT");assert.equal(state.assessment?.nextAction,"TEACHER_REVIEW");
-  const denied=await fetch(`${base}/quizzes/${support}/reconfirm`,{method:"POST",headers});assert.equal(denied.status,409);
+  const denied=await fetch(`${base}/quizzes/${support}/reconfirm`,{method:"POST",headers});assert.equal(denied.status,403);
   const success=await createQuiz("CHECK","fresh success");await answer(success,[true,true,true],true);
   state=(await resolveKnowledgeTreeStates(studentId!,[node.id])).get(node.id)!;assert.equal(state.knowledgeState,"MASTERED");assert.equal(state.masteryScore,100);assert.equal(state.assessment?.certainty,"HIGH");
   const reviews=await db.select().from(reviewScheduleTable);const review=reviews.find(r=>r.userId===studentId);assert.ok(review);assert.equal(review.intervalDays,1);
@@ -93,15 +94,45 @@ try {
   assert.deepEqual(fullResult.nodeBreakdown.map((n:any)=>n.assessment.percent),[33,33,67,0]);
   assert.equal(fullResult.session.knowsCount,0);assert.equal(fullResult.session.learningCount,3);assert.equal(fullResult.session.supportCount,1);
   const fullTeacher:any=await(await fetch(`${base}/quizzes/${full}/results/${studentId}`,{headers:auth(teacherId!,"teacher")})).json();assert.equal(fullTeacher.scorePercent,33);assert.equal(fullTeacher.nodeBreakdown.length,4);
-  const practice=await answer(full,Array(9).fill(true),true);
-  assert.equal(practice.practiceScorePercent,100);assert.equal(practice.practiceTotalQuestions,9);
+  const practice=await answer(full,Array(8).fill(true),false);
+  assert.equal(practice.practiceScorePercent,100);assert.equal(practice.practiceTotalQuestions,8);
   assert.equal(practice.scorePercent,33);assert.equal(practice.totalQuestions,12);assert.equal(practice.nodeBreakdown.length,4);
+  assert.equal(practice.learningProgress.current.correct,12);
+  assert.equal(practice.learningProgress.remainingQuestionIds.length,0);
+  const exhausted=await fetch(`${base}/quizzes/${full}/take`,{headers});assert.equal(exhausted.status,409);
+  const historical:any=await(await fetch(`${base}/quizzes/${full}/my-result?attemptId=${fullResult.attemptId}`,{headers})).json();
+  assert.equal(historical.practiceTotalQuestions,12);assert.equal(historical.learningProgress.current.correct,12);
+  const teacherProgress:any=await(await fetch(`${base}/quizzes/${full}/results/${studentId}`,{headers:auth(teacherId!,"teacher")})).json();
+  assert.deepEqual(teacherProgress.learningProgress,practice.learningProgress);
+  const treePractice=(await resolveKnowledgeTreeStates(studentId!,roots)).get(node.id)!;
+  assert.equal(treePractice.practiceProgress?.current.correct,3);assert.equal(treePractice.assessment?.percent,33);
   const subset=await createQuiz("LEARNING","subset",1);
   await db.update(quizzesTable).set({nodeIds:roots}).where(eq(quizzesTable.id,subset));
   const subsetResult=await answer(subset,[true],false);
   assert.equal(subsetResult.nodeBreakdown.length,4);
   assert.equal(subsetResult.totalQuestions,10); // latest one-question cycle plus the other three nodes
   assert.equal(subsetResult.totalCorrect,4);
+  const three=roots.slice(0,3);
+  const repro=await createQuiz("LEARNING","repro 288");
+  await db.update(quizzesTable).set({nodeIds:three,questionCount:9}).where(eq(quizzesTable.id,repro));
+  for(let n=1;n<3;n++)await db.insert(quizQuestionsTable).values(Array.from({length:3},(_,i)=>({quizId:repro,nodeId:three[n]!,questionText:`repro node ${n} question ${i}`,options:["Correct","Wrong"],correctOptionIndex:0,optionExplanations:["Correct explanation","Wrong explanation"],sequence:n*3+i+1})));
+  const before=await answer(repro,[true,true,false,true,false,true,false,false,false],false);
+  assert.equal(before.learningProgress.initial.correct,4);assert.equal(before.learningProgress.remainingQuestionIds.length,5);
+  assert.deepEqual(before.learningProgress.nodes.map((n:any)=>n.current.correct),[2,2,0]);
+  const after=await answer(repro,[true,true,true,true,false],false);
+  assert.equal(after.practiceTotalQuestions,5);assert.equal(after.learningProgress.current.correct,8);assert.equal(after.learningProgress.remainingQuestionIds.length,1);
+  const final=await answer(repro,[true],false);assert.equal(final.practiceTotalQuestions,1);assert.equal(final.learningProgress.current.correct,9);
+  const noMore=await fetch(`${base}/quizzes/${repro}/take`,{headers});assert.equal(noMore.status,409);
+  console.log("PASS 288 corrective cycle: 4/9 -> five wrong questions -> one wrong question -> 9/9, no infinite retries");
+  const teacherNoStudent=await fetch(`${base}/quizzes/${repro}/reconfirm`,{method:"POST",headers:auth(teacherId!,"teacher"),body:JSON.stringify({})});assert.equal(teacherNoStudent.status,400);
+  const teacherForeignStudent=await fetch(`${base}/quizzes/${repro}/reconfirm`,{method:"POST",headers:auth(teacherId!,"teacher"),body:JSON.stringify({studentId:teacherId})});assert.equal(teacherForeignStudent.status,404);
+  let replacements=0;
+  const regenerated=await generateQuizFromNodeScope({title:tag,teacherId:teacherId!,subjectId:subjectId!,nodeIds:[node.id],questionCount:3,difficultyMode:"MIXED",generationPurpose:"standard",assessmentConfig:{version:"NODE_V1",purpose:"CHECK",context:"ANYWHERE"},generateQuestions:async()=>{
+    replacements++;
+    return Array.from({length:3},(_,i)=>({questionText:replacements===1?"duplicate question":`fresh task ${i}`,options:["Correct","Wrong","Other","Fourth"],correctOptionIndex:0,optionExplanations:["yes","no","no","no"],difficultyLevel:"MEDIUM",nodeId:node.id,cognitiveLevelId:null,interactionType:"multiple_choice"}));
+  }});
+  assert.equal(replacements,2);assert.equal(regenerated.generated.length,3);
+  console.log("PASS teacher-only reconfirm authorization and bounded replacement of duplicate node batches");
   console.log("PASS mixed-level full-root student/teacher summary, learning/support counts, narrow-attempt root preservation");
   console.log("PASS HTTP CHECK secrecy/resume, LEARNING feedback, 2/3 result-tree agreement, copied-task non-inflation, 0/3 stop, 3/3 mastery, delayed-only review advancement");
 }finally{
