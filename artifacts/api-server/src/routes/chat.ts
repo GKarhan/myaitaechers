@@ -5,7 +5,7 @@ import {
   lessonNodeDependenciesTable, usersTable,
   evidenceEventsTable, knowledgeNodesTable,
   lessonNodeCognitiveLevelsTable, helpEventsTable,
-  lessonNodeCognitiveTasksTable,
+  lessonNodeCognitiveTasksTable, lessonOutcomesTable,
 } from "@workspace/db";
 import { eq, and, asc, desc, inArray, gte, or, isNull, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
@@ -2118,6 +2118,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       _normalizeOk(trimmedLower) === "ok" ||
       new Set([
         "\u056c\u0561\u057e",                              // լավ (good)
+        "սկսենք",
+        "շարունակենք",
         "\u057a\u0561\u057f\u0580\u0561\u057d\u057f",      // պատրաստ
         "\u057a\u0561\u057f\u0580\u0561\u057d\u057f \u0565\u0574", // patrast em
       ]).has(trimmedLower);
@@ -2125,13 +2127,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
     if (!prevAssistant) {
       // First turn — return the deterministic intro; no AI call
-      const outcomes = Array.isArray(lesson.lessonOutcomes)
-        ? (lesson.lessonOutcomes as string[]).filter((x): x is string => typeof x === "string")
-        : [];
-      const outcomesBlock = outcomes.length > 0
-        ? outcomes.map((o) => `\u2022 ${o}`).join("\n")
-        : "(not specified)"; // placeholder
-      const goalBlock = lesson.lessonGoal?.trim() || "(not specified)";
+      // Canonical C1 curriculum only: legacy JSON must not silently substitute
+      // for reviewed outcomes. The start route remains the access authority.
+      const [approvedOutcomes, planNodes] = await Promise.all([
+        db.select({ text: lessonOutcomesTable.outcomeText })
+          .from(lessonOutcomesTable)
+          .where(and(eq(lessonOutcomesTable.lessonId, lessonId), eq(lessonOutcomesTable.status, "approved")))
+          .orderBy(asc(lessonOutcomesTable.sequence), asc(lessonOutcomesTable.id)),
+        db.select({ title: lessonNodesTable.title })
+          .from(lessonNodesTable)
+          .where(eq(lessonNodesTable.lessonId, lessonId))
+          .orderBy(asc(lessonNodesTable.sequence), asc(lessonNodesTable.id)),
+      ]);
+      const outcomesBlock = approvedOutcomes.map((o) => `• ${o.text}`).join("\n");
+      const goalBlock = lesson.lessonGoal?.trim();
+      const planBlock = planNodes.map((node, index) => `${index + 1}. ${node.title}`).join("\n");
       const greetLine = studentName
         ? `\u0532\u0561\u0580\u0587, ${studentName}: \ud83d\udc4b`
         : `\u0532\u0561\u0580\u0587: \ud83d\udc4b`;
@@ -2142,12 +2152,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         `\u0531\u0575\u057d\u0585\u0580\u057e\u0561 \u0564\u0561\u057d\u056b \u0569\u0565\u0574\u0561\u0576 \u0567. \u00ab${lesson.title}\u00bb`,
         "",
         "\u0531\u0575\u057d \u0564\u0561\u057d\u056b \u0576\u057a\u0561\u057f\u0561\u056f\u0576\u0565\u0580\u0576 \u0565\u0576.",
-        goalBlock,
+        goalBlock || "Սահմանված չէ",
         "",
         "\u0531\u0575\u057d \u0564\u0561\u057d\u056b \u0561\u057e\u0561\u0580\u057f\u056b\u0576 \u0564\u0578\u0582 \u056f\u057d\u0578\u057e\u0578\u0580\u0565\u057d.",
-        outcomesBlock,
+        outcomesBlock || "Սահմանված չէ",
         "",
-        "\u0535\u0569\u0565 \u057a\u0561\u057f\u0580\u0561\u057d\u057f \u0565\u057d \u057d\u056f\u057d\u0565\u056c\u0578\u0582, \u0563\u0580\u056b\u0580\u055d \u0555\u056f",
+        "Մեր պլանն է՝",
+        planBlock,
+        "",
+        "Եթե պատրաստ ես սկսել, գրիր «Սկսենք»։",
       ].join("\n");
 
       const [introMsg] = await db
@@ -2162,7 +2175,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
     // Subsequent turn while still un-confirmed — check for affirmative
     if (!isAffirmative) {
-      const reminder = "\u0535\u0580\u0562 \u057a\u0561\u057f\u0580\u0561\u057d\u057f \u0565\u057d, \u0563\u0580\u056b\u0580\u055d \u0555\u056f \ud83d\ude42";
+      const reminder = "Եթե պատրաստ ես սկսել, գրիր «Սկսենք»։";
       const [reminderMsg] = await db
         .insert(chatMessagesTable)
         .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: reminder })
