@@ -944,6 +944,8 @@ router.get("/quizzes/assigned", requireAuth, async (req: AuthRequest, res) => {
       : null;
     const sessionId = r.sessionId ?? adoptedSession?.id ?? null;
     const sessionStatus = r.sessionStatus ?? adoptedSession?.status ?? null;
+    const learningProgress = await getQuizLearningProgress(r.quizId,req.userId!);
+    const hasActiveAttempt = r.completedAt===null && r.attemptSequence!==null;
     const sessionState = sessionId
       ? await resolveQuizSessionProjection(r.quizId, req.userId!)
       : null;
@@ -955,13 +957,15 @@ router.get("/quizzes/assigned", requireAuth, async (req: AuthRequest, res) => {
       status: r.status,
       assignedAt: r.assignedAt.toISOString(),
       dueAt: r.dueAt?.toISOString() ?? null,
-      totalCorrect: r.totalCorrect ?? null,
-      totalQuestions: r.totalQuestions ?? null,
-      scorePercent: r.scorePercent ?? null,
+      totalCorrect: learningProgress.history.length?learningProgress.current.correct:null,
+      totalQuestions: learningProgress.history.length?learningProgress.current.total:null,
+      scorePercent: learningProgress.history.length?learningProgress.current.percent:null,
+      learningProgress, hasActiveAttempt,
+      practiceComplete: learningProgress.history.length>0 && learningProgress.remainingQuestionIds.length===0,
       sessionId,
       sessionStatus,
       sessionState,
-      canContinue: sessionStatus === "ACTIVE" && (sessionState?.learningCount ?? 0) > 0,
+      canContinue: sessionStatus === "ACTIVE" && (hasActiveAttempt || learningProgress.remainingQuestionIds.length>0),
     };
   }));
   res.json(payload);
@@ -1111,7 +1115,7 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
   }
 
   const [quiz] = await db
-    .select({ id: quizzesTable.id, assessmentConfig:quizzesTable.assessmentConfig })
+    .select({ id: quizzesTable.id, assessmentConfig:quizzesTable.assessmentConfig,classId:quizzesTable.classId,subjectId:quizzesTable.subjectId,nodeIds:quizzesTable.nodeIds })
     .from(quizzesTable)
     .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
     .limit(1);
@@ -1185,6 +1189,9 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
   });
   const recommendations = histories.at(-1)?.analysis.recommendations ?? [];
   res.json({
+    overviewQuestions: progress.latestQuestions,
+    creationContext: {classId:quiz.classId,subjectId:quiz.subjectId,nodeIds:quiz.nodeIds,
+      lessonIds:(await db.select({id:quizLessonLinksTable.lessonId}).from(quizLessonLinksTable).where(eq(quizLessonLinksTable.quizId,quizId))).map(l=>l.id)},
     learningProgress: await getQuizLearningProgress(quizId,studentId),
     studentId,
     totalCorrect: progress.totalCorrect,
@@ -1204,37 +1211,10 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
 });
 
 // New independent evidence after practice. Scope and author are server-owned.
-router.post("/quizzes/:id/reconfirm", requireTeacher, asyncHandler(async (req:AuthRequest,res)=>{
-  const studentId=Number(req.body?.studentId);
-  if(!Number.isInteger(studentId)||studentId<=0){res.status(400).json({error:"STUDENT_REQUIRED"});return;}
-  const quizId=Number(req.params.id);
-  const [source]=await db.select().from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1);
-  const [assignment]=await db.select().from(quizAssignmentsTable)
-    .where(and(eq(quizAssignmentsTable.quizId,quizId),eq(quizAssignmentsTable.studentId,studentId))).limit(1);
-  const config=parseAssessmentConfig(source?.assessmentConfig);
-  if(!source||source.teacherId!==req.userId||!assignment||!config){res.status(404).json({error:"ASSESSMENT_NOT_FOUND"});return;}
-  const [completed]=await db.select().from(quizAttemptsTable)
-    .where(and(eq(quizAttemptsTable.quizAssignmentId,assignment.id),isNotNull(quizAttemptsTable.completedAt)))
-    .orderBy(desc(quizAttemptsTable.attemptSequence)).limit(1);
-  if(!completed){res.status(409).json({error:"COMPLETE_PRACTICE_FIRST"});return;}
-  const ids=Array.isArray(source.nodeIds)?source.nodeIds as number[]:[];
-  const states=await resolveKnowledgeTreeStates(studentId,ids);
-  const nodeIds=await filterAutomaticAssessmentScope(studentId,ids.filter(id=>states.get(id)?.knowledgeState!=="MASTERED"||states.get(id)?.assessment?.certainty!=="HIGH"));
-  if(!nodeIds.length){res.status(409).json({error:"NO_INDEPENDENT_CHECK_SCOPE"});return;}
-  const links=await db.select({lessonId:quizLessonLinksTable.lessonId}).from(quizLessonLinksTable).where(eq(quizLessonLinksTable.quizId,quizId));
-  const snapshot=normalizeQuizGenerationRequest({generationMode:"standard",studentId,
-    assessmentConfig:{...config,purpose:"CHECK"},subjectId:source.subjectId,classId:source.classId,
-    sourceBookId:source.sourceBookId,quizType:source.quizType,lessonIds:links.map(l=>l.lessonId),
-    nodeIds,questionCount:Math.min(3,Math.floor(50/nodeIds.length))*nodeIds.length,difficultyMode:source.difficultyMode as any,title:source.title});
-  const result=await createOrReuseQuizGenerationJob({teacherId:source.teacherId,
-    idempotencyKey:`teacher-node-reconfirm:${assignment.id}:${completed.id}`,snapshot});
-  // Reuse pending/running/completed jobs; an explicit retry may restart a
-  // failed job atomically without creating duplicate quizzes.
-  if(result.job.status==="failed") await db.update(quizGenerationJobsTable).set({status:"pending",errorCode:null,errorDetails:null,updatedAt:new Date()})
-    .where(and(eq(quizGenerationJobsTable.id,result.job.id),eq(quizGenerationJobsTable.status,"failed")));
-  scheduleQuizGenerationJob(result.job.id);
-  res.status(202).json({jobId:result.job.id,status:result.job.status});
-}));
+// Replaced by the teacher's explicit create -> review -> assign workflow.
+router.post("/quizzes/:id/reconfirm", requireTeacher, (_req,res)=>{
+  res.status(410).json({error:"USE_QUIZ_CREATION_FORM"});
+});
 router.get("/quizzes/assessment-jobs/:jobId", requireStudent, asyncHandler(async(req:AuthRequest,res)=>{
   const [job]=await db.select().from(quizGenerationJobsTable).where(eq(quizGenerationJobsTable.id,Number(req.params.jobId))).limit(1);
   if(!job||(job.requestSnapshot as any)?.studentId!==req.userId!){res.status(404).json({error:"JOB_NOT_FOUND"});return;}
@@ -1306,7 +1286,15 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
     ? await resolveQuizSessionProjection(quizId, req.userId!)
     : null;
 
+  const overviewMap=new Map<number, typeof questions[number]>();
+  const completedIds=attemptHistory.length? [...attemptHistory].reverse().map(a=>a.attemptId):[attempt.id];
+  for(const completedId of completedIds){
+    const analysis=completedId===attempt.id?{questions}:await buildStudentResultAnalysis(completedId,req.userId!);
+    for(const q of analysis.questions)overviewMap.set(q.questionId,q);
+  }
+  const overviewQuestions=[...overviewMap.values()].sort((a,b)=>a.sequence-b.sequence);
   res.json({
+    overviewQuestions,
     learningProgress: await getQuizLearningProgress(quizId,req.userId!),
     attemptId:       attempt.id,
     totalCorrect:   attempt.totalCorrect,

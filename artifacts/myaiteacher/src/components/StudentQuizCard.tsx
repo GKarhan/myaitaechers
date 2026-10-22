@@ -10,6 +10,14 @@ export type StudentQuizCardQuiz = {
   totalQuestions?: number | null;
   scorePercent?: number | null;
   canContinue?: boolean;
+  practiceComplete?: boolean;
+  hasActiveAttempt?: boolean;
+  learningProgress?: {
+    initial: {correct:number;total:number;percent:number};
+    current: {correct:number;incorrect:number;total:number;percent:number};
+    remainingQuestionIds:number[];
+    history:unknown[];
+  };
   sessionState?: {
     knowsCount: number;
     learningCount: number;
@@ -29,12 +37,12 @@ const QUIZ_STATUS_CLS: Record<string, string> = {
 };
 
 export default function StudentQuizCard({ quiz }: { quiz: StudentQuizCardQuiz }) {
-  const isCompleted = quiz.status === "COMPLETED";
+  const hasResults = (quiz.learningProgress?.history.length ?? 0) > 0 || quiz.status === "COMPLETED";
   const dateStr = new Date(quiz.assignedAt).toLocaleDateString("hy-AM", {
     day: "numeric", month: "long",
   });
 
-  if (isCompleted) {
+  if (hasResults) {
     return (
       <div className="rounded-2xl border border-teal-400/20 bg-teal-400/5 p-5 flex flex-col sm:flex-row sm:items-center gap-4 hover:border-teal-400/30 transition-colors">
         <div className="flex-1 min-w-0">
@@ -44,25 +52,25 @@ export default function StudentQuizCard({ quiz }: { quiz: StudentQuizCardQuiz })
               {quiz.totalCorrect}/{quiz.totalQuestions} ({quiz.scorePercent}%)
             </p>
           )}
-          {quiz.sessionState && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Գիտի՝ {quiz.sessionState.knowsCount} · Սովորելու՝ {quiz.sessionState.learningCount}
-            </p>
-          )}
+          {quiz.learningProgress && <>
+            <p className="text-xs text-muted-foreground mt-1">Սկզբնական արդյունք՝ {quiz.learningProgress.initial.correct}/{quiz.learningProgress.initial.total} · {quiz.learningProgress.initial.percent}%</p>
+            <p className="text-xs mt-1">Ընթացիկ՝ 🟢 {quiz.learningProgress.current.correct} ճիշտ · 🔴 {quiz.learningProgress.current.incorrect} սխալ · {quiz.learningProgress.current.percent}%</p>
+            {quiz.practiceComplete && <p className="text-xs text-teal-400 mt-1">Վարժանքն ավարտված է</p>}
+          </>}
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
             href={`/quiz/${quiz.quizId}/result`}
             className="text-xs px-4 py-2 rounded-xl bg-teal-400/15 text-teal-400 border border-teal-400/20 font-semibold hover:bg-teal-400/25 transition-all whitespace-nowrap"
           >
-            Արդյունքները
+            Դիտել արդյունքները
           </Link>
           {quiz.canContinue && (
             <Link
               href={`/quiz/${quiz.quizId}/take`}
               className="text-xs px-4 py-2 rounded-xl bg-primary text-white font-semibold whitespace-nowrap"
             >
-              Շարունակել սովորել
+              {quiz.hasActiveAttempt ? "Շարունակել" : `Շարունակել սովորել · ${quiz.learningProgress?.remainingQuestionIds.length ?? 0} հարց`}
             </Link>
           )}
         </div>
@@ -90,7 +98,7 @@ export default function StudentQuizCard({ quiz }: { quiz: StudentQuizCardQuiz })
         href={`/quiz/${quiz.quizId}/take`}
         className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
       >
-        ▶ ՍԿՍԵԼ ԹԵՍՏԵՐ
+        {quiz.hasActiveAttempt ? "Շարունակել" : "Սկսել թեստը"}
       </Link>
     </div>
   );

@@ -4939,6 +4939,13 @@ export default function TeacherDashboard() {
   const [showCourseForm, setShowCourseForm] = useState(false);
 
   // ── Quiz creation state ──────────────────────────────────────────────────
+  const [quizCreationPreset,setQuizCreationPreset]=useState(()=>{
+    const p=new URLSearchParams(window.location.search);
+    if(p.get("createQuiz")!=="1")return null;
+    const ids=(key:string)=>(p.get(key)??"").split(",").map(Number).filter(n=>Number.isInteger(n)&&n>0).slice(0,50);
+    return {subjectId:Number(p.get("subjectId")),lessonIds:ids("lessonIds"),nodeIds:ids("nodeIds")};
+  });
+  const quizPresetNodes=useRef<number[]|null>(null);
   const [quizModalOpen, setQuizModalOpen]   = useState(false);
   const [quizTitle,     setQuizTitle]       = useState("");
   const [quizLessonIds, setQuizLessonIds]   = useState<number[]>([]);
@@ -4956,6 +4963,17 @@ export default function TeacherDashboard() {
   const [quizLessonNodes,  setQuizLessonNodes]  = useState<{id:number;title:string;sequence:number}[]>([]);
   const [quizNodesLoading, setQuizNodesLoading] = useState(false);
   const [quizLeafCount,    setQuizLeafCount]    = useState(0);
+
+  useEffect(()=>{
+    if(!quizCreationPreset || !selectedCourse || !selectedClass || selectedCourse.subjectId!==quizCreationPreset.subjectId)return;
+    quizPresetNodes.current=quizCreationPreset.nodeIds;
+    setQuizLessonIds(quizCreationPreset.lessonIds);
+    setQuizType(quizCreationPreset.lessonIds.length>1?"summary":"lesson");
+    setQuizCount(Math.min(50,Math.max(1,quizCreationPreset.nodeIds.length*3)));
+    setQuizTitle("");setQuizBookId(null);setQuizError(null);
+    setAssessmentPurpose("CHECK");setQuizGenerationMode("standard");
+    setQuizModalOpen(true);setQuizCreationPreset(null);
+  },[quizCreationPreset,selectedCourse,selectedClass]);
 
   // ── Quiz list (course view) ─────────────────────────────────────────────────
   const [courseQuizzes, setCourseQuizzes] = useState<{
@@ -5276,6 +5294,10 @@ export default function TeacherDashboard() {
         .then((r) => r.ok ? r.json() : [])
         .then((data: {id:number;title:string;sequence:number}[]) => {
           setQuizLessonNodes(data);
+          if(quizPresetNodes.current){
+            setQuizNodeIds(quizPresetNodes.current.filter(id=>data.some(n=>n.id===id)));
+            quizPresetNodes.current=null;
+          }
           setQuizLeafCount(data.length);
         })
         .catch(() => {})

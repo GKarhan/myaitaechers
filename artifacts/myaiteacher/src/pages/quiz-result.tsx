@@ -51,6 +51,8 @@ type LearningProgress = {initial:ProgressTotals;current:ProgressTotals;remaining
   nodes:Array<{nodeId:number;initial:ProgressTotals;current:ProgressTotals;practiceComplete:boolean;lastAttempt:{attemptId:number;attemptSequence:number;total:number;correct:number}|null}>;
   history:Array<{attemptId:number;attemptSequence:number;total:number;correct:number;nodeIds:number[]}>};
 type Result = {
+  overviewQuestions?:QuestionResult[];
+  creationContext?:{classId:number|null;subjectId:number;nodeIds:number[];lessonIds:number[]};
   learningProgress?: LearningProgress;
   assessmentConfig?: {purpose:string;context:string}|null;
   attemptId?: number;
@@ -85,8 +87,6 @@ export default function QuizResult() {
   const [error, setError] = useState<string | null>(null);
   const [selectedTeacherSequence,setSelectedTeacherSequence] = useState<number|null>(null);
   const [finishing, setFinishing] = useState(false);
-  const [reconfirming,setReconfirming]=useState(false);
-  const [reconfirmError,setReconfirmError]=useState<string|null>(null);
 
   useEffect(() => {
     if (!token || !id || !user) return;
@@ -115,29 +115,10 @@ export default function QuizResult() {
 
   const visibleQuestions = useMemo(() => {
     if(!result)return [];
-    if(!isTeacherView)return result.questions;
-    const sequence=selectedTeacherSequence??result.learningProgress?.history.at(-1)?.attemptSequence;
-    return sequence==null?result.questions:result.questions.filter(q=>q.attemptSequence===sequence);
-  },[result,isTeacherView,selectedTeacherSequence]);
-
-  async function reconfirm() {
-    if(!token||!id||!isTeacherView||!studentId||reconfirming)return;
-    setReconfirming(true);setReconfirmError(null);
-    try {
-      const response=await fetch(`${BASE}/api/quizzes/${id}/reconfirm`,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({studentId:Number(studentId)})});
-      const created=await response.json();if(!response.ok)throw new Error(created.error==="NO_INDEPENDENT_CHECK_SCOPE" ? "Այս պահին նոր ստուգման համար հասանելի թեմա չկա։" : "Ստուգումը չհաջողվեց ստեղծել։ Խնդրում ենք փորձել կրկին։");
-      for(let i=0;i<150;i++) {
-        const r=await fetch(`${BASE}/api/quizzes/generation-jobs/${created.jobId}`,{headers:{Authorization:`Bearer ${token}`}});
-        if(!r.ok)throw new Error("Չհաջողվեց ստուգել առաջադրանքի ընթացքը");
-        const job=await r.json();
-        if(job.status==="completed"&&job.quizId){setLocation(`/quiz/${job.quizId}/review`);return;}
-        if(job.status==="failed")throw new Error("Ստուգումը չհաջողվեց ստեղծել։ Խնդրում ենք փորձել կրկին։");
-        await new Promise(resolve=>setTimeout(resolve,2000));
-      }
-      throw new Error("Ստուգումը դեռ պատրաստվում է։ Կարող եք կրկին բացել։");
-    }catch(e){setReconfirmError(e instanceof Error?e.message:"Ստուգումը չհաջողվեց ստեղծել");}
-    finally{setReconfirming(false);}
-  }
+    if(isTeacherView && selectedTeacherSequence!==null)return result.questions.filter(q=>q.attemptSequence===selectedTeacherSequence);
+    if(!isTeacherView && historyAttemptId)return result.questions;
+    return [...(result.overviewQuestions??result.questions)].sort((a,b)=>a.sequence-b.sequence);
+  },[result,isTeacherView,selectedTeacherSequence,historyAttemptId]);
 
   async function finishSession() {
     if (!token || !id || finishing) return;
@@ -163,8 +144,9 @@ export default function QuizResult() {
   const teacherAttempts = result.attemptHistory ?? [];
   const progress=result.learningProgress;
   const selectedHistory=isTeacherView?progress?.history.find(h=>h.attemptSequence===(selectedTeacherSequence??progress.history.at(-1)?.attemptSequence)):progress?.history.find(h=>h.attemptId===result.attemptId);
-  const selectedCorrect=selectedHistory?.correct??result.practiceTotalCorrect??result.totalCorrect;
-  const selectedTotal=selectedHistory?.total??result.practiceTotalQuestions??result.totalQuestions;
+  const isOverview=isTeacherView?selectedTeacherSequence===null:!historyAttemptId;
+  const selectedCorrect=isOverview&&progress?progress.current.correct:selectedHistory?.correct??result.practiceTotalCorrect??result.totalCorrect;
+  const selectedTotal=isOverview&&progress?progress.current.total:selectedHistory?.total??result.practiceTotalQuestions??result.totalQuestions;
   const displayedScore=selectedTotal?Math.round(selectedCorrect/selectedTotal*100):0;
   const completeNodes=progress?.nodes.filter(n=>n.practiceComplete).length??0;
   const partialNodes=progress?.nodes.filter(n=>n.current.correct>0&&!n.practiceComplete).length??0;
@@ -184,10 +166,10 @@ export default function QuizResult() {
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-8">
         <section className="rounded-3xl border border-white/10 bg-card/60 p-8 text-center">
           <div className={`text-5xl font-black ${scoreColor}`}>{displayedScore}%</div>
-          {result.assessmentConfig && <p className="text-sm text-muted-foreground mb-2">{"Ընտրված փորձի արդյունքը"}</p>}
+          {result.assessmentConfig && <p className="text-sm text-muted-foreground mb-2">{isOverview?"Ամբողջ թեստի ընթացիկ արդյունքը":"Ընտրված փորձի արդյունքը"}</p>}
           <p className="mt-2 text-white/80">🟢 {selectedCorrect} ճիշտ · 🔴 {selectedTotal-selectedCorrect} սխալ · {selectedTotal} հարց</p>
-          {selectedHistory && <p className="mt-2 text-sm">Փորձ {selectedHistory.attemptSequence} · {selectedHistory.attemptSequence>1?"Վարժանք":result.assessmentConfig?.purpose==="CHECK"?"Ստուգում":"Ուսուցողական"}</p>}
-          {progress && <p className="text-sm text-muted-foreground mt-2">{selectedHistory?.nodeIds.map(id=>result.nodeBreakdown?.find(n=>n.nodeId===id)?.nodeTitle).join(" · ")}</p>}
+          {!isOverview && selectedHistory && <p className="mt-2 text-sm">Փորձ {selectedHistory.attemptSequence} · {selectedHistory.attemptSequence>1?"Վարժանք":result.assessmentConfig?.purpose==="CHECK"?"Ստուգում":"Ուսուցողական"}</p>}
+          {progress && <p className="text-sm text-muted-foreground mt-2">{(isOverview?progress.nodes.map(n=>n.nodeId):selectedHistory?.nodeIds ?? []).map(id=>result.nodeBreakdown?.find(n=>n.nodeId===id)?.nodeTitle).join(" · ")}</p>}
         </section>
 
         {isTeacherView && teacherAttempts.length > 0 && (
@@ -211,24 +193,24 @@ export default function QuizResult() {
         )}
 
         {progress && <section className="rounded-3xl border border-primary/20 bg-card/60 p-6 space-y-4">
-          <h2 className="font-bold">Իմ առաջընթացը այս թեստում</h2>
+          <h2 className="font-bold">{isTeacherView?"Սովորողի առաջընթացը այս թեստում":"Իմ առաջընթացը այս թեստում"}</h2>
           <p>Սկզբնական արդյունք՝ 🟢 {progress.initial.correct} ճիշտ · 🔴 {progress.initial.incorrect} սխալ · {progress.initial.percent}%</p>
           <p>Ընթացիկ արդյունք՝ 🟢 {progress.current.correct} ճիշտ · 🔴 {progress.current.incorrect} սխալ · {progress.current.percent}%</p>
           <p className="text-sm text-muted-foreground">Յուրաքանչյուր հարցի վերջին ավարտված պատասխանը՝ ամբողջ թեստի շրջանակում։</p>
           <div className="grid sm:grid-cols-3 gap-3 text-sm">
-            <p>Վարժանքը հաջողվել է՝ <b>{completeNodes}</b></p>
-            <p>Մասնակի յուրացված՝ <b>{partialNodes}</b></p>
-            <p>Դեռ չյուրացված՝ <b>{unknownNodes}</b></p>
+            <p>Բոլոր հարցերը ճիշտ՝ <b>{completeNodes}</b> հանգույց</p>
+            <p>Մի մասը ճիշտ՝ <b>{partialNodes}</b> հանգույց</p>
+            <p>Բոլորը սխալ՝ <b>{unknownNodes}</b> հանգույց</p>
           </div>
           <p className="text-sm">Լրացուցիչ աջակցության կարիք՝ {result.nodeBreakdown?.filter(n=>n.assessment?.status==="NEEDS_SUPPORT").length??0}</p>
           {!isTeacherView && result.session?.status==="ACTIVE" && progress.remainingQuestionIds.length>0 && <Link href={`/quiz/${id}/take`} className="block rounded-xl bg-primary px-4 py-3 text-center font-bold">Շարունակել սովորել · {progress.remainingQuestionIds.length} հարց</Link>}
-          {progress.remainingQuestionIds.length===0 && <p className="text-teal-300">Վարժանքը հաջողվել է։ Նոր հարցերով ստուգումը նշանակում է ուսուցիչը։</p>}
+          {progress.remainingQuestionIds.length===0 && <p className="text-teal-300">Բոլոր սխալներն ուղղված են։ Վարժանքն ավարտված է։</p>}
           {!isTeacherView && result.session && <button disabled={finishing} onClick={finishSession} className="rounded-xl border px-4 py-2">{finishing?"Ավարտվում է...":"Ավարտել"}</button>}
-          <details className="text-sm text-muted-foreground"><summary>Անկախ հաստատման տվյալներ</summary>
+          {isTeacherView && <details className="text-sm text-muted-foreground"><summary>Յուրացման հաստատում</summary>
             <p>Նոր հարցերի առաջին ինքնուրույն պատասխանները՝ նախկին ստուգումները ներառյալ։ Արդեն տեսած հարցերի կրկնությունը մնում է վարժանք։</p>
             <p>{result.totalCorrect}/{result.totalQuestions} · {result.scorePercent}%</p>
             <p>Ամբողջությամբ յուրացված հանգույցներ՝ {result.nodeBreakdown?.filter(n=>n.assessment?.status==="SUCCESS").length??0}</p>
-          </details>
+          </details>}
         </section>}
 
         {!isTeacherView && (result.attempts?.length ?? 0) > 0 && (
@@ -249,10 +231,9 @@ export default function QuizResult() {
           </section>
         )}
 
-        {isTeacherView && result.assessmentConfig && <section className="space-y-3">
-          <p className="text-sm text-muted-foreground">Նշանակել նոր ստուգում՝ նոր հարցերով։</p>
-          <button disabled={reconfirming} onClick={reconfirm} className="rounded-xl bg-primary px-5 py-3 disabled:opacity-50">{reconfirming?"Պատրաստվում է...":"Նշանակել նոր ստուգում"}</button>
-          {reconfirmError&&<p className="text-red-400">{reconfirmError}</p>}
+        {!isOverview && <button className="text-primary underline" onClick={()=>isTeacherView?setSelectedTeacherSequence(null):setLocation(`/quiz/${id}/result`)}>Դիտել ամբողջ թեստը</button>}
+        {isTeacherView && progress?.remainingQuestionIds.length===0 && result.creationContext && <section>
+          <Link className="inline-block rounded-xl bg-primary px-5 py-3" href={`/teacher?classId=${result.creationContext.classId??params.get("classId")??""}&subjectId=${result.creationContext.subjectId}&createQuiz=1&lessonIds=${result.creationContext.lessonIds.join(",")}&nodeIds=${result.creationContext.nodeIds.join(",")}`}>Ստեղծել նոր ստուգում</Link>
         </section>}
         {result.nodeBreakdown && result.nodeBreakdown.length > 0 && (
           <section className="space-y-3">
@@ -262,18 +243,18 @@ export default function QuizResult() {
               const selected=visibleQuestions.filter(q=>q.nodeId===node.nodeId);
               return <div key={node.nodeId} className="rounded-xl border border-white/10 bg-card/30 p-4 space-y-2">
                 <h3 className="font-semibold">{node.nodeTitle}</h3>
-                {selected.length>0 && <p>Ընտրված փորձ՝ 🟢 {selected.filter(q=>q.isCorrect).length} ճիշտ · 🔴 {selected.filter(q=>!q.isCorrect).length} սխալ</p>}
+                {!isOverview && selected.length>0 && <p>Ընտրված փորձ՝ 🟢 {selected.filter(q=>q.isCorrect).length} ճիշտ · 🔴 {selected.filter(q=>!q.isCorrect).length} սխալ</p>}
                 {item && <><p>Սկզբում՝ {item.initial.correct}/{item.initial.total} · {item.initial.percent}%</p><p>Ընթացիկ՝ 🟢 {item.current.correct} ճիշտ · 🔴 {item.current.incorrect} սխալ · {item.current.percent}%</p>
-                  <p className={item.practiceComplete?"text-teal-300":"text-amber-300"}>{item.practiceComplete?(node.assessment?.status==="SUCCESS"?"Ամբողջությամբ յուրացված հանգույցներ":"Վարժանքը հաջողվել է։ Նոր ստուգման է սպասում։"):"Շարունակել սովորել"}</p></>}
+                  <p className={item.practiceComplete?"text-teal-300":"text-amber-300"}>{item.practiceComplete?(node.assessment?.status==="SUCCESS"?"Ամբողջությամբ յուրացված հանգույցներ":"Վարժանքն ավարտված է։"):"Շարունակել սովորել"}</p></>}
                 {node.assessment?.status==="NEEDS_SUPPORT" && <p className="text-rose-300">Լրացուցիչ աջակցության կարիք։ Դիտել բացատրությունները և դիմել ուսուցչին։</p>}
-                <details className="text-sm text-muted-foreground"><summary>Անկախ հաստատման տվյալներ</summary><NodeAssessmentBadge assessment={node.assessment}/></details>
+                {isTeacherView && <details className="text-sm text-muted-foreground"><summary>Յուրացման հաստատում</summary><NodeAssessmentBadge assessment={node.assessment}/></details>}
               </div>;
             })}
           </section>
         )}
 
         <section className="space-y-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/75">Ընտրված փորձի պատասխանները · {visibleQuestions.length} հարց</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/75">{isOverview?"Ամբողջ թեստի պատասխանները":"Ընտրված փորձի պատասխանները"} · {visibleQuestions.length} հարց</h2>
           {visibleQuestions.length === 0 && <p className="text-sm text-muted-foreground">Այս դիտման համար հարց չկա։</p>}
           {visibleQuestions.map((question, index) => (
             <article key={question.questionId} className={`rounded-2xl border p-5 ${question.isCorrect ? "border-teal-400/20 bg-teal-400/5" : "border-red-400/20 bg-red-400/5"}`}>
