@@ -734,6 +734,7 @@ async function advanceNodeInSession(
   c6BlockedReason?: "C2_PATH_UNAVAILABLE" | "DEPENDENCY_CYCLE" | "DEPENDENCY_TARGET_MISSING";
 }> {
   const c6Decision = canonicalC6Decision ?? await resolveCanonicalC6Decision({
+    teachingSessionId: sessionId,
     learnerId: userId,
     lessonId,
     afterMicroNodeId: currentNodeId,
@@ -1357,6 +1358,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           }
         }
         const c6Decision = await resolveCanonicalC6Decision({
+    teachingSessionId: session.id,
           learnerId: req.userId!,
           lessonId,
           requestedMicroNodeId: session.currentNodeId,
@@ -1376,7 +1378,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           c6Decision.decisionType === "ADVANCE"
             ? 3
             : session.currentPhase;
-        if (nodeChanged && !resumeC4Projection?.reachedTarget) {
+        if (nodeChanged && !resumeC4Projection?.reachedTarget && !c6Decision.teachingOnly) {
           logger.warn(
             {
               sessionId: session.id,
@@ -1588,6 +1590,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           !c7HasActiveExecutionBoundary
         ) {
           const c6Decision = await resolveCanonicalC6Decision({
+    teachingSessionId: session.id,
             learnerId: req.userId!,
             lessonId: lessonId!,
             requestedMicroNodeId: _nodeId,
@@ -1971,7 +1974,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
 
       const completedNodesBlock = completedNodeTitles.length > 0
-        ? `COMPLETED_NODES (already mastered — do NOT reteach; only brief prerequisite references allowed):\n${completedNodeTitles.map((t) => `  - «${t}»`).join("\n")}`
+        ? `COMPLETED_NODES (teaching presentation only; mastery requires separate canonical evidence):\n${completedNodeTitles.map((t) => `  - «${t}»`).join("\n")}`
         : `COMPLETED_NODES: (none — this is the first node)`;
 
       const structuredHeader = [
@@ -1981,7 +1984,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         currentNodeRecord
           ? `CURRENT_NODE:     «${currentNodeRecord.title}»  ← the ONLY node you are teaching right now`
           : `CURRENT_NODE:     (none — all nodes completed or phase=${phase})`,
-        `INSTRUCTION: Completed nodes are already mastered. Do not reteach them. Do not restart explanations from completed nodes. Only refer to them briefly as prerequisites if needed.`,
+        `INSTRUCTION: Previous presentation does not imply mastery. Stay on the server-selected node and never claim unconfirmed mastery.`,
         _nodeObjective
           ? `NODE_OBJECTIVE:   ${_nodeObjective}`
           : `NODE_OBJECTIVE:   (not set for this node)`,
@@ -3172,6 +3175,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           "AUTHORITATIVE FEEDBACK FACTS:",
           `Evaluation: ${JSON.stringify(retryEvaluation)}`,
           `Evidence task reference: ${feedbackEvidence?.taskReference ?? "unknown"}`,
+          retryTransition?.c6Decision?.teachingOnly
+            ? "INSTRUCTIONAL PROGRESSION ONLY: do not claim mastery or confirmed knowledge."
+            : "",
           "The learner has already submitted an answer. Provide only concise feedback consistent with this evaluation.",
           "Do not ask a question, create a task, or change the current target.",
           "Server action: DELIVER_FEEDBACK",
@@ -3191,7 +3197,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           throw new Error("FEEDBACK recovery transition is missing its C6 level target");
         }
         await updateC7TargetLockedSession(
-          buildAuthorizedLevelTransitionUpdate(nextLevelId) as any,
+          { ...buildAuthorizedLevelTransitionUpdate(nextLevelId),
+            ...(retryTransition.c6Decision?.teachingOnly ? { nodeTeachingStage: "TASK_REQUIRED" } : {}),
+          } as any,
         );
       } else if (retryTransition?.action === "COMPLETE_MICRONODE") {
         const advanceResult = await advanceNodeInSession(
@@ -4251,6 +4259,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       let _authorizedC6Decision: Awaited<ReturnType<typeof resolveCanonicalC6Decision>> | null = null;
       if (_completionAuthorization?.authorized) {
         _authorizedC6Decision = await resolveCanonicalC6Decision({
+    teachingSessionId: session.id,
           learnerId: req.userId!,
           lessonId,
           requestedMicroNodeId: session.currentNodeId,
@@ -4260,12 +4269,36 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           _authorizedC6Decision = null;
         }
       }
-      const _authorizedLevelAdvance =
+      let teachingLevelAdvance = false;
+      let teachingNodeAdvance = false;
+      if (_stage3BoundedAnswerTurn && _turnProgress.isCorrect) {
+        const teachingDecision = await resolveCanonicalC6Decision({
+          learnerId: req.userId!, lessonId, teachingSessionId: session.id,
+          requestedMicroNodeId: session.currentNodeId, entryIntent: "NORMAL_LEARNING",
+        });
+        if (teachingDecision.teachingOnly && !isC6DeliveryBlocked(teachingDecision) &&
+          ["TEACHING_PROGRESS", "NO_ELIGIBLE_MICRONODE"].includes(teachingDecision.reasonCode)) {
+          teachingLevelAdvance = teachingDecision.microNodeId === session.currentNodeId &&
+            teachingDecision.nextTargetCognitiveLevelId !== session.activeCognitiveLevelId &&
+            teachingDecision.nextTargetCognitiveLevelId !== null;
+          teachingNodeAdvance = teachingDecision.microNodeId !== session.currentNodeId;
+          if (teachingLevelAdvance || teachingNodeAdvance) {
+            _authorizedC6Decision = teachingDecision;
+            _pedagogicalDecision = { ..._pedagogicalDecision!,
+              metaAction: teachingLevelAdvance ? "ADVANCE_COGNITIVE_LEVEL" : "COMPLETE_NODE",
+              newActiveCognitiveLevelId: teachingLevelAdvance ? teachingDecision.nextTargetCognitiveLevelId : null,
+              reasonCode: "TEACHING_PROGRESS_ONLY", mayWriteMastery: false,
+              levelConfirmed: false, confirmedLevel: null, targetReached: false,
+            };
+          }
+        }
+      }
+      const _authorizedLevelAdvance = teachingLevelAdvance ||
         _pedagogicalDecision?.metaAction === "ADVANCE_COGNITIVE_LEVEL" &&
         _completionAuthorization?.authorized === true &&
         _authorizedC6Decision?.microNodeId === session.currentNodeId &&
         _authorizedC6Decision.nextTargetCognitiveLevelId !== null;
-      const _authorizedNodeCompletion =
+      const _authorizedNodeCompletion = teachingNodeAdvance ||
         _progressionPlan.shouldCompleteNode &&
         _completionAuthorization?.authorized === true &&
         _authorizedC6Decision !== null &&
@@ -4472,6 +4505,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
     if (newReviewCount >= PHASE1_CAP || earlyExit) {
       const c6Decision = await resolveCanonicalC6Decision({
+    teachingSessionId: session.id,
         learnerId: req.userId!,
         lessonId,
         entryIntent: "NORMAL_LEARNING",
@@ -4536,6 +4570,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           "AUTHORITATIVE FEEDBACK FACTS:",
           `Evaluation: ${JSON.stringify(aiResult.answer_evaluation)}`,
           `Decision Engine meta action: ${_pedagogicalDecision?.metaAction ?? "NONE"}`,
+          _deferredC6Decision?.teachingOnly
+            ? "INSTRUCTIONAL PROGRESSION ONLY: acknowledge the correct response, never claim mastery or confirmed knowledge."
+            : "",
           `Decision Engine remediation action: ${_pedagogicalDecision?.remediationAction ?? "NONE"}`,
           `Server action: ${_phase2ServerActionPlan.action}`,
           "The feedback must not include a new question, answer options, source exercise text, or a next task.",
@@ -4625,7 +4662,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         throw new Error("C7.2 deferred cognitive transition lost its C6 level target");
       }
       await updateC7TargetLockedSession(
-        buildAuthorizedLevelTransitionUpdate(nextLevelId) as any,
+        { ...buildAuthorizedLevelTransitionUpdate(nextLevelId),
+          ...(_deferredC6Decision.teachingOnly ? { nodeTeachingStage: "TASK_REQUIRED" } : {}),
+        } as any,
       );
       logger.info(
         { sessionId: session.id, nodeId: session.currentNodeId, nextCognitiveLevelId: nextLevelId },
