@@ -57,3 +57,9 @@ assert.throws(()=>allocateNodeQuestions([2580,2581,2582,2583,2584],5,finalConfig
 assert.throws(()=>allocateNodeQuestions([1,2],5,finalConfig));
 assert.equal(allocateNodeQuestions([1,2],2).size,2);
 console.log("PASS final confirmation: three per node, canonical cognitive scope, partial-check compatibility");
+
+assert.equal(summarizeIndependentAnswers([true]).fullyConfirmed,false);
+assert.equal(summarizeIndependentAnswers([true,true]).fullyConfirmed,false);
+assert.equal(summarizeIndependentAnswers([true,true,true]).fullyConfirmed,true);
+assert.equal(summarizeIndependentAnswers([true,false,true]).fullyConfirmed,false);
+console.log("PASS knowledge confirmation requires 3/3; 1/1 and 2/2 remain partial");
