@@ -915,6 +915,7 @@ router.get("/quizzes/assigned", requireAuth, async (req: AuthRequest, res) => {
       sessionId: quizSessionsTable.id,
       sessionStatus: quizSessionsTable.status,
       retestSourceAttemptId: quizzesTable.retestSourceAttemptId,
+      assessmentConfig: quizzesTable.assessmentConfig,
     })
     .from(quizAssignmentsTable)
     .innerJoin(quizzesTable, eq(quizzesTable.id, quizAssignmentsTable.quizId))
@@ -945,6 +946,8 @@ router.get("/quizzes/assigned", requireAuth, async (req: AuthRequest, res) => {
     const sessionId = r.sessionId ?? adoptedSession?.id ?? null;
     const sessionStatus = r.sessionStatus ?? adoptedSession?.status ?? null;
     const learningProgress = await getQuizLearningProgress(r.quizId,req.userId!);
+    const educational=parseAssessmentConfig(r.assessmentConfig)?.purpose==="LEARNING";
+    const learningFlow=educational && (sessionStatus==="ACTIVE" || learningProgress.learningFlow.lastFinal) ? learningProgress.learningFlow : null;
     const hasActiveAttempt = r.completedAt===null && r.attemptSequence!==null;
     const sessionState = sessionId
       ? await resolveQuizSessionProjection(r.quizId, req.userId!)
@@ -960,12 +963,13 @@ router.get("/quizzes/assigned", requireAuth, async (req: AuthRequest, res) => {
       totalCorrect: learningProgress.history.length?learningProgress.current.correct:null,
       totalQuestions: learningProgress.history.length?learningProgress.current.total:null,
       scorePercent: learningProgress.history.length?learningProgress.current.percent:null,
-      learningProgress, hasActiveAttempt,
+      learningProgress, hasActiveAttempt, learningFlow,
+      learningComplete:learningFlow?learningFlow.completed:undefined,
       practiceComplete: learningProgress.history.length>0 && learningProgress.remainingQuestionIds.length===0,
       sessionId,
       sessionStatus,
       sessionState,
-      canContinue: sessionStatus === "ACTIVE" && (hasActiveAttempt || learningProgress.remainingQuestionIds.length>0),
+      canContinue: sessionStatus === "ACTIVE" && (hasActiveAttempt || (learningFlow?!learningFlow.completed:learningProgress.remainingQuestionIds.length>0)),
     };
   }));
   res.json(payload);
@@ -1332,6 +1336,13 @@ router.post("/quizzes/:id/session/finish", requireAuth, asyncHandler(async (req:
     .orderBy(desc(quizAssignmentsTable.assignedAt))
     .limit(1);
   if (!assignment) { res.status(404).json({ error: "Quiz assignment not found" }); return; }
+  const [existingSession]=await db.select({status:quizSessionsTable.status}).from(quizSessionsTable)
+    .where(eq(quizSessionsTable.rootAssignmentId,assignment.id)).limit(1);
+  if(existingSession?.status==="FINISHED"){res.json({finished:true});return;}
+  const [quiz]=await db.select({config:quizzesTable.assessmentConfig}).from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1);
+  if(parseAssessmentConfig(quiz?.config)?.purpose==="LEARNING" && !(await getQuizLearningProgress(quizId,req.userId!)).learningFlow.completed){
+    res.status(409).json({error:"COMPLETE_FINAL_CHECK_FIRST"});return;
+  }
   const [session] = await db.update(quizSessionsTable).set({
     status: "FINISHED",
     completedAt: new Date(),
@@ -1606,6 +1617,9 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
     return;
   }
 
+  const educationalProgress=config?.purpose==="LEARNING"?await getQuizLearningProgress(quizId,req.userId!):null;
+  const learningPhase=educationalProgress?.learningFlow.nextPhase??null;
+  const deferredFinal=learningPhase==="FINAL";
   const effectiveConfig = config && opened.attempt.attemptSequence>1 ? {...config,purpose:"LEARNING" as const} : config;
   const finalizedAnswers = await db
     .select()
@@ -1613,8 +1627,26 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
     .where(eq(quizAnswersTable.attemptId, opened.attempt.id));
   const finalizedAnswerMap = new Map(finalizedAnswers.map((answer) => [answer.questionId, answer]));
 
+  let reviewCards:Array<{questionId:number;questionText:string;correctAnswer:string|null;selectedAnswer:string|null;whyWrong:string|null;explanation:string|null}>=[];
+  if(learningPhase==="PRACTICE" && finalizedAnswers.length===0){
+    const previous=await db.select({questionId:quizAnswersTable.questionId,selectedOptionIndex:quizAnswersTable.selectedOptionIndex})
+      .from(quizAnswersTable).innerJoin(quizAttemptsTable,eq(quizAttemptsTable.id,quizAnswersTable.attemptId))
+      .where(and(eq(quizAttemptsTable.quizSessionId,opened.session.id),isNotNull(quizAttemptsTable.completedAt)))
+      .orderBy(asc(quizAttemptsTable.attemptSequence),asc(quizAnswersTable.id));
+    const latest=new Map(previous.map(a=>[a.questionId,a]));
+    reviewCards=opened.snapshots.map(snapshot=>{
+      const options=snapshot.options as string[];
+      const wrong=latest.get(snapshot.questionId)?.selectedOptionIndex;
+      return {questionId:snapshot.questionId,questionText:snapshot.questionText,
+        correctAnswer:options[snapshot.correctOptionIndex]??null,
+        selectedAnswer:wrong===undefined?null:options[wrong]??null,
+        whyWrong:wrong===undefined?null:snapshot.optionExplanations?.[wrong]??null,
+        explanation:snapshot.solutionExplanation??snapshot.optionExplanations?.[snapshot.correctOptionIndex]??null};
+    });
+  }
   res.json({
     assessmentConfig: effectiveConfig,
+    learningPhase, reviewCards,
     assignmentId:     assignment.id,
     assignmentStatus: "IN_PROGRESS",
     sessionId: opened.session.id,
@@ -1636,14 +1668,14 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
         : options.map((_, index) => index);
       const presentedOptions = order.map((index) => options[index]);
       return [{
-        ...(effectiveConfig?.purpose === "CHECK" ? { deferred:true } : {}),
+        ...((effectiveConfig?.purpose === "CHECK" || deferredFinal) ? { deferred:true } : {}),
         questionId: snapshot.questionId,
         selectedOptionIndex: scored.selectedPresentationIndex,
-        isCorrect: effectiveConfig?.purpose === "CHECK" ? null : scored.isCorrect,
-        correctOptionIndex: effectiveConfig?.purpose === "CHECK" ? null : scored.correctPresentationIndex,
+        isCorrect: (effectiveConfig?.purpose === "CHECK" || deferredFinal) ? null : scored.isCorrect,
+        correctOptionIndex: (effectiveConfig?.purpose === "CHECK" || deferredFinal) ? null : scored.correctPresentationIndex,
         selectedAnswer: presentedOptions[scored.selectedPresentationIndex] ?? null,
-        correctAnswer: effectiveConfig?.purpose === "CHECK" ? null : presentedOptions[scored.correctPresentationIndex] ?? null,
-        feedback: effectiveConfig?.purpose === "CHECK" ? {whyCorrect:null,whyWrong:null,solutionExplanation:null} : scored.feedback,
+        correctAnswer: (effectiveConfig?.purpose === "CHECK" || deferredFinal) ? null : presentedOptions[scored.correctPresentationIndex] ?? null,
+        feedback: (effectiveConfig?.purpose === "CHECK" || deferredFinal) ? {whyCorrect:null,whyWrong:null,solutionExplanation:null} : scored.feedback,
       }];
     }),
   });
@@ -1661,7 +1693,9 @@ router.post("/quizzes/:id/attempts/:attemptId/feedback", requireAuth, asyncHandl
   }
 
   const [feedbackQuiz] = await db.select({config:quizzesTable.assessmentConfig}).from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1);
-  const configuredCheck = parseAssessmentConfig(feedbackQuiz?.config)?.purpose === "CHECK";
+  const feedbackConfig=parseAssessmentConfig(feedbackQuiz?.config);
+  const configuredCheck = feedbackConfig?.purpose === "CHECK";
+  const deferredFinal=feedbackConfig?.purpose==="LEARNING" && (await getQuizLearningProgress(quizId,req.userId!)).learningFlow.nextPhase==="FINAL";
   const outcome = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM quiz_attempts WHERE id = ${attemptId} FOR UPDATE`);
     const [access] = await tx.select({
@@ -1676,7 +1710,7 @@ router.post("/quizzes/:id/attempts/:attemptId/feedback", requireAuth, asyncHandl
       )).limit(1);
     if (!access) return { status: 403, body: { error: "Attempt access denied" } };
     if (access.completedAt) return { status: 409, body: { error: "Attempt already completed" } };
-    const checkOnly=configuredCheck && access.attemptSequence===1;
+    const checkOnly=deferredFinal || (configuredCheck && access.attemptSequence===1);
 
     const [snapshot] = await tx.select().from(quizAttemptQuestionsTable).where(and(
       eq(quizAttemptQuestionsTable.attemptId, attemptId),

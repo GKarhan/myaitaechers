@@ -73,3 +73,14 @@ After full practice completion, the teacher can open the existing quiz creation 
 ## Knowledge tree current learning view (2026-10-22)
 
 The tree, subject cards, and lazy node details display current whole-node practice results separately from the canonical independent mastery state. A completed practice is labelled «Ուսուցողական աշխատանքն ավարտված է», not promoted to independent MASTERED. Completed practice is counted separately from partial learning; recommendations request a teacher-assigned check rather than repeating repaired errors. Unstudied nodes display no score. Teacher and student quiz results omit independent-confirmation detail blocks; underlying evidence is preserved. All lesson/topic groups start collapsed and background refetches never reopen them.
+
+## Educational quiz learning cycle (approved 2026-10-22)
+
+This revision affects only LEARNING quizzes. Existing scoring, independent evidence qualification, node analytics, and CHECK behavior are unchanged.
+
+1. INITIAL: complete the original quiz with immediate feedback.
+2. PRACTICE: «Շարունակել սովորել» first shows one stored explanation per remaining wrong question (previous answer, correct answer, why wrong, stored explanation). After all explanation cards, answer only those questions with immediate feedback. Repeat on remaining errors.
+3. FINAL: after all original questions have latest correct answers, perform the complete same quiz with shuffled question/option order. Feedback, correct answers and explanations are withheld server-side until submission, including reload/resume.
+4. If FINAL has mistakes, return to their explanations and reduced practice, then another full FINAL. Only a full successful FINAL completes the educational flow. Even an initially perfect quiz requires FINAL.
+
+Results retain all attempts and original scores and label initial/practice/final distinctly. Compare initial score with latest full final score. Dashboard actions offer the final check instead of reporting completion when practice alone reaches 100%. Existing finished legacy sessions stay finished. Explanation-card position is saved locally per immutable attempt; finalized answers and phase are reconstructed from persisted attempts after reload. No new AI calls, new questions, or invented explanations are used: the flow reads already stored question explanations; absent explanations are explicitly marked unavailable. No database migration is required.

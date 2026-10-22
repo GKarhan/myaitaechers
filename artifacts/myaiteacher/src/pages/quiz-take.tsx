@@ -13,7 +13,10 @@ type TakeQuestion = {
   sequence: number;
 };
 
+type ReviewCard={questionId:number;questionText:string;correctAnswer:string|null;selectedAnswer:string|null;whyWrong:string|null;explanation:string|null};
 type TakeData = {
+  learningPhase?:"INITIAL"|"PRACTICE"|"FINAL"|"COMPLETE"|null;
+  reviewCards?:ReviewCard[];
   assessmentConfig?: { purpose:string; context:string } | null;
   assignmentId: number;
   sessionId: number;
@@ -55,6 +58,7 @@ export default function QuizTake() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [feedback, setFeedback] = useState<Record<number, Feedback>>({});
+  const [reviewIndex,setReviewIndex]=useState(0);
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -85,6 +89,10 @@ export default function QuizTake() {
       .then((payload) => {
         if (!payload) return;
         setData(payload);
+        setCurrentIndex(0);
+        let savedReview=0;
+        try{savedReview=Number(localStorage.getItem(`quiz-review:${payload.attemptId}`)??0);}catch{}
+        setReviewIndex(Math.max(0,Math.min(Number.isFinite(savedReview)?savedReview:0,payload.reviewCards?.length??0)));
         setAnswers(Object.fromEntries(
           (payload.finalizedAnswers ?? []).map((answer) => [
             answer.questionId,
@@ -201,6 +209,28 @@ export default function QuizTake() {
     );
   }
 
+  const reviewCard=data.reviewCards?.[reviewIndex];
+  const phaseLabel=data.learningPhase==="FINAL"?"Ամփոփիչ ստուգում":data.learningPhase==="PRACTICE"?"Սխալների ուսուցում":"Սկզբնական թեստ";
+  const steps=data.learningPhase && <div className="text-xs text-muted-foreground mb-4">Սկզբնական թեստ → Սխալների ուսուցում → Ամփոփիչ ստուգում<p className="text-primary font-semibold mt-2">{phaseLabel}</p></div>;
+  if(reviewCard)return <div className="min-h-[100dvh] bg-background text-white px-5 py-8">
+    <div className="max-w-2xl mx-auto space-y-5">
+      <Link href={`/quiz/${quizId}/result`} className="text-sm text-muted-foreground">← Պահել և դուրս գալ</Link>
+      {steps}
+      <section className="rounded-3xl border border-white/10 bg-card/60 p-6 space-y-4">
+        <p className="text-xs text-primary">Բացատրություն {reviewIndex+1}/{data.reviewCards!.length}</p>
+        <h1 className="text-lg font-semibold">{reviewCard.questionText}</h1>
+        {reviewCard.selectedAnswer && <p className="text-sm text-white/70">Քո պատասխանը՝ {reviewCard.selectedAnswer}</p>}
+        <p className="text-teal-200">Ճիշտ պատասխանը՝ {reviewCard.correctAnswer}</p>
+        {reviewCard.whyWrong && <p className="text-sm text-white/80">{reviewCard.whyWrong}</p>}
+        <p className="text-sm leading-relaxed">{reviewCard.explanation??"Այս հարցի համար բացատրություն պահպանված չէ։"}</p>
+      </section>
+      <button className="w-full rounded-2xl bg-primary px-5 py-4 font-bold" onClick={()=>{
+        const next=reviewIndex+1;setReviewIndex(next);
+        try{localStorage.setItem(`quiz-review:${data.attemptId}`,String(next));}catch{}
+      }}>{reviewIndex+1===data.reviewCards!.length?"Հասկացա, անցնել ստուգմանը":"Հասկացա, անցնել առաջ"}</button>
+      <p className="text-xs text-muted-foreground text-center">Բացատրություններից հետո կպատասխանեք մնացած սխալ հարցերին։</p>
+    </div>
+  </div>;
   return (
     <div className="min-h-[100dvh] bg-background text-white pb-28">
       <header className="sticky top-0 z-20 border-b border-white/10 bg-card/90 backdrop-blur">
@@ -212,6 +242,7 @@ export default function QuizTake() {
       </header>
 
       <main className="max-w-2xl mx-auto px-5 py-8">
+        {steps}
         <section className="rounded-3xl border border-white/10 bg-card/60 p-6">
           {data.assessmentConfig && <p className="text-xs text-muted-foreground mb-2">{data.assessmentConfig.purpose === "CHECK" ? "Գիտելիքի անկախ ստուգում" : "Ուսուցողական"} · {({IN_CLASS:"Միայն դասարանում",AT_HOME:"Միայն տանը",CLASS_THEN_HOME:"Դասարանում սկսել, տանը շարունակել",ANYWHERE:"Ցանկացած վայրում"} as Record<string,string>)[data.assessmentConfig.context]}</p>}
           <p className="text-xs text-primary mb-3">Հարց {currentIndex + 1}</p>
@@ -226,7 +257,7 @@ export default function QuizTake() {
                   : selected
                     ? "border-red-400/60 bg-red-400/15"
                     : "border-white/10 opacity-60"
-                : "border-white/10 hover:border-primary/50 hover:bg-primary/10";
+                : selected ? "border-primary bg-primary/15" : "border-white/10 hover:border-primary/50 hover:bg-primary/10";
               return (
                 <button
                   key={optionIndex}
@@ -286,7 +317,7 @@ export default function QuizTake() {
               {submitting ? "Գրանցվում է..." : "Ավարտել փորձը"}
             </button>
           )}
-          {!currentFeedback && <p className="text-center text-xs text-muted-foreground">Ընտրեք պատասխանը՝ անմիջապես ստուգելու համար</p>}
+          {!currentFeedback && <p className="text-center text-xs text-muted-foreground">{data.learningPhase==="FINAL"?"Ընտրեք պատասխանը։ Արդյունքը՝ ամբողջ թեստի ավարտից հետո։":"Ընտրեք պատասխանը՝ անմիջապես ստուգելու համար"}</p>}
         </div>
       </div>
     </div>

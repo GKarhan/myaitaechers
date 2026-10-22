@@ -11,6 +11,8 @@ export type StudentQuizCardQuiz = {
   scorePercent?: number | null;
   canContinue?: boolean;
   practiceComplete?: boolean;
+  learningComplete?:boolean;
+  learningFlow?:{nextPhase:string;completed:boolean}|null;
   hasActiveAttempt?: boolean;
   learningProgress?: {
     initial: {correct:number;total:number;percent:number};
@@ -55,7 +57,7 @@ export default function StudentQuizCard({ quiz }: { quiz: StudentQuizCardQuiz })
           {quiz.learningProgress && <>
             <p className="text-xs text-muted-foreground mt-1">Սկզբնական արդյունք՝ {quiz.learningProgress.initial.correct}/{quiz.learningProgress.initial.total} · {quiz.learningProgress.initial.percent}%</p>
             <p className="text-xs mt-1">Ընթացիկ՝ 🟢 {quiz.learningProgress.current.correct} ճիշտ · 🔴 {quiz.learningProgress.current.incorrect} սխալ · {quiz.learningProgress.current.percent}%</p>
-            {quiz.practiceComplete && <p className="text-xs text-teal-400 mt-1">Վարժանքն ավարտված է</p>}
+            {(quiz.learningComplete??quiz.practiceComplete) && <p className="text-xs text-teal-400 mt-1">Վարժանքն ավարտված է</p>}
           </>}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -70,7 +72,7 @@ export default function StudentQuizCard({ quiz }: { quiz: StudentQuizCardQuiz })
               href={`/quiz/${quiz.quizId}/take`}
               className="text-xs px-4 py-2 rounded-xl bg-primary text-white font-semibold whitespace-nowrap"
             >
-              {quiz.hasActiveAttempt ? "Շարունակել" : `Շարունակել սովորել · ${quiz.learningProgress?.remainingQuestionIds.length ?? 0} հարց`}
+              {quiz.hasActiveAttempt ? "Շարունակել" : quiz.learningFlow?.nextPhase==="FINAL"?"Անցնել ամփոփիչ ստուգմանը":`Շարունակել սովորել · ${quiz.learningProgress?.remainingQuestionIds.length ?? 0} հարց`}
             </Link>
           )}
         </div>

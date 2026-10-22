@@ -29,7 +29,24 @@ export function summarizeLearningProgress(
       practiceComplete:current.total>0&&current.correct===current.total};
   });
   const history=[...attempts.entries()].map(([attemptId,rows])=>({attemptId,attemptSequence:rows[0]!.attemptSequence,total:rows.length,correct:rows.filter(a=>a.isCorrect).length,nodeIds:[...new Set(rows.map(a=>a.nodeId).filter((id):id is number=>id!==null))]}));
-  return {initial:totals(ids,first),current:totals(ids,latest),nodes,history,
+  // Flow is derived from immutable completed answers; it never changes scoring
+  // or turns repeated questions into new independent evidence.
+  const flowLatest=new Map<number,boolean>();
+  let nextPhase:"INITIAL"|"PRACTICE"|"FINAL"|"COMPLETE"="INITIAL";
+  let lastFinal:{attemptId:number;correct:number;total:number;percent:number}|null=null;
+  const phasedHistory=history.map(item=>{
+    const phase=nextPhase==="COMPLETE"?"FINAL":nextPhase;
+    const rows=attempts.get(item.attemptId)!;
+    for(const answer of rows)flowLatest.set(answer.questionId,answer.isCorrect);
+    const allCorrect=ids.length>0 && ids.every(id=>flowLatest.get(id)===true);
+    if(phase==="FINAL")lastFinal={attemptId:item.attemptId,correct:item.correct,total:item.total,percent:item.total?Math.round(item.correct/item.total*100):0};
+    nextPhase=phase==="FINAL" && item.total===ids.length && item.correct===item.total ? "COMPLETE" : allCorrect?"FINAL":"PRACTICE";
+    return {...item,phase};
+  });
+  const learningFlow:{nextPhase:"INITIAL"|"PRACTICE"|"FINAL"|"COMPLETE";completed:boolean;lastFinal:{attemptId:number;correct:number;total:number;percent:number}|null}={
+    nextPhase:nextPhase as "INITIAL"|"PRACTICE"|"FINAL"|"COMPLETE",completed:(nextPhase as string)==="COMPLETE",lastFinal,
+  };
+  return {initial:totals(ids,first),current:totals(ids,latest),nodes,history:phasedHistory,learningFlow,
     remainingQuestionIds:ids.filter(id=>latest.get(id)?.isCorrect!==true)};
 }
 
