@@ -47,9 +47,11 @@ type SessionProjection = {
 };
 
 type ProgressTotals = {total:number;correct:number;incorrect:number;unanswered:number;percent:number};
-type LearningProgress = {initial:ProgressTotals;current:ProgressTotals;remainingQuestionIds:number[];
+type LearningFlow={nextPhase:"INITIAL"|"PRACTICE"|"FINAL"|"COMPLETE";completed:boolean;lastFinal:{attemptId:number;correct:number;total:number;percent:number}|null};
+type LearningProgress = {
+  learningFlow?:LearningFlow;initial:ProgressTotals;current:ProgressTotals;remainingQuestionIds:number[];
   nodes:Array<{nodeId:number;initial:ProgressTotals;current:ProgressTotals;practiceComplete:boolean;lastAttempt:{attemptId:number;attemptSequence:number;total:number;correct:number}|null}>;
-  history:Array<{attemptId:number;attemptSequence:number;total:number;correct:number;nodeIds:number[]}>};
+  history:Array<{attemptId:number;attemptSequence:number;total:number;correct:number;nodeIds:number[];phase?:string}>};
 type Result = {
   overviewQuestions?:QuestionResult[];
   creationContext?:{classId:number|null;subjectId:number;nodeIds:number[];lessonIds:number[]};
@@ -143,6 +145,11 @@ export default function QuizResult() {
   const backHref = isTeacherView ? "/teacher?section=quizzes" : STUDENT_RESULTS_FINISH_PATH;
   const teacherAttempts = result.attemptHistory ?? [];
   const progress=result.learningProgress;
+  const flow=result.assessmentConfig?.purpose==="LEARNING" && (result.session?.status==="ACTIVE" || progress?.learningFlow?.lastFinal)?progress?.learningFlow:null;
+  const phaseLabel=(sequence:number)=>{
+    const phase=result.assessmentConfig?.purpose==="LEARNING"?progress?.history.find(h=>h.attemptSequence===sequence)?.phase:null;
+    return phase==="FINAL"?"Ամփոփիչ ստուգում":phase==="PRACTICE"?"Սխալների ուսուցում":sequence>1?"Վարժանք":result.assessmentConfig?.purpose==="CHECK"?"Ստուգում":"Ուսուցողական";
+  };
   const selectedHistory=isTeacherView?progress?.history.find(h=>h.attemptSequence===(selectedTeacherSequence??progress.history.at(-1)?.attemptSequence)):progress?.history.find(h=>h.attemptId===result.attemptId);
   const isOverview=isTeacherView?selectedTeacherSequence===null:!historyAttemptId;
   const selectedCorrect=isOverview&&progress?progress.current.correct:selectedHistory?.correct??result.practiceTotalCorrect??result.totalCorrect;
@@ -168,7 +175,7 @@ export default function QuizResult() {
           <div className={`text-5xl font-black ${scoreColor}`}>{displayedScore}%</div>
           {result.assessmentConfig && <p className="text-sm text-muted-foreground mb-2">{isOverview?"Ամբողջ թեստի ընթացիկ արդյունքը":"Ընտրված փորձի արդյունքը"}</p>}
           <p className="mt-2 text-white/80">🟢 {selectedCorrect} ճիշտ · 🔴 {selectedTotal-selectedCorrect} սխալ · {selectedTotal} հարց</p>
-          {!isOverview && selectedHistory && <p className="mt-2 text-sm">Փորձ {selectedHistory.attemptSequence} · {selectedHistory.attemptSequence>1?"Վարժանք":result.assessmentConfig?.purpose==="CHECK"?"Ստուգում":"Ուսուցողական"}</p>}
+          {!isOverview && selectedHistory && <p className="mt-2 text-sm">Փորձ {selectedHistory.attemptSequence} · {phaseLabel(selectedHistory.attemptSequence)}</p>}
           {progress && <p className="text-sm text-muted-foreground mt-2">{(isOverview?progress.nodes.map(n=>n.nodeId):selectedHistory?.nodeIds ?? []).map(id=>result.nodeBreakdown?.find(n=>n.nodeId===id)?.nodeTitle).join(" · ")}</p>}
         </section>
 
@@ -182,7 +189,7 @@ export default function QuizResult() {
                 </tr></thead>
                 <tbody>{teacherAttempts.map(attempt => (
                   <tr key={attempt.attemptId} className="border-t border-white/10">
-                    <td className="p-3"><button className="text-primary underline" onClick={()=>setSelectedTeacherSequence(attempt.attemptSequence)}>Փորձ {attempt.attemptSequence} · {attempt.attemptSequence>1?"Վարժանք":result.assessmentConfig?.purpose==="LEARNING"?"Ուսուցողական":"Ստուգում"}</button></td>
+                    <td className="p-3"><button className="text-primary underline" onClick={()=>setSelectedTeacherSequence(attempt.attemptSequence)}>Փորձ {attempt.attemptSequence} · {phaseLabel(attempt.attemptSequence)}</button></td>
                     <td className="p-3">{attempt.totalCorrect}/{attempt.totalQuestions} · {attempt.scorePercent}%</td>
                     <td className="p-3 text-teal-300">{attempt.cumulativeCorrect}/{attempt.cumulativeTotal} · {attempt.cumulativePercent}%</td>
                   </tr>
@@ -204,8 +211,12 @@ export default function QuizResult() {
           </div>
           <p className="text-sm">Լրացուցիչ աջակցության կարիք՝ {result.nodeBreakdown?.filter(n=>n.assessment?.status==="NEEDS_SUPPORT").length??0}</p>
           {!isTeacherView && result.session?.status==="ACTIVE" && progress.remainingQuestionIds.length>0 && <Link href={`/quiz/${id}/take`} className="block rounded-xl bg-primary px-4 py-3 text-center font-bold">Շարունակել սովորել · {progress.remainingQuestionIds.length} հարց</Link>}
-          {progress.remainingQuestionIds.length===0 && <p className="text-teal-300">Բոլոր սխալներն ուղղված են։ Վարժանքն ավարտված է։</p>}
-          {!isTeacherView && result.session && <button disabled={finishing} onClick={finishSession} className="rounded-xl border px-4 py-2">{finishing?"Ավարտվում է...":"Ավարտել"}</button>}
+          {progress.remainingQuestionIds.length===0 && !flow && <p className="text-teal-300">Բոլոր սխալներն ուղղված են։ Վարժանքն ավարտված է։</p>}
+          {flow?.nextPhase==="FINAL" && <p className="text-teal-300">Սխալների վրա աշխատանքն ավարտված է։ Անցիր ամբողջ թեստի ամփոփիչ ստուգմանը։</p>}
+          {!isTeacherView && flow?.nextPhase==="FINAL" && <Link href={`/quiz/${id}/take`} className="block rounded-xl bg-primary px-4 py-3 text-center font-bold">Անցնել ամփոփիչ ստուգմանը · {progress.current.total} հարց</Link>}
+          {flow?.completed && <p className="text-teal-300">Ուսուցողական թեստն ավարտված է։</p>}
+          {flow?.lastFinal && <p>Սկզբնական թեստ՝ {progress.initial.correct}/{progress.initial.total} · {progress.initial.percent}% → Ամփոփիչ ստուգում՝ {flow.lastFinal.correct}/{flow.lastFinal.total} · {flow.lastFinal.percent}%</p>}
+          {!isTeacherView && result.session && (!flow || flow.completed) && <button disabled={finishing} onClick={finishSession} className="rounded-xl border px-4 py-2">{finishing?"Ավարտվում է...":"Ավարտել"}</button>}
 
         </section>}
 
@@ -219,7 +230,7 @@ export default function QuizResult() {
                   href={`/quiz/${id}/result?attemptId=${attempt.attemptId}`}
                   className={`rounded-xl border px-4 py-3 flex items-center justify-between ${attempt.attemptId === result.attemptId ? "border-primary/50 bg-primary/10" : "border-white/10 bg-card/30"}`}
                 >
-                  <span className="text-sm font-medium">Փորձ {attempt.attemptSequence} · {attempt.attemptSequence>1?"Վարժանք":result.assessmentConfig?.purpose==="LEARNING"?"Ուսուցողական":"Ստուգում"} · {attempt.totalQuestions} հարց</span>
+                  <span className="text-sm font-medium">Փորձ {attempt.attemptSequence} · {phaseLabel(attempt.attemptSequence)} · {attempt.totalQuestions} հարց</span>
                   <span className="text-sm text-muted-foreground">{attempt.totalCorrect}/{attempt.totalQuestions} · {attempt.scorePercent ?? 0}%</span>
                 </Link>
               ))}
@@ -228,7 +239,7 @@ export default function QuizResult() {
         )}
 
         {!isOverview && <button className="text-primary underline" onClick={()=>isTeacherView?setSelectedTeacherSequence(null):setLocation(`/quiz/${id}/result`)}>Դիտել ամբողջ թեստը</button>}
-        {isTeacherView && progress?.remainingQuestionIds.length===0 && result.creationContext && <section>
+        {isTeacherView && progress?.remainingQuestionIds.length===0 && (!flow || flow.completed) && result.creationContext && <section>
           <Link className="inline-block rounded-xl bg-primary px-5 py-3" href={`/teacher?classId=${result.creationContext.classId??params.get("classId")??""}&subjectId=${result.creationContext.subjectId}&createQuiz=1&lessonIds=${result.creationContext.lessonIds.join(",")}&nodeIds=${result.creationContext.nodeIds.join(",")}`}>Ստեղծել նոր ստուգում</Link>
         </section>}
         {result.nodeBreakdown && result.nodeBreakdown.length > 0 && (

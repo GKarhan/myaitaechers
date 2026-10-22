@@ -36,6 +36,11 @@ try {
   async function answer(quizId:number,correct:boolean[],deferred:boolean){
     const takeRes=await fetch(`${base}/quizzes/${quizId}/take`,{headers});assert.equal(takeRes.status,200);const take:any=await takeRes.json();
     assert.equal(take.assessmentConfig.context,"CLASS_THEN_HOME");
+    if(take.learningPhase==="FINAL")assert.equal(take.reviewCards.length,0);
+    if(take.learningPhase==="PRACTICE" && take.finalizedAnswers.length===0){
+      assert.equal(take.reviewCards.length,take.questions.length);
+      assert.ok(take.reviewCards.every((c:any)=>c.correctAnswer==="Correct"&&c.explanation==="Correct explanation"));
+    }
     const answers=[];
     for(const [i,q] of take.questions.entries()){
       assert.equal(q.correctOptionIndex,undefined);
@@ -133,6 +138,22 @@ try {
   const oldView:any=await(await fetch(`${base}/quizzes/${repro}/my-result?attemptId=${before.attemptId}`,{headers})).json();
   assert.equal(oldView.questions.length,9);assert.equal(oldView.questions.filter((q:any)=>q.isCorrect).length,4);
   assert.equal(oldView.overviewQuestions.filter((q:any)=>q.isCorrect).length,9);
+  const pendingFinal:any=await(await fetch(`${base}/quizzes/assigned`,{headers})).json();
+  assert.equal(pendingFinal.find((q:any)=>q.quizId===repro).learningFlow.nextPhase,"FINAL");
+  assert.equal(pendingFinal.find((q:any)=>q.quizId===repro).canContinue,true);
+  const premature=await fetch(`${base}/quizzes/${repro}/session/finish`,{method:"POST",headers});assert.equal(premature.status,409);
+  const independentBefore=final.totalCorrect;
+  const failedFinal=await answer(repro,[false,...Array(8).fill(true)],true);
+  assert.equal(failedFinal.practiceTotalQuestions,9);
+  assert.equal(failedFinal.learningProgress.learningFlow.nextPhase,"PRACTICE");
+  assert.equal(failedFinal.learningProgress.remainingQuestionIds.length,1);
+  const repaired=await answer(repro,[true],false);
+  assert.equal(repaired.learningProgress.learningFlow.nextPhase,"FINAL");
+  const passedFinal=await answer(repro,Array(9).fill(true),true);
+  assert.equal(passedFinal.learningProgress.learningFlow.completed,true);
+  assert.equal(passedFinal.learningProgress.learningFlow.lastFinal.total,9);
+  assert.equal(passedFinal.totalCorrect,independentBefore);
+  console.log("PASS educational cycle: review 5 → practice 5 → repair 1 → full final 9; failed final repairs only 1 then full final 9; deferred feedback/resume and unchanged independent score");
   const assigned:any=await(await fetch(`${base}/quizzes/assigned`,{headers})).json();
   const card=assigned.find((q:any)=>q.quizId===repro);
   assert.equal(card.totalCorrect,9);assert.equal(card.totalQuestions,9);assert.equal(card.scorePercent,100);assert.equal(card.practiceComplete,true);assert.equal(card.canContinue,false);
@@ -153,6 +174,12 @@ try {
 
   const noMore=await fetch(`${base}/quizzes/${repro}/take`,{headers});assert.equal(noMore.status,409);
   console.log("PASS 288 corrective cycle: 4/9 -> five wrong questions -> one wrong question -> 9/9, no infinite retries");
+  const perfect=await createQuiz("LEARNING","perfect first pass");
+  const perfectInitial=await answer(perfect,[true,true,true],false);
+  assert.equal(perfectInitial.learningProgress.learningFlow.nextPhase,"FINAL");
+  const perfectFinal=await answer(perfect,[true,true,true],true);
+  assert.equal(perfectFinal.learningProgress.learningFlow.completed,true);
+  const finish=await fetch(`${base}/quizzes/${perfect}/session/finish`,{method:"POST",headers});assert.equal(finish.status,200);
   const teacherNoStudent=await fetch(`${base}/quizzes/${repro}/reconfirm`,{method:"POST",headers:auth(teacherId!,"teacher"),body:JSON.stringify({})});assert.equal(teacherNoStudent.status,410);
   const teacherForeignStudent=await fetch(`${base}/quizzes/${repro}/reconfirm`,{method:"POST",headers:auth(teacherId!,"teacher"),body:JSON.stringify({studentId:teacherId})});assert.equal(teacherForeignStudent.status,410);
   let replacements=0;

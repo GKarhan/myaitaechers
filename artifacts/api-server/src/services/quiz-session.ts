@@ -221,10 +221,15 @@ export async function getOrCreateActiveAttempt(input: {
     .where(eq(quizAttemptsTable.quizSessionId, session.id))
     .orderBy(desc(quizAttemptsTable.attemptSequence)).limit(1);
   const nextSequence = (completed[0]?.sequence ?? 0) + 1;
+  const [quiz]=await db.select({config:quizzesTable.assessmentConfig}).from(quizzesTable).where(eq(quizzesTable.id,input.rootQuizId)).limit(1);
+  const educational=parseAssessmentConfig(quiz?.config)?.purpose==="LEARNING";
+  const progress=educational?await getQuizLearningProgress(input.rootQuizId,input.learnerId):null;
+  const phase=progress?.learningFlow.nextPhase;
+  if(phase==="COMPLETE")return {session,attempt:null,snapshots:[]};
   const projection = await resolveQuizSessionProjection(input.rootQuizId, input.learnerId);
-  const remainingQuestionIds = nextSequence>1 ? projection.remainingQuestionIds : undefined;
+  const remainingQuestionIds = phase==="FINAL" ? undefined : nextSequence>1 ? projection.remainingQuestionIds : undefined;
   if(remainingQuestionIds?.length===0)return { session, attempt:null, snapshots:[] };
-  const scope = nextSequence === 1 ? null : (projection.practiceNodeIds ?? projection.learningNodeIds);
+  const scope = nextSequence === 1 || phase==="FINAL" ? null : (projection.practiceNodeIds ?? projection.learningNodeIds);
   if (scope?.length === 0) return { session, attempt: null, snapshots: [] };
 
   const questions = await db.select().from(quizQuestionsTable).where(
@@ -236,6 +241,7 @@ export async function getOrCreateActiveAttempt(input: {
         ),
   ).orderBy(asc(quizQuestionsTable.sequence));
   if (questions.length === 0) return { session, attempt: null, snapshots: [] };
+  const orderedQuestions=phase==="FINAL"?shuffledOrder(questions.length).map(i=>questions[i]!):questions;
 
   try {
     return await db.transaction(async (tx) => {
@@ -246,7 +252,7 @@ export async function getOrCreateActiveAttempt(input: {
         totalQuestions: questions.length,
       }).returning();
       const snapshots = await tx.insert(quizAttemptQuestionsTable).values(
-        questions.map((question, index) => {
+        orderedQuestions.map((question, index) => {
           const options = Array.isArray(question.options) ? question.options as string[] : [];
           return {
             attemptId: attempt.id,

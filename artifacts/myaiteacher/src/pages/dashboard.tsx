@@ -34,6 +34,7 @@ type AssignedQuiz = {
   totalCorrect: number | null; totalQuestions: number | null;
   scorePercent: number | null;
   canContinue?: boolean;
+  learningComplete?:boolean; learningFlow?:{nextPhase:string;completed:boolean}|null;
   practiceComplete?:boolean; hasActiveAttempt?:boolean;
   learningProgress?:{initial:{correct:number;total:number;percent:number};current:{correct:number;incorrect:number;total:number;percent:number};remainingQuestionIds:number[];history:unknown[]};
   sessionState?: { knowsCount: number; learningCount: number } | null;
@@ -386,7 +387,7 @@ export default function Dashboard() {
                   {qz.learningProgress && qz.learningProgress.history.length>0 ? <div className="text-xs mt-2 space-y-1">
                     <p>Սկզբնական արդյունք՝ {qz.learningProgress.initial.correct}/{qz.learningProgress.initial.total} · {qz.learningProgress.initial.percent}%</p>
                     <p className="text-teal-400">Ընթացիկ՝ 🟢 {qz.learningProgress.current.correct} ճիշտ · 🔴 {qz.learningProgress.current.incorrect} սխալ · {qz.learningProgress.current.percent}%</p>
-                    {qz.practiceComplete && <p>Բոլոր սխալներն ուղղված են։ Վարժանքն ավարտված է։</p>}
+                    {(qz.learningComplete??qz.practiceComplete) && <p>Բոլոր սխալներն ուղղված են։ Վարժանքն ավարտված է։</p>}
                   </div>:null}
                 </div>
                 {(qz.learningProgress?.history.length??0)>0 ? (
@@ -402,7 +403,7 @@ export default function Dashboard() {
                         href={`/quiz/${qz.quizId}/take`}
                         className="flex items-center justify-center px-5 py-2.5 rounded-xl bg-primary text-white font-semibold text-sm whitespace-nowrap"
                       >
-                        {qz.hasActiveAttempt?"Շարունակել":`Շարունակել սովորել · ${qz.learningProgress?.remainingQuestionIds.length??0} հարց`}
+                        {qz.hasActiveAttempt?"Շարունակել":qz.learningFlow?.nextPhase==="FINAL"?"Անցնել ամփոփիչ ստուգմանը":`Շարունակել սովորել · ${qz.learningProgress?.remainingQuestionIds.length??0} հարց`}
                       </Link>
                     )}
                   </div>
@@ -838,8 +839,8 @@ export default function Dashboard() {
   /* ── QUIZZES ── */
   const SectionQuizzes = () => {
     const quizzes = assignedQuizzes ?? [];
-    const pending   = quizzes.filter((q) => !(q.practiceComplete ?? q.status === "COMPLETED"));
-    const completed = quizzes.filter((q) => q.practiceComplete ?? q.status === "COMPLETED");
+    const pending   = quizzes.filter((q) => !(q.learningComplete ?? q.practiceComplete ?? q.status === "COMPLETED"));
+    const completed = quizzes.filter((q) => q.learningComplete ?? q.practiceComplete ?? q.status === "COMPLETED");
     return (
       <div>
         <h2 className="text-lg font-bold mb-6">📋 Իմ թեստերը</h2>
