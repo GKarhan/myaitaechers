@@ -92,6 +92,8 @@ export default function Chat() {
   });
 
   const sendMessageMutation = useSendChatMessage();
+  const chatError = sendMessageMutation.error as { data?: { error?: string } } | null;
+  const preparedMaterialMissing = chatError?.data?.error === "APPROVED_TEACHING_MATERIAL_UNAVAILABLE";
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -146,7 +148,7 @@ export default function Chat() {
   };
 
   // ── Phase 2B: Request help ─────────────────────────────────────────────────
-  const requestHelp = async (revealAnswer = false) => {
+  const requestHelp = async (revealAnswer = false, materialKind: "hint" | "explanation" | "example" = "hint") => {
     if (!lessonId || helpLoading || helpRequestInFlightRef.current || sendMessageMutation.isPending) return;
     if (showRevealConfirm && !revealAnswer) return;
 
@@ -162,7 +164,7 @@ export default function Chat() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token ?? ""}`,
         },
-        body: JSON.stringify({ lessonId, revealAnswer }),
+        body: JSON.stringify({ lessonId, revealAnswer, materialKind }),
       });
 
       const data = await resp.json();
@@ -308,7 +310,9 @@ export default function Chat() {
         <div className="max-w-4xl mx-auto space-y-2">
           {sendMessageMutation.isError && (
             <div className="text-destructive text-sm px-2">
-              Սխալ տեղի ունեցավ։ Խնդրում ենք փորձել կրկին։
+              {preparedMaterialMissing
+                ? "Հաստատված ուսումնական նյութը հասանելի չէ։ Դիմիր ուսուցչին։"
+                : "Սխալ տեղի ունեցավ։ Խնդրում ենք փորձել կրկին։"}
             </div>
           )}
           {helpError && (
@@ -330,6 +334,21 @@ export default function Chat() {
                 className="shrink-0 px-3 py-1 rounded-lg bg-card border border-card-border text-muted-foreground text-xs transition-colors"
               >
                 Չեղարկել
+              </button>
+            </div>
+          )}
+
+          {showHelpButton && !showRevealConfirm && (
+            <div className="flex flex-wrap gap-2 px-2 pb-2">
+              <button onClick={() => requestHelp(false, "explanation")}
+                disabled={helpLoading || sendMessageMutation.isPending}
+                className="px-3 py-2 rounded-lg border border-card-border text-sm disabled:opacity-40">
+                Ավելի պարզ
+              </button>
+              <button onClick={() => requestHelp(false, "example")}
+                disabled={helpLoading || sendMessageMutation.isPending}
+                className="px-3 py-2 rounded-lg border border-card-border text-sm disabled:opacity-40">
+                Այլ օրինակ
               </button>
             </div>
           )}
