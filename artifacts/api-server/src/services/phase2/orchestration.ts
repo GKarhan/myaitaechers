@@ -239,7 +239,7 @@ export function derivePhase2ServerAction(
   }
 
   if (
-    input.nodeTeachingStage === "THEORY" &&
+    (input.nodeTeachingStage === "THEORY" || input.nodeTeachingStage === "RETEACH_REQUIRED") &&
     input.activeTaskProvenance === null &&
     input.activeLessonExerciseId === null &&
     input.activeObjectiveTaskPayload === null
@@ -615,6 +615,17 @@ export function buildPostFeedbackTransitionUpdate(): Phase2TaskStateUpdate {
  * C6-selected target intact but make the session explicitly resume-only until
  * a later C6 decision can safely choose a new target.
  */
+export function buildReteachStageUpdate(): Phase2TaskStateUpdate {
+  return { ...buildPostFeedbackTransitionUpdate(), nodeTeachingStage: "RETEACH_REQUIRED" };
+}
+
+/** Same persisted directive is used by normal feedback release and recovery. */
+export function buildFeedbackReleaseUpdate(action: unknown): Phase2TaskStateUpdate {
+  return action === "RETEACH" ? buildReteachStageUpdate()
+    : action === "REVISIT_REQUIRED" ? buildTerminalRevisitStageUpdate()
+    : buildPostFeedbackTransitionUpdate();
+}
+
 export function buildTerminalRevisitStageUpdate(): Phase2TaskStateUpdate {
   return {
     ...buildMandatoryFeedbackStageUpdate(),
