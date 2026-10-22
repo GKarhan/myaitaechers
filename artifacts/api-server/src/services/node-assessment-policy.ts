@@ -28,6 +28,7 @@ export type AssessmentSummary = {
   status: "NOT_ASSESSED" | "SUCCESS" | "PARTIAL" | "NOT_KNOWN" | "NEEDS_SUPPORT";
   nextAction: "ASSESS" | "RECONFIRM" | "REVIEW" | "TARGETED_PRACTICE" | "LEARN" | "TEACHER_REVIEW";
   confirmation: string;
+  fullyConfirmed: boolean;
 };
 export function summarizeIndependentAnswers(answers: readonly boolean[]): AssessmentSummary {
   const sample = answers.slice(0, 3), attempted = sample.length;
@@ -36,7 +37,7 @@ export function summarizeIndependentAnswers(answers: readonly boolean[]): Assess
     : correct === attempted ? "SUCCESS" : "PARTIAL";
   return { correct, attempted, percent: attempted ? Math.round(correct / attempted * 100) : null,
     certainty: !correct ? "NONE" : correct === 1 ? "LOW" : correct === 2 ? "MEDIUM" : "HIGH",
-    status, confirmation: `${Math.min(correct, 3)}/3`,
+    status, confirmation: `${Math.min(correct, 3)}/3`, fullyConfirmed: attempted === 3 && correct === 3,
     nextAction: status === "NEEDS_SUPPORT" ? "TEACHER_REVIEW" : status === "NOT_ASSESSED" ? "ASSESS"
       : status === "NOT_KNOWN" ? "LEARN" : status === "PARTIAL" ? (correct === 1 ? "LEARN" : "TARGETED_PRACTICE")
       : attempted === 3 ? "REVIEW" : "RECONFIRM" };
