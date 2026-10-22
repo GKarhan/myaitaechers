@@ -53,6 +53,7 @@ jobs:
       - run: pnpm --filter @workspace/api-server exec tsx src/services/__tests__/current-node-result.test.ts
       - run: pnpm --filter @workspace/api-server exec tsx src/services/__tests__/node-assessment-policy.test.ts
       - run: pnpm --filter @workspace/api-server exec tsx src/services/__tests__/node-assessment-http.test.ts
+      - run: pnpm --filter @workspace/api-server exec tsx src/services/__tests__/canonical-quiz-generation.test.ts
       - run: pnpm --filter @workspace/api-server test:c5-knowledge-tree
       - run: pnpm --filter @workspace/api-server test:c4-ceiling
       - run: pnpm --filter @workspace/api-server typecheck

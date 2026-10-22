@@ -1,3 +1,4 @@
+import { getQuizLearningProgress } from "../services/quiz-learning-progress.js";
 import { filterAutomaticAssessmentScope } from "../services/quiz-session.js";
 import { normalizeQuestionText } from "../services/quiz-question-quality.js";
 import { resolveKnowledgeTreeStates } from "../services/knowledge-tree-state.js";
@@ -1077,14 +1078,6 @@ router.get("/quizzes/:id/results", requireTeacher, async (req: AuthRequest, res)
     return { ...row, totalCorrect: progress.totalCorrect, totalQuestions: progress.totalQuestions,
       scorePercent: progress.scorePercent };
   });
-  const [resultQuiz]=await db.select({config:quizzesTable.assessmentConfig,nodeIds:quizzesTable.nodeIds}).from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1);
-  if(parseAssessmentConfig(resultQuiz?.config)) {
-    for(const row of latestRows) {
-      const states=await resolveKnowledgeTreeStates(row.studentId,Array.isArray(resultQuiz?.nodeIds)?resultQuiz.nodeIds as number[]:[]);
-      const totals=aggregateAssessments([...states.values()]);
-      if(totals&&row.completedAt)Object.assign(row,totals);
-    }
-  }
   // Sort: completed worst-score-first; non-completed at the bottom
   latestRows.sort((a, b) => {
     const aComp = a.completedAt !== null;
@@ -1191,6 +1184,7 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
   });
   const recommendations = histories.at(-1)?.analysis.recommendations ?? [];
   res.json({
+    learningProgress: await getQuizLearningProgress(quizId,studentId),
     studentId,
     totalCorrect: progress.totalCorrect,
     totalQuestions: progress.totalQuestions,
@@ -1209,29 +1203,30 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
 });
 
 // New independent evidence after practice. Scope and author are server-owned.
-router.post("/quizzes/:id/reconfirm", requireStudent, asyncHandler(async (req:AuthRequest,res)=>{
+router.post("/quizzes/:id/reconfirm", requireTeacher, asyncHandler(async (req:AuthRequest,res)=>{
+  const studentId=Number(req.body?.studentId);
+  if(!Number.isInteger(studentId)||studentId<=0){res.status(400).json({error:"STUDENT_REQUIRED"});return;}
   const quizId=Number(req.params.id);
   const [source]=await db.select().from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1);
   const [assignment]=await db.select().from(quizAssignmentsTable)
-    .where(and(eq(quizAssignmentsTable.quizId,quizId),eq(quizAssignmentsTable.studentId,req.userId!))).limit(1);
+    .where(and(eq(quizAssignmentsTable.quizId,quizId),eq(quizAssignmentsTable.studentId,studentId))).limit(1);
   const config=parseAssessmentConfig(source?.assessmentConfig);
-  if(!source||!assignment||!config){res.status(404).json({error:"ASSESSMENT_NOT_FOUND"});return;}
+  if(!source||source.teacherId!==req.userId||!assignment||!config){res.status(404).json({error:"ASSESSMENT_NOT_FOUND"});return;}
   const [completed]=await db.select().from(quizAttemptsTable)
     .where(and(eq(quizAttemptsTable.quizAssignmentId,assignment.id),isNotNull(quizAttemptsTable.completedAt)))
     .orderBy(desc(quizAttemptsTable.attemptSequence)).limit(1);
   if(!completed){res.status(409).json({error:"COMPLETE_PRACTICE_FIRST"});return;}
   const ids=Array.isArray(source.nodeIds)?source.nodeIds as number[]:[];
-  const states=await resolveKnowledgeTreeStates(req.userId!,ids);
-  const nodeIds=await filterAutomaticAssessmentScope(req.userId!,ids.filter(id=>states.get(id)?.assessment?.status!=="NEEDS_SUPPORT" &&
-    (states.get(id)?.knowledgeState!=="MASTERED"||states.get(id)?.assessment?.certainty!=="HIGH")));
+  const states=await resolveKnowledgeTreeStates(studentId,ids);
+  const nodeIds=await filterAutomaticAssessmentScope(studentId,ids.filter(id=>states.get(id)?.knowledgeState!=="MASTERED"||states.get(id)?.assessment?.certainty!=="HIGH"));
   if(!nodeIds.length){res.status(409).json({error:"NO_INDEPENDENT_CHECK_SCOPE"});return;}
   const links=await db.select({lessonId:quizLessonLinksTable.lessonId}).from(quizLessonLinksTable).where(eq(quizLessonLinksTable.quizId,quizId));
-  const snapshot=normalizeQuizGenerationRequest({generationMode:"canonical",studentId:req.userId!,
+  const snapshot=normalizeQuizGenerationRequest({generationMode:"standard",studentId,
     assessmentConfig:{...config,purpose:"CHECK"},subjectId:source.subjectId,classId:source.classId,
     sourceBookId:source.sourceBookId,quizType:source.quizType,lessonIds:links.map(l=>l.lessonId),
     nodeIds,questionCount:Math.min(3,Math.floor(50/nodeIds.length))*nodeIds.length,difficultyMode:source.difficultyMode as any,title:source.title});
   const result=await createOrReuseQuizGenerationJob({teacherId:source.teacherId,
-    idempotencyKey:`reconfirm-v2:${assignment.id}:${completed.id}`,snapshot});
+    idempotencyKey:`teacher-node-reconfirm:${assignment.id}:${completed.id}`,snapshot});
   // Reuse pending/running/completed jobs; an explicit retry may restart a
   // failed job atomically without creating duplicate quizzes.
   if(result.job.status==="failed") await db.update(quizGenerationJobsTable).set({status:"pending",errorCode:null,errorDetails:null,updatedAt:new Date()})
@@ -1311,6 +1306,7 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
     : null;
 
   res.json({
+    learningProgress: await getQuizLearningProgress(quizId,req.userId!),
     attemptId:       attempt.id,
     totalCorrect:   attempt.totalCorrect,
     totalQuestions: attempt.totalQuestions,
@@ -1621,6 +1617,7 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
     return;
   }
 
+  const effectiveConfig = config && opened.attempt.attemptSequence>1 ? {...config,purpose:"LEARNING" as const} : config;
   const finalizedAnswers = await db
     .select()
     .from(quizAnswersTable)
@@ -1628,7 +1625,7 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
   const finalizedAnswerMap = new Map(finalizedAnswers.map((answer) => [answer.questionId, answer]));
 
   res.json({
-    assessmentConfig: config,
+    assessmentConfig: effectiveConfig,
     assignmentId:     assignment.id,
     assignmentStatus: "IN_PROGRESS",
     sessionId: opened.session.id,
@@ -1650,14 +1647,14 @@ router.get("/quizzes/:id/take", requireAuth, asyncHandler(async (req: AuthReques
         : options.map((_, index) => index);
       const presentedOptions = order.map((index) => options[index]);
       return [{
-        ...(config?.purpose === "CHECK" ? { deferred:true } : {}),
+        ...(effectiveConfig?.purpose === "CHECK" ? { deferred:true } : {}),
         questionId: snapshot.questionId,
         selectedOptionIndex: scored.selectedPresentationIndex,
-        isCorrect: config?.purpose === "CHECK" ? null : scored.isCorrect,
-        correctOptionIndex: config?.purpose === "CHECK" ? null : scored.correctPresentationIndex,
+        isCorrect: effectiveConfig?.purpose === "CHECK" ? null : scored.isCorrect,
+        correctOptionIndex: effectiveConfig?.purpose === "CHECK" ? null : scored.correctPresentationIndex,
         selectedAnswer: presentedOptions[scored.selectedPresentationIndex] ?? null,
-        correctAnswer: config?.purpose === "CHECK" ? null : presentedOptions[scored.correctPresentationIndex] ?? null,
-        feedback: config?.purpose === "CHECK" ? {whyCorrect:null,whyWrong:null,solutionExplanation:null} : scored.feedback,
+        correctAnswer: effectiveConfig?.purpose === "CHECK" ? null : presentedOptions[scored.correctPresentationIndex] ?? null,
+        feedback: effectiveConfig?.purpose === "CHECK" ? {whyCorrect:null,whyWrong:null,solutionExplanation:null} : scored.feedback,
       }];
     }),
   });
@@ -1675,11 +1672,12 @@ router.post("/quizzes/:id/attempts/:attemptId/feedback", requireAuth, asyncHandl
   }
 
   const [feedbackQuiz] = await db.select({config:quizzesTable.assessmentConfig}).from(quizzesTable).where(eq(quizzesTable.id,quizId)).limit(1);
-  const checkOnly = parseAssessmentConfig(feedbackQuiz?.config)?.purpose === "CHECK";
+  const configuredCheck = parseAssessmentConfig(feedbackQuiz?.config)?.purpose === "CHECK";
   const outcome = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM quiz_attempts WHERE id = ${attemptId} FOR UPDATE`);
     const [access] = await tx.select({
       completedAt: quizAttemptsTable.completedAt,
+      attemptSequence: quizAttemptsTable.attemptSequence,
     }).from(quizAttemptsTable)
       .innerJoin(quizSessionsTable, eq(quizSessionsTable.id, quizAttemptsTable.quizSessionId))
       .where(and(
@@ -1689,6 +1687,7 @@ router.post("/quizzes/:id/attempts/:attemptId/feedback", requireAuth, asyncHandl
       )).limit(1);
     if (!access) return { status: 403, body: { error: "Attempt access denied" } };
     if (access.completedAt) return { status: 409, body: { error: "Attempt already completed" } };
+    const checkOnly=configuredCheck && access.attemptSequence===1;
 
     const [snapshot] = await tx.select().from(quizAttemptQuestionsTable).where(and(
       eq(quizAttemptQuestionsTable.attemptId, attemptId),
