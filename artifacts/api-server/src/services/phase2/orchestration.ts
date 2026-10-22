@@ -1006,6 +1006,7 @@ export type Phase2DecisionContext = {
   optionalContinuation: boolean;
   estimatedNodeMinutes: number;
   legacyCompletionAllowed?: boolean;
+  maxFailedTeachingAttempts?: number;
 };
 
 export type Phase2DecisionPlan = {
@@ -1058,6 +1059,7 @@ export function coordinatePedagogicalDecision(
     sessionBudgetExhausted: effectiveSessionBudgetExhausted,
     localNodeBudgetExhausted,
     legacyCompletionAllowed: context.legacyCompletionAllowed ?? false,
+    maxFailedTeachingAttempts: context.maxFailedTeachingAttempts,
   };
 
   return {
