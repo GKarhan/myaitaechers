@@ -243,6 +243,10 @@ export default function QuizTake() {
 
       <main className="max-w-2xl mx-auto px-5 py-8">
         {steps}
+        {data.learningPhase==="PRACTICE" && !!data.reviewCards?.length && <button
+          className="mb-4 rounded-xl border border-primary/40 px-4 py-2 text-sm text-primary"
+          onClick={()=>{setReviewIndex(0);try{localStorage.setItem(`quiz-review:${data.attemptId}`,"0");}catch{}}}
+        >Վերանայել բացատրությունները</button>}
         <section className="rounded-3xl border border-white/10 bg-card/60 p-6">
           {data.assessmentConfig && <p className="text-xs text-muted-foreground mb-2">{data.assessmentConfig.purpose === "CHECK" ? "Գիտելիքի անկախ ստուգում" : "Ուսուցողական"} · {({IN_CLASS:"Միայն դասարանում",AT_HOME:"Միայն տանը",CLASS_THEN_HOME:"Դասարանում սկսել, տանը շարունակել",ANYWHERE:"Ցանկացած վայրում"} as Record<string,string>)[data.assessmentConfig.context]}</p>}
           <p className="text-xs text-primary mb-3">Հարց {currentIndex + 1}</p>
