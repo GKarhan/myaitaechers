@@ -39,9 +39,9 @@ async function loadPreparedTeaching(target: PreparedTeachingTarget) {
   ));
 }
 
-async function deliverPreparedTheory(target: C7ExecutionTarget) {
+async function deliverPreparedTheory(target: C7ExecutionTarget, reteachStep = 0) {
   const items = await loadPreparedTeaching(target);
-  const theory = composePreparedTheory(items, target, target.microNodeTitle);
+  const theory = composePreparedTheory(items, target, target.microNodeTitle, reteachStep);
   assertTheoryOnly(theory);
   logger.info({ lessonId: target.lessonId, nodeId: target.microNodeId, itemIds: theory.itemIds }, "approved Teaching Package delivered without model call");
   return { student_message: `${theory.student_message}\n\nԵթե պատրաստ ես, գրիր «Շարունակենք»։` };
@@ -74,7 +74,7 @@ import {
   deriveGeneratedMicroCheckActivation,
   buildMandatoryFeedbackStageUpdate,
   buildPostFeedbackTransitionUpdate,
-  buildTerminalRevisitStageUpdate,
+  buildFeedbackReleaseUpdate,
   deriveLegacyCompletionAllowed,
   derivePostFeedbackContinuationAction,
   derivePhase2ServerAction,
@@ -1155,6 +1155,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let _activeCognitiveLevelRow: CognitiveLevelRow | null = null;
   let _c7ExecutionTarget: C7ExecutionTarget | null = null;
   let _nextNodeHasCriticalDep = false;
+  let _reteachAfterFeedback = false;
   let _deferredC7Action: "ADVANCE_COGNITIVE_LEVEL" | "COMPLETE_MICRONODE" | null = null;
   let _deferredC6Decision: Awaited<ReturnType<typeof resolveCanonicalC6Decision>> | null = null;
   let _deferredSafetyCapHit = false;
@@ -1708,6 +1709,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               linkedIds,
             ),
           );
+        }
+        if (session.nodeTeachingStage === "TASK_REQUIRED" && classExercises.length) {
+          const used = await db.select({ exerciseId: evidenceEventsTable.lessonExerciseId })
+            .from(evidenceEventsTable).where(and(
+              eq(evidenceEventsTable.lessonSessionId, session.id),
+              eq(evidenceEventsTable.lessonNodeId, session.currentNodeId),
+              gte(evidenceEventsTable.createdAt, session.startedAt ?? new Date(0)),
+            ));
+          const usedIds = new Set(used.map((row) => row.exerciseId));
+          classExercises = classExercises.filter((exercise) => !usedIds.has(exercise.id));
         }
         logger.info({
           phase,
@@ -2852,7 +2863,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       );
 
       if (plan.action === "DELIVER_THEORY") {
-        const theory = await deliverPreparedTheory(continuationTarget);
+        const theory = await deliverPreparedTheory(continuationTarget, freshSession.nodeTeachingStage === "RETEACH_REQUIRED" ? Math.max(1, freshSession.remediationStep) : 0);
         const [theoryMessage] = await db
           .insert(chatMessagesTable)
           .values({ userId: req.userId!, lessonId, role: "assistant", content: theory.student_message })
@@ -2987,7 +2998,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     try {
       const target = await assertPhase2TargetLocked();
       if (!target) throw new Error("C7 execution target unavailable");
-      const theory = await deliverPreparedTheory(target);
+      const theory = await deliverPreparedTheory(target, session.nodeTeachingStage === "RETEACH_REQUIRED" ? Math.max(1, session.remediationStep) : 0);
       const driftDetected = session.currentNodeId
         ? validateNoScopeDrift(theory.student_message, _allNodeTitles)
         : false;
@@ -3216,7 +3227,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           throw new Error(`FEEDBACK recovery C6 target unavailable: ${advanceResult.c6BlockedReason}`);
         }
       } else {
-        await updateC7TargetLockedSession(buildPostFeedbackTransitionUpdate() as any);
+        await updateC7TargetLockedSession(
+          buildFeedbackReleaseUpdate(retryTransition?.action) as any);
       }
       respondWithPersistedPhase2Message(feedback.student_message, feedbackMessage.id, "FEEDBACK", false);
       return;
@@ -4338,6 +4350,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const _postAdvanceTeachingStage =
         _turnProgress.newTeachingStage ?? session.nodeTeachingStage;
       if (
+        !_stage3BoundedAnswerTurn &&
         shouldPreparePostFeedbackTaskContinuation({
           postFeedbackContinuationPlan: _postFeedbackContinuationPlan,
           hasActiveTask,
@@ -4404,18 +4417,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         "Phase-2 server action selected after authoritative evaluation",
       );
 
-      // C7.2 defers any already-authorized C7.1 transition until the bounded
-      // feedback message is actually persisted below.  C3 → C4 → C6
-      // authorization has already happened; this only keeps the selected
-      // C6 target locked through the visible feedback boundary.
-      if (
-        (_phase2ServerActionPlan.action === "ADVANCE_COGNITIVE_LEVEL" ||
-          _phase2ServerActionPlan.action === "COMPLETE_MICRONODE") &&
-        _authorizedC6Decision
-      ) {
-        _deferredC7Action = _phase2ServerActionPlan.action;
-        _deferredC6Decision = _authorizedC6Decision;
-        _deferredSafetyCapHit = safetyCapHit;
+      // Persist teaching/revisit intent with the same immutable evaluated task
+      // before feedback is attempted, so a provider failure cannot skip repair.
+      _reteachAfterFeedback = _phase2ServerActionPlan.action === "REMEDIATE";
+      if (_stage3BoundedAnswerTurn) {
+        if ((_phase2ServerActionPlan.action === "ADVANCE_COGNITIVE_LEVEL" ||
+          _phase2ServerActionPlan.action === "COMPLETE_MICRONODE") && _authorizedC6Decision) {
+          _deferredC7Action = _phase2ServerActionPlan.action;
+          _deferredC6Decision = _authorizedC6Decision;
+          _deferredSafetyCapHit = safetyCapHit;
+        }
         // C7.2 recovery must survive a feedback-provider or message-write
         // failure. Attach the already-authorized C7.1 transition to the same
         // immutable evidence record that owns the evaluator facts; never
@@ -4439,7 +4450,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               metadata: {
                 ...(evidenceRecord.metadata as Record<string, unknown>),
                 c7DeferredTransition: {
-                  action: _deferredC7Action,
+                  action: requiresPostFeedbackHold(_pedagogicalDecision?.metaAction)
+                    ? "REVISIT_REQUIRED" : _reteachAfterFeedback ? "RETEACH" : _deferredC7Action,
                   c6Decision: _deferredC6Decision,
                   safetyCapHit: _deferredSafetyCapHit,
                 },
@@ -4644,9 +4656,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     !_deferredC7Action
   ) {
     await updateC7TargetLockedSession(
-      (requiresPostFeedbackHold(_pedagogicalDecision?.metaAction)
-        ? buildTerminalRevisitStageUpdate()
-        : buildPostFeedbackTransitionUpdate()) as any,
+      buildFeedbackReleaseUpdate(requiresPostFeedbackHold(_pedagogicalDecision?.metaAction)
+        ? "REVISIT_REQUIRED" : _reteachAfterFeedback ? "RETEACH" : null) as any,
     );
   }
   if (
