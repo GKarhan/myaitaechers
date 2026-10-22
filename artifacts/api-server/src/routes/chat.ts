@@ -5,7 +5,7 @@ import {
   lessonNodeDependenciesTable, usersTable,
   evidenceEventsTable, knowledgeNodesTable,
   lessonNodeCognitiveLevelsTable, helpEventsTable,
-  lessonNodeCognitiveTasksTable, lessonOutcomesTable,
+  lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonNodeTeachingPackageItemsTable,
 } from "@workspace/db";
 import { eq, and, asc, desc, inArray, gte, or, isNull, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
@@ -18,17 +18,34 @@ import {
   assertFeedbackMatchesAuthority,
   assertFeedbackOnly,
   assertTheoryOnly,
-  buildNodeTheoryFallback,
   callPhase2EvaluationJob,
   callPhase2FeedbackJob,
   callPhase2TaskJob,
-  callPhase2TheoryJob,
-  Phase2TheoryExhaustionError,
   serverOwnedFeedbackAcknowledgement,
   type Phase2EvaluationResult,
 } from "../services/phase2/bounded-jobs.js";
 import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
+import {
+  composePreparedTheory, preparedTeachingContext, selectPreparedTeachingItems,
+  PreparedTeachingUnavailableError, type PreparedTeachingTarget,
+} from "../lib/prepared-teaching.js";
+
+async function loadPreparedTeaching(target: PreparedTeachingTarget) {
+  return db.select().from(lessonNodeTeachingPackageItemsTable).where(and(
+    eq(lessonNodeTeachingPackageItemsTable.lessonId, target.lessonId),
+    eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, target.microNodeId),
+    eq(lessonNodeTeachingPackageItemsTable.status, "approved"),
+  ));
+}
+
+async function deliverPreparedTheory(target: C7ExecutionTarget) {
+  const items = await loadPreparedTeaching(target);
+  const theory = composePreparedTheory(items, target, target.microNodeTitle);
+  assertTheoryOnly(theory);
+  logger.info({ lessonId: target.lessonId, nodeId: target.microNodeId, itemIds: theory.itemIds }, "approved Teaching Package delivered without model call");
+  return { student_message: `${theory.student_message}\n\nԵթե պատրաստ ես, գրիր «Շարունակենք»։` };
+}
 import {
   enforceActiveSourceExercise,
   isExerciseDeliveryTurn,
@@ -39,6 +56,7 @@ import {
 import {
   isLearnerDeliveryEligible,
   resolveLearnerExerciseContent,
+  validateLearnerExerciseText,
 } from "../lib/exercise-content-boundary.js";
 import { evaluateDeterministicSourceExerciseAnswer } from "../lib/deterministic-source-exercise-evaluation";
 import { updateTopicScoring } from "../services/scoring";
@@ -348,7 +366,8 @@ async function executeHelpRequest(
   },
   lessonId: number,
   userId: number,
-  revealAnswer = false
+  revealAnswer = false,
+  materialKind: "hint" | "explanation" | "example" = "hint",
 ): Promise<HelpRequestResult> {
   if (!session.activeTaskProvenance) {
     return { ok: false, errorCode: "NO_ACTIVE_TASK", statusHint: 409, message: "No active task" };
@@ -444,6 +463,7 @@ async function executeHelpRequest(
   const { helpLevel: nextHelpLevel, assistanceLevel } = helpEscalation;
 
   let taskText: string | null = null;
+  let hiddenHelpContent: { successCriteria?: string | null; correctAnswer?: string | null } = {};
   if (session.activeLessonExerciseId) {
     const [exRow] = await db
       .select({
@@ -495,6 +515,7 @@ async function executeHelpRequest(
       };
     }
     taskText = helpTask.taskText;
+    hiddenHelpContent = { successCriteria: exRow.successCriteria, correctAnswer: exRow.correctAnswer };
   } else if (session.lastQuestionAsked) {
     taskText = session.lastQuestionAsked;
   }
@@ -507,21 +528,36 @@ async function executeHelpRequest(
   };
 
   let hintContent = "";
-  try {
-    const helpPrompt = [
-      `You are an Armenian AI Teacher giving a level-${nextHelpLevel} hint.`,
-      buildC7TargetContext(helpTarget),
-      `Task: ${taskText ?? "(no task text available)"}`,
-      `Instruction: ${HINT_INSTRUCTIONS[nextHelpLevel] ?? HINT_INSTRUCTIONS[3]}`,
-      "Reply ONLY in Armenian. Do not repeat the task verbatim.",
-    ].join("\n");
-    hintContent = await callAI(
-      [{ role: "user" as const, content: helpPrompt }],
-      "\u0564\u0578\u0582 AI \u0578\u0582\u057d\u0578\u0582\u0581\u056b\u0579 \u0565\u057d\u0589 \u0570\u0561\u0575\u056f\u0561\u056f\u0561\u0576 \u0570\u0578\u0582\u0577 \u057f\u0578\u0582\u0580\u0589"
-    );
-  } catch (aiErr) {
-    logger.warn({ aiErr, sessionId: session.id }, "executeHelpRequest: AI hint failed");
-    hintContent = "\u0553\u0578\u0580\u056e\u056b\u0580 \u056f\u0580\u056f\u056b\u0576 \u0574\u057f\u0561\u056e\u0565\u056c \u056d\u0576\u0564\u056b\u0580\u056b \u0574\u0561\u057d\u056b\u0576, \u056f\u0561\u0574 \u0564\u056b\u0574\u056b\u0580 \u0578\u0582\u057d\u0578\u0582\u0581\u056c\u056b\u0579\u056b\u0576\u0589";
+  if (nextHelpLevel < 4) {
+    const items = await loadPreparedTeaching(helpTarget);
+    const itemType = materialKind === "explanation" ? "ALTERNATIVE_EXPLANATION"
+      : materialKind === "example" ? "EXAMPLE" : "HINT";
+    const candidates = selectPreparedTeachingItems(items, helpTarget, itemType);
+    // The first two examples were already included in the theory block.
+    const index = materialKind === "hint" ? currentHelpCount : materialKind === "example" ? 2 : 0;
+    const item = candidates[index];
+    if (!item) return {
+      ok: false, errorCode: "APPROVED_TEACHING_MATERIAL_UNAVAILABLE", statusHint: 409,
+      message: "Հաստատված ուսումնական նյութը հասանելի չէ։ Դիմիր ուսուցչին։",
+    };
+    const contentBoundary = validateLearnerExerciseText({ learnerText: item.content, ...hiddenHelpContent });
+    if (!contentBoundary.ok) return {
+      ok: false, errorCode: "PREPARED_HELP_CONTENT_UNSAFE", statusHint: 409,
+      message: "Հաստատված ուսումնական նյութը հասանելի չէ։ Դիմիր ուսուցչին։",
+    };
+    hintContent = item.content;
+    logger.info({ sessionId: session.id, itemId: item.id, itemType }, "prepared help selected without model call");
+  } else {
+    // Explicit answer reveal retains its separate confirmation and assistance policy.
+    try {
+      hintContent = await callAI([
+        { role: "user", content: [buildC7TargetContext(helpTarget), `Task: ${taskText ?? ""}`,
+          HINT_INSTRUCTIONS[4]].join("\n") },
+      ], "Reply only in Armenian.");
+    } catch (aiErr) {
+      logger.warn({ aiErr, sessionId: session.id }, "executeHelpRequest: answer reveal failed");
+      return { ok: false, errorCode: "ANSWER_REVEAL_UNAVAILABLE", statusHint: 503 };
+    }
   }
 
   // Commit the help event and assistance state only if the execution target is
@@ -1735,30 +1771,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         }
       }
 
-      const toStrArr = (v: unknown) =>
-        Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-
-      const cfeBlock = currentNodeRecord?.childFriendlyExplanation
-        ? `\nAPPROVED_EXPLANATION (use near-verbatim):\n${currentNodeRecord.childFriendlyExplanation}`
-        : "";
-
+      const approvedTeachingItems = _c7ExecutionTarget
+        ? await loadPreparedTeaching(_c7ExecutionTarget) : [];
+      const preparedContentBlock = _c7ExecutionTarget
+        ? preparedTeachingContext(approvedTeachingItems, _c7ExecutionTarget) : "";
+      // Source text remains the source authority, never an approved teaching fallback.
       const verbatimAnchorBlock = currentNodeRecord?.verbatimTheoryAnchor
-        ? `\nVERBATIM_THEORY_ANCHOR (if non-empty, ground explanations in this exact wording — cite rules/definitions near-verbatim).\n${currentNodeRecord.verbatimTheoryAnchor}`
-        : "";
-
-      const examplesArr = toStrArr(currentNodeRecord?.basicExamples);
-      const examplesBlock = examplesArr.length > 0
-        ? `\nBASIC_EXAMPLES:\n${examplesArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
-        : "";
-
-      const nonExamplesArr = toStrArr(currentNodeRecord?.nonExamples);
-      const nonExamplesBlock = nonExamplesArr.length > 0
-        ? `\nNON_EXAMPLES (use as contrast and wrong-answer distractors in MICRO_CHECK).\n${nonExamplesArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
-        : "";
-
-      const misconceptionBlock = currentNodeRecord?.commonMisconception
-        ? `\nKNOWN_MISCONCEPTION (design MICRO_CHECK distractors around this):\n${currentNodeRecord.commonMisconception}`
-        : "";
+        ? `\nVERBATIM_THEORY_ANCHOR:\n${currentNodeRecord.verbatimTheoryAnchor}` : "";
 
       const knowledgeBoundariesBlock = knowledgeBoundaries.length > 0
         ? `\nKNOWLEDGE_BOUNDARIES (this lesson deliberately excludes these topics — redirect warmly if student asks).\n${knowledgeBoundaries.map((b: string, i: number) => `${i + 1}. ${b}`).join("\n")}`
@@ -1901,7 +1920,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       const _nodeObjective =
         currentNodeRecord?.learningObjective?.trim() ||
-        currentNodeRecord?.childFriendlyExplanation?.trim() ||
         (currentNodeRecord
           ? `Reach Bloom level ${currentNodeRecord.targetBloomLevel} understanding of «${currentNodeRecord.title}» in ~${currentNodeRecord.estimatedMinutes} min.`
           : null);
@@ -2029,11 +2047,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           ? `LESSON_OVERVIEW (context for this entire lesson — read before the current node):\n${(lesson as { description?: string | null }).description!.trim()}`
           : "",
         currentNodeRecord?.theoryContent ? `NODE_THEORY:\n${currentNodeRecord.theoryContent}` : "",
-        cfeBlock,
+        preparedContentBlock,
         verbatimAnchorBlock,
-        examplesBlock,
-        nonExamplesBlock,
-        misconceptionBlock,
         knowledgeBoundariesBlock,
         exBlock,
         hwBlock,
@@ -2512,6 +2527,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       },
       "Stage-3 bounded Phase-2 job failed",
     );
+    if (error instanceof PreparedTeachingUnavailableError) {
+      res.status(409).json({ error: error.message,
+        message: "Հաստատված ուսումնական նյութը հասանելի չէ։ Դիմիր ուսուցչին։" });
+      return;
+    }
     res.status(503).json({
       error: "STRUCTURED_AI_REQUIRED",
       message: "Չհաջողվեց շարունակել դասը։ Խնդրում եմ կրկին փորձել։",
@@ -2787,12 +2807,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         freshNode.learningObjective ? `NODE_OBJECTIVE: ${freshNode.learningObjective}` : "",
         activeLevelBlock,
         freshNode.theoryContent ? `NODE_THEORY:\n${freshNode.theoryContent}` : "",
-        freshNode.childFriendlyExplanation
-          ? `APPROVED_EXPLANATION:\n${freshNode.childFriendlyExplanation}`
-          : "",
-        Array.isArray(freshNode.basicExamples) && freshNode.basicExamples.length > 0
-          ? `BASIC_EXAMPLES:\n${freshNode.basicExamples.join("\n")}`
-          : "",
+        preparedTeachingContext(await loadPreparedTeaching(continuationTarget), continuationTarget),
         "THEORY and TASK are separate bounded actions. Do not merge them. A visible task must be answerable and match persisted server state.",
       ].filter(Boolean).join("\n");
 
@@ -2833,11 +2848,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       );
 
       if (plan.action === "DELIVER_THEORY") {
-        const theory = await callPhase2TheoryJob(
-          continuationHistory.map((message) => ({ role: message.role as "user" | "assistant", content: message.content })),
-          continuationContext,
-        );
-        assertTheoryOnly(theory);
+        const theory = await deliverPreparedTheory(continuationTarget);
+        const [theoryMessage] = await db
+          .insert(chatMessagesTable)
+          .values({ userId: req.userId!, lessonId, role: "assistant", content: theory.student_message })
+          .returning();
         await updateContinuationTargetSession({
             nodeTeachingStage: "TASK_REQUIRED",
             activeLessonExerciseId: null,
@@ -2849,10 +2864,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             activeHelpCount: 0,
             activeAssistanceLevel: "none",
           });
-        const [theoryMessage] = await db
-          .insert(chatMessagesTable)
-          .values({ userId: req.userId!, lessonId, role: "assistant", content: theory.student_message })
-          .returning();
         last = {
           lastContent: theory.student_message,
           lastMessageId: theoryMessage.id,
@@ -2970,9 +2981,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     _phase2ServerActionPlan.action === "DELIVER_THEORY"
   ) {
     try {
-      await assertPhase2TargetLocked();
-      const theory = await callPhase2TheoryJob(chatHistory, lessonContext);
-      assertTheoryOnly(theory);
+      const target = await assertPhase2TargetLocked();
+      if (!target) throw new Error("C7 execution target unavailable");
+      const theory = await deliverPreparedTheory(target);
       const driftDetected = session.currentNodeId
         ? validateNoScopeDrift(theory.student_message, _allNodeTitles)
         : false;
@@ -3001,62 +3012,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       );
       return;
     } catch (error) {
-      // Stage 5.5 — narrow fallback: both bounded THEORY attempts included a
-      // visible task. Compose safe Armenian theory from approved node content
-      // and persist it, then reuse the existing continuation to deliver the
-      // next answerable task. No evidence, mastery, or cognitive-progression
-      // side effects occur here.
-      if (error instanceof Phase2TheoryExhaustionError && currentNodeRecord) {
-        try {
-          const fallback = buildNodeTheoryFallback({
-            title: currentNodeRecord.title,
-            learningObjective: currentNodeRecord.learningObjective,
-            theoryContent: currentNodeRecord.theoryContent,
-            childFriendlyExplanation: currentNodeRecord.childFriendlyExplanation,
-            basicExamples: currentNodeRecord.basicExamples as readonly string[] | null | undefined,
-          });
-          logger.warn(
-            {
-              sessionId: session.id,
-              nodeId: session.currentNodeId,
-              originalError: error.originalMessage,
-            },
-            "Stage-5.5: both THEORY attempts included a visible task — using safe node-content fallback",
-          );
-          const [fallbackMessage] = await db
-            .insert(chatMessagesTable)
-            .values({
-              userId: req.userId!,
-              lessonId: lessonId ?? null,
-              role: "assistant",
-              content: fallback.student_message,
-            })
-            .returning();
-          await updateC7TargetLockedSession(buildPostFeedbackTransitionUpdate() as any);
-          // C7.2 keeps the deterministic fallback identical to normal
-          // teaching: persist and display TEACH before a later task turn.
-          respondWithPersistedPhase2Message(
-            fallback.student_message,
-            fallbackMessage.id,
-            "TEACH",
-            false,
-          );
-          return;
-        } catch (fallbackError) {
-          // Fallback itself failed (e.g. approved node content contained a task
-          // marker). Treat as a normal bounded failure so the route stays
-          // fail-closed.
-          logger.error(
-            {
-              sessionId: session.id,
-              err: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
-            },
-            "Stage-5.5: node-content fallback also failed — closing with bounded failure",
-          );
-          boundedPhase2Failure(fallbackError, "THEORY");
-          return;
-        }
-      }
       boundedPhase2Failure(error, "THEORY");
       return;
     }
@@ -5161,7 +5116,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 // Help levels 1-3 never reveal the final answer.  Level 4 requires explicit consent.
 // Does NOT advance teaching stage or create evidence_events.
 router.post("/chat/help", requireAuth, async (req: AuthRequest, res) => {
-  const { lessonId, revealAnswer } = req.body as { lessonId?: number; revealAnswer?: boolean };
+  const { lessonId, revealAnswer, materialKind = "hint" } = req.body as {
+    lessonId?: number; revealAnswer?: boolean; materialKind?: "hint" | "explanation" | "example";
+  };
+  if (!["hint", "explanation", "example"].includes(materialKind)) {
+    res.status(400).json({ error: "INVALID_MATERIAL_KIND" }); return;
+  }
   if (!lessonId) { res.status(400).json({ error: "lessonId required" }); return; }
 
   const [sessionRow] = await db
@@ -5186,7 +5146,8 @@ router.post("/chat/help", requireAuth, async (req: AuthRequest, res) => {
     },
     lessonId,
     req.userId!,
-    revealAnswer ?? false
+    revealAnswer ?? false,
+    materialKind,
   );
 
   if (!helpRes.ok) {
