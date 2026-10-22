@@ -1,3 +1,4 @@
+import { learningView, learningSummary } from "../services/knowledge-tree-presentation.js";
 import type { AssessmentSummary } from "../services/node-assessment-policy.js";
 import { Router } from "express";
 import {
@@ -142,7 +143,7 @@ router.get(
     );
 
     // Step 3: Collect per-subject node lists from the canonical C5 classifier.
-    const subjectNodes = new Map<number, Array<{ knowledgeState: KnowledgeState }>>();
+    const subjectNodes = new Map<number, Array<Parameters<typeof learningView>[0]>>();
     for (const sid of subjectMeta.keys()) {
       subjectNodes.set(sid, []);
     }
@@ -154,7 +155,7 @@ router.get(
       if (!list) continue;
 
       const state = stateMap.get(node.lessonNodeId);
-      if (state) list.push({ knowledgeState: state.knowledgeState });
+      if (state) list.push(state);
     }
 
     // Step 4: Build response preserving enrollment order (deduped by subjectId).
@@ -164,7 +165,7 @@ router.get(
       if (seen.has(row.subjectId)) continue;
       seen.add(row.subjectId);
       const coverage = aggregateCanonicalKnowledgeState(subjectNodes.get(row.subjectId) ?? []);
-      subjects.push({ subjectId: row.subjectId, subjectName: row.subjectName, ...coverage });
+      subjects.push({ subjectId: row.subjectId, subjectName: row.subjectName, learningSummary:learningSummary(subjectNodes.get(row.subjectId)??[]), ...coverage });
     }
 
     res.json({ subjects });
@@ -374,6 +375,7 @@ router.get(
 
       learnerState: {
         assessment: state?.assessment ?? null,
+        learningView: state?learningView(state):null,
         masteryScore,
         confidenceScore: kn?.confidenceScore ?? null,
         masteryLevel,
@@ -586,7 +588,8 @@ router.get(
     type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
 
     interface MicroNode {
-      practiceProgress?: unknown;
+      practiceProgress?: Parameters<typeof learningView>[0]["practiceProgress"];
+      learningView?: ReturnType<typeof learningView>;
       assessment?: AssessmentSummary | null;
       lessonNodeId: number;
       title: string;
@@ -673,6 +676,7 @@ router.get(
       lb.get(key)!.push({
         assessment: node.assessment,
         practiceProgress: node.practiceProgress,
+        learningView: learningView(node),
         lessonNodeId: node.lessonNodeId,
         title:        node.title,
         sequence:     node.sequence,
@@ -762,9 +766,9 @@ router.get(
       topicName: string;
     }> = [];
 
-    const notStarted = flatNodes.filter(n => n.knowledgeState === "NOT_STUDIED");
-    const inProgress = flatNodes.filter(n => n.knowledgeState === "NOT_KNOWN");
-    const weak       = flatNodes.filter(n => n.knowledgeState === "PARTIAL");
+    const notStarted = flatNodes.filter(n => learningView(n).state === "NOT_STUDIED");
+    const inProgress = flatNodes.filter(n => learningView(n).state === "NOT_KNOWN");
+    const weak       = flatNodes.filter(n => learningView(n).state === "PARTIAL");
     const mastered   = flatNodes.filter(n => n.knowledgeState === "MASTERED");
 
     if (notStarted.length > 0) {
@@ -775,19 +779,24 @@ router.get(
       });
     }
 
-    const support = flatNodes.filter(n => n.assessment?.status === "NEEDS_SUPPORT");
+    const support = flatNodes.filter(n => n.assessment?.status === "NEEDS_SUPPORT" && !n.practiceProgress?.practiceComplete);
     for (const node of support.slice(0, 3)) recommendations.push({
       type: "review", message: `Լրացուցիչ աջակցության կարիք՝ «${node.title}»`, topicName: node.title,
     });
     const toReview = [...weak, ...inProgress].filter(n => n.assessment?.status !== "NEEDS_SUPPORT");
     if (toReview.length > 0) {
-      const weakest = toReview.reduce((a, b) => (a.masteryScore < b.masteryScore ? a : b));
+      const weakest = toReview.reduce((a, b) => ((learningView(a).percent??0) < (learningView(b).percent??0) ? a : b));
       recommendations.push({
         type:      "review",
-        message:   `Կրկնել «${weakest.title}» — գնահատականը ${weakest.masteryScore}%`,
+        message:   `Կրկնել «${weakest.title}» — գնահատականը ${learningView(weakest).percent}%`,
         topicName: weakest.title,
       });
     }
+
+    for(const node of flatNodes.filter(n=>learningView(n).state==="PRACTICE_COMPLETE").slice(0,3)) recommendations.push({
+      type:"review",topicName:node.title,
+      message:`«${node.title}» — Ուսուցողական աշխատանքն ավարտված է։ Նոր հարցերով ստուգումը նշանակում է ուսուցիչը։`,
+    });
 
     if (mastered.length > 0) {
       recommendations.push({

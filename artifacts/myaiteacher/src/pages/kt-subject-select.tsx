@@ -20,6 +20,7 @@ import StudentLayout from "@/components/StudentLayout";
 
 // KT-1.4A: coverage model
 interface SubjectCard {
+  learningSummary?: {completed:number;mastered:number;partial:number;unknown:number;notStarted:number};
   subjectId:        number;
   subjectName:      string;
   totalUnits:       number;
@@ -118,11 +119,18 @@ export default function KtSubjectSelect() {
 
 function SubjectCardView({ subject: s }: { subject: SubjectCard }) {
   // KT-1.4A: coverage model — studiedCount / totalUnits
-  const rows: { label: string; count: number; dotClass: string }[] = [
-    { label: "Գիտի",                   count: s.masteredCount,    dotClass: "bg-secondary" },
-    { label: "Մասնակի գիտի",           count: s.partialCount,     dotClass: "bg-accent" },
-    { label: "Չգիտի",                  count: s.doesNotKnowCount, dotClass: "bg-primary" },
-    { label: "Դեռ չի ուսումնասիրել", count: s.notStartedCount,  dotClass: "bg-destructive" },
+  const summary=s.learningSummary;
+  const rows: { label: string; count: number; dotClass: string }[] = summary ? [
+    {label:"Ուսուցողական աշխատանքն ավարտված է",count:summary.completed,dotClass:"bg-secondary"},
+    {label:"Գիտի",count:summary.mastered,dotClass:"bg-secondary"},
+    {label:"Մասնակի գիտի",count:summary.partial,dotClass:"bg-accent"},
+    {label:"Չգիտի",count:summary.unknown,dotClass:"bg-primary"},
+    {label:"Դեռ չի ուսումնասիրել",count:summary.notStarted,dotClass:"bg-muted-foreground"},
+  ] : [
+    {label:"Գիտի",count:s.masteredCount,dotClass:"bg-secondary"},
+    {label:"Մասնակի գիտի",count:s.partialCount,dotClass:"bg-accent"},
+    {label:"Չգիտի",count:s.doesNotKnowCount,dotClass:"bg-primary"},
+    {label:"Դեռ չի ուսումնասիրել",count:s.notStartedCount,dotClass:"bg-muted-foreground"},
   ];
 
   const coverageColour =
@@ -144,7 +152,7 @@ function SubjectCardView({ subject: s }: { subject: SubjectCard }) {
 
       {/* KT-1.4A: Coverage summary row */}
       <div className="flex items-center justify-between bg-white/3 rounded-lg px-3 py-2">
-        <span className="text-xs text-muted-foreground">Ուսումնասիրված՝</span>
+        <span className="text-xs text-muted-foreground">Գնահատված՝</span>
         <div className="text-right">
           {s.totalUnits > 0 ? (
             <>

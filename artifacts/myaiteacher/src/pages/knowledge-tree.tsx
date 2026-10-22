@@ -1,4 +1,3 @@
-import { NodeAssessmentBadge, type AssessmentView } from "@/components/NodeAssessmentBadge";
 import { customFetch } from "@workspace/api-client-react";
 import { useEffect, useState, useCallback } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
@@ -16,9 +15,10 @@ import {
 import { NodeDetailPanel } from "./node-detail-panel";
 
 // ── C5 Knowledge Tree types ──────────────────────────────────────────────────
-type FilterTab = "all" | KnowledgeState;
+type FilterTab = "all" | KnowledgeState | "PRACTICE_COMPLETE";
 type KTCoverage = KnowledgeTreeCoverage;
-type KTMicroNode = KnowledgeTreeMicroNode;
+type KTMicroNode = KnowledgeTreeMicroNode & {learningView?:{state:KnowledgeState|"PRACTICE_COMPLETE";label:string;percent:number|null;correct:number|null;incorrect:number|null}};
+const viewState=(n:KTMicroNode)=>n.learningView?.state??n.knowledgeState;
 type KTTopic = KnowledgeTreeTopic;
 type KTLesson = KnowledgeTreeLesson;
 type KTData = KnowledgeTreeData;
@@ -38,12 +38,13 @@ function coverageColour(pct: number | null): string {
 
 // ── State helpers ─────────────────────────────────────────────────────────────
 
-function knowledgeStateConfig(level: KnowledgeState) {
+function knowledgeStateConfig(level: KnowledgeState | "PRACTICE_COMPLETE") {
   switch (level) {
+    case "PRACTICE_COMPLETE":
     case "MASTERED":    return { icon: "✓", badge: "bg-secondary/10 text-secondary border-secondary/20",   border: "border-l-secondary",  dot: "bg-secondary",  text: "text-secondary"  };
     case "PARTIAL":     return { icon: "◐", badge: "bg-accent/10 text-accent border-accent/20",             border: "border-l-accent",     dot: "bg-accent",     text: "text-accent"     };
     case "NOT_KNOWN":   return { icon: "!", badge: "bg-primary/10 text-primary border-primary/20",          border: "border-l-primary",    dot: "bg-primary",    text: "text-primary"    };
-    case "NOT_STUDIED": return { icon: "○", badge: "bg-destructive/10 text-destructive border-destructive/20", border: "border-l-destructive", dot: "bg-destructive", text: "text-destructive" };
+    case "NOT_STUDIED": return { icon: "○", badge: "bg-muted text-muted-foreground border-white/10", border: "border-l-white/20", dot: "bg-muted-foreground", text: "text-muted-foreground" };
   }
 }
 
@@ -51,9 +52,9 @@ function knowledgeStateConfig(level: KnowledgeState) {
 function filterLesson(lesson: KTLesson, filter: FilterTab): KTLesson | null {
   if (filter === "all") return lesson;
   const filteredTopics = lesson.topics
-    .map(t => ({ ...t, nodes: t.nodes.filter(n => n.knowledgeState === filter) }))
+    .map(t => ({ ...t, nodes: t.nodes.filter(n => viewState(n) === filter) }))
     .filter(t => t.nodes.length > 0);
-  const filteredUngrouped = lesson.ungroupedNodes.filter(n => n.knowledgeState === filter);
+  const filteredUngrouped = lesson.ungroupedNodes.filter(n => viewState(n) === filter);
   if (filteredTopics.length === 0 && filteredUngrouped.length === 0) return null;
   return { ...lesson, topics: filteredTopics, ungroupedNodes: filteredUngrouped };
 }
@@ -69,19 +70,19 @@ function NodeRow({
   onClick: (id: number) => void;
   isSelected: boolean;
 }) {
-  const cfg = knowledgeStateConfig(node.knowledgeState);
-  const practice=(node as KTMicroNode & {practiceProgress?:{current:{correct:number;total:number;incorrect:number;percent:number};practiceComplete:boolean}}).practiceProgress;
+  const cfg = knowledgeStateConfig(viewState(node));
+  const view=node.learningView;
   return (
     <button
       type="button"
       onClick={() => onClick(node.lessonNodeId)}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-card/50 border border-l-4 transition-colors text-left ${cfg.border} ${
+      className={`w-full flex flex-wrap items-center gap-3 px-4 py-3 rounded-xl bg-card/50 border border-l-4 transition-colors text-left ${cfg.border} ${
         isSelected
           ? "border-white/40 ring-1 ring-primary/30"
           : "border-card-border hover:bg-card/80"
       }`}
       aria-pressed={isSelected}
-      title="Բacel manatramb"
+      title={node.title}
     >
       {/* State icon — distinct symbol per state (not just color) */}
       <span
@@ -93,18 +94,12 @@ function NodeRow({
       </span>
 
       {/* Title */}
-      <span className="flex-1 text-sm font-medium text-white">{node.title}
-        {practice && <span className="block text-xs text-white/70">Վարժանք՝ 🟢 {practice.current.correct} ճիշտ · 🔴 {practice.current.incorrect} սխալ · {practice.current.percent}%{practice.practiceComplete?" · Վարժանքը հաջողվել է":""}</span>}
-        <span className="block text-xs text-muted-foreground">Անկախ հաստատման տվյալներ</span><NodeAssessmentBadge assessment={(node as typeof node & {assessment?:AssessmentView}).assessment}/></span>
-
-      {/* Score */}
-      <span className="text-sm font-semibold text-muted-foreground w-10 text-right">
-        {node.masteryScore}%
-      </span>
-
-      {/* Badge */}
+      <span className="flex-1 min-w-40 text-sm font-medium text-white">{node.title}
+        {view?.correct!=null && <span className="block text-xs text-white/70">🟢 {view.correct} ճիշտ · 🔴 {view.incorrect} սխալ</span>}</span>
+      {view?.percent!=null && <span className="text-sm font-semibold text-muted-foreground text-right">{view.percent}%</span>}
+      {!view && node.knowledgeState!=="NOT_STUDIED" && <span>{node.masteryScore}%</span>}
       <span className={`shrink-0 px-2 py-0.5 rounded text-xs font-medium border ${cfg.badge}`}>
-         {node.knowledgeStateLabel}
+        {view?.label??node.knowledgeStateLabel}
       </span>
     </button>
   );
@@ -139,7 +134,7 @@ function TopicGroup({
         </span>
         {/* KT-1.4A: coverage % — invariant to UI filter */}
         <span className={`text-xs font-semibold ml-2 ${coverageColour(topic.coveragePercent)}`}>
-          Ստուգված՝ {topic.studiedCount}/{topic.totalUnits}
+          Գնահատված՝ {topic.studiedCount}/{topic.totalUnits}
         </span>
       </button>
 
@@ -201,9 +196,9 @@ function LessonSection({
         </div>
         {/* KT-1.4A: coverage % — invariant to UI filter */}
         <div className="text-right shrink-0">
-          <div className="text-xs text-muted-foreground">{lesson.totalUnits} հanγ.</div>
+          <div className="text-xs text-muted-foreground">{lesson.totalUnits} հանգ.</div>
           <div className={`text-sm font-bold ${coverageColour(lesson.coveragePercent)}`}>
-            Ստուգված՝ {lesson.studiedCount}/{lesson.totalUnits}
+            Գնահատված՝ {lesson.studiedCount}/{lesson.totalUnits}
           </div>
         </div>
       </button>
@@ -245,7 +240,7 @@ function LessonSection({
                 </span>
                 {/* KT-1.4A: ungrouped coverage % — from backend, invariant to filter */}
                 <span className={`text-xs font-semibold ml-2 ${coverageColour(lesson.ungroupedCoverage.coveragePercent)}`}>
-                  Ստուգված՝ {lesson.ungroupedCoverage.studiedCount}/{lesson.ungroupedCoverage.totalUnits}
+                  Գնահատված՝ {lesson.ungroupedCoverage.studiedCount}/{lesson.ungroupedCoverage.totalUnits}
                 </span>
               </button>
               {expandedTopics.has(`ungrouped-${lesson.lessonId}`) && (
@@ -318,7 +313,7 @@ export default function KnowledgeTree() {
     setExpandedTopics(new Set());
     setSelectedNodeId(null);
     document.getElementById("student-main")?.scrollTo(0, 0);
-  }, [subjectId]);
+  }, [subjectId, studentId]);
 
   useEffect(() => {
     if (!authLoading && !token) {
@@ -358,31 +353,6 @@ export default function KnowledgeTree() {
 
   const rawData    = isTeacherView ? teacherTreeData  : ownTreeData;
   const treeLoading = isTeacherView ? teacherTreeLoading : ownTreeLoading;
-
-  // ── Auto-expand first lesson + all its topics once data arrives ───────────
-  useEffect(() => {
-    if (!rawData) return;
-    const data = rawData!;  // non-null: guarded by "if (!rawData) return" above
-    if (!data.lessons || data.lessons.length === 0) return;
-
-    const first = data.lessons[0];
-    // Only set defaults if expansion state is still empty (don't override user interactions)
-    setExpandedLessons(prev => {
-      if (prev.size > 0) return prev;
-      return new Set([first.lessonId]);
-    });
-    setExpandedTopics(prev => {
-      if (prev.size > 0) return prev;
-      const keys = new Set<string>();
-      for (const t of first.topics) {
-        keys.add(`topic-${first.lessonId}-${t.topicId}`);
-      }
-      if (first.ungroupedNodes.length > 0) {
-        keys.add(`ungrouped-${first.lessonId}`);
-      }
-      return keys;
-    });
-  }, [rawData]);
 
   // ── Loading / auth guard ──────────────────────────────────────────────────
   if (authLoading || treeLoading) {
@@ -452,7 +422,7 @@ export default function KnowledgeTree() {
               <span className="text-xs text-muted-foreground">Գիտելիքի ծառ</span>
               {treeData.coveragePercent !== null && (
                 <span className={`text-xs font-bold ${coverageColour(treeData.coveragePercent)}`}>
-                  · Ստուգված՝ {treeData.studiedCount} / {treeData.totalUnits} · {treeData.coveragePercent}%
+                  · Գնահատված՝ {treeData.studiedCount} / {treeData.totalUnits} · {treeData.coveragePercent}%
                 </span>
               )}
             </div>
@@ -467,6 +437,7 @@ export default function KnowledgeTree() {
           {(
             [
               { key: "all",         label: "Բոլորը",              dot: null },
+               { key: "PRACTICE_COMPLETE", label: "Ուսուցողական աշխատանքն ավարտված է", dot: "bg-secondary" },
                { key: "MASTERED",    label: "Գիտի",                dot: "bg-secondary"   },
                { key: "PARTIAL",     label: "Մասնակի գիտի",        dot: "bg-accent"      },
                { key: "NOT_KNOWN",   label: "Չգիտի",               dot: "bg-primary"     },
