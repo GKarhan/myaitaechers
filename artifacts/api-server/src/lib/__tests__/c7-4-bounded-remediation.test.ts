@@ -310,6 +310,42 @@ test("28 critical dependency exhaustion fails closed and never completes", () =>
   assert.equal(decision.revisitRequired, true);
 });
 
+test("29 pilot stops on exactly the third evaluated failure", () => {
+  for (const remediationStep of [0, 1]) {
+    const decision = decideNextPedagogicalAction(input({ maxFailedTeachingAttempts: 3, remediationStep }));
+    assert.equal(decision.revisitRequired, false);
+    assert.equal(decision.newRemediationStep, remediationStep + 1);
+  }
+  const third = decideNextPedagogicalAction(input({ maxFailedTeachingAttempts: 3, remediationStep: 2 }));
+  assert.equal(third.revisitRequired, true);
+  assert.equal(third.mayWriteMastery, false);
+  assert.equal(third.targetReached, false);
+});
+test("30 pilot third failure preserves critical prerequisite boundaries", () => {
+  const decision = decideNextPedagogicalAction(input({ maxFailedTeachingAttempts: 3, remediationStep: 2,
+    nextNodeHasCriticalDependencyOnCurrentNode: true }));
+  assert.equal(decision.metaAction, "REVISIT_LATER");
+  assert.equal(decision.mayCompleteMicroNode, false);
+  assert.equal(decision.mayWriteMastery, false);
+});
+test("31 pilot unclear and absent responses do not consume failure budget", () => {
+  for (const answerStatus of ["UNCLEAR", "NO_RESPONSE", "NOT_APPLICABLE", "OFF_TOPIC"] as const) {
+    const decision = decideNextPedagogicalAction(input({ maxFailedTeachingAttempts: 3, remediationStep: 2, answerStatus }));
+    assert.equal(decision.newRemediationStep, 2);
+    assert.equal(decision.revisitRequired, false);
+    assert.equal(decision.mayCompleteMicroNode, false);
+  }
+});
+test("32 two teaching successes do not lower the canonical confirmation requirement", () => {
+  const level = { ...understand, minimumIndependentEvidence: 3 };
+  const decision = decideNextPedagogicalAction(input({ maxFailedTeachingAttempts: 3, answerStatus: "CORRECT",
+    evidenceQuality: "MODERATE", activeCognitiveLevelId: level.id, activeCognitiveLevelRow: level,
+    cognitivePath: [remember,level], levelEvidenceSummary: { independentCorrectCount: 1,
+      totalCorrectCount: 1, bestQuality: "MODERATE" } }));
+  assert.equal(decision.levelConfirmed, false);
+  assert.equal(decision.mayWriteMastery, false);
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {
