@@ -387,7 +387,8 @@ export default function Dashboard() {
                   {qz.learningProgress && qz.learningProgress.history.length>0 ? <div className="text-xs mt-2 space-y-1">
                     <p>Սկզբնական արդյունք՝ {qz.learningProgress.initial.correct}/{qz.learningProgress.initial.total} · {qz.learningProgress.initial.percent}%</p>
                     <p className="text-teal-400">Ընթացիկ՝ 🟢 {qz.learningProgress.current.correct} ճիշտ · 🔴 {qz.learningProgress.current.incorrect} սխալ · {qz.learningProgress.current.percent}%</p>
-                    {(qz.learningComplete??qz.practiceComplete) && <p>Բոլոր սխալներն ուղղված են։ Վարժանքն ավարտված է։</p>}
+                    {qz.learningFlow?.nextPhase==="FINAL" && <p>Սխալների վրա աշխատանքն ավարտված է։ Անցիր ամբողջ թեստի ամփոփիչ ստուգմանը։</p>}
+                    {(qz.learningComplete??qz.practiceComplete) && <p>{qz.learningComplete?"Ուսուցողական թեստն ավարտված է։":"Բոլոր սխալներն ուղղված են։ Վարժանքն ավարտված է։"}</p>}
                   </div>:null}
                 </div>
                 {(qz.learningProgress?.history.length??0)>0 ? (
@@ -403,7 +404,7 @@ export default function Dashboard() {
                         href={`/quiz/${qz.quizId}/take`}
                         className="flex items-center justify-center px-5 py-2.5 rounded-xl bg-primary text-white font-semibold text-sm whitespace-nowrap"
                       >
-                        {qz.hasActiveAttempt?"Շարունակել":qz.learningFlow?.nextPhase==="FINAL"?"Անցնել ամփոփիչ ստուգմանը":`Շարունակել սովորել · ${qz.learningProgress?.remainingQuestionIds.length??0} հարց`}
+                        {qz.learningFlow?.nextPhase==="FINAL"?(qz.hasActiveAttempt?"Շարունակել ամփոփիչ ստուգումը":"Անցնել ամփոփիչ ստուգմանը"):qz.hasActiveAttempt?"Շարունակել":`Շարունակել սովորել · ${qz.learningProgress?.remainingQuestionIds.length??0} հարց`}
                       </Link>
                     )}
                   </div>
