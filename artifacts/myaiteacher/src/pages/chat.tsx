@@ -74,7 +74,7 @@ export default function Chat() {
     queryKey: sessionStateKey,
     enabled: !!lessonId && !!token,
     queryFn: async () => {
-      const response = await fetch(`/api/chat/session-state?lessonId=${lessonId}`, {
+      const response = await fetch(`https://myaitaechers-api.onrender.com/api/chat/session-state?lessonId=${lessonId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("SESSION_STATE_UNAVAILABLE");
@@ -164,7 +164,7 @@ export default function Chat() {
     setShowRevealConfirm(false);
 
     try {
-      const resp = await fetch(`/api/chat/help`, {
+      const resp = await fetch(`https://myaitaechers-api.onrender.com/api/chat/help`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
