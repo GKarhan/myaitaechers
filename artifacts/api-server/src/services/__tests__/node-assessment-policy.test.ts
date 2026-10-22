@@ -46,3 +46,14 @@ assert.equal(resolveQuizGenerationMode("canonical",nodePilot),"canonical");
 assert.equal(resolveQuizGenerationMode("standard",nodePilot),"standard");
 assert.equal(resolveQuizGenerationMode("invalid",nodePilot),null);
 console.log("PASS NODE_V1 defaults to standard; legacy and explicit canonical modes remain unchanged");
+
+const finalConfig = {version:"NODE_V1",purpose:"CHECK",context:"ANYWHERE",fullConfirmation:true} as const;
+assert.equal(parseAssessmentConfig(finalConfig)?.fullConfirmation,true);
+assert.equal(parseAssessmentConfig({...finalConfig,purpose:"LEARNING"}),null);
+assert.equal(parseAssessmentConfig({...finalConfig,fullConfirmation:"true"}),null);
+assert.equal(resolveQuizGenerationMode("standard",finalConfig),"canonical");
+assert.deepEqual([...allocateNodeQuestions([2580,2581,2582,2583,2584],15,finalConfig).values()],[3,3,3,3,3]);
+assert.throws(()=>allocateNodeQuestions([2580,2581,2582,2583,2584],5,finalConfig));
+assert.throws(()=>allocateNodeQuestions([1,2],5,finalConfig));
+assert.equal(allocateNodeQuestions([1,2],2).size,2);
+console.log("PASS final confirmation: three per node, canonical cognitive scope, partial-check compatibility");
