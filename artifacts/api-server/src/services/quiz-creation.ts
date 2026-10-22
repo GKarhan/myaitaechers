@@ -196,6 +196,7 @@ export async function generateQuizFromNodeScope(
     throw new QuizCreationError("QUESTION_SCOPE_INVALID");
   }
 
+  if (input.assessmentConfig?.fullConfirmation) allocateNodeQuestions(nodeIds, input.questionCount, input.assessmentConfig);
   const priorQuestions = input.assessmentConfig && input.studentId != null
     ? await db.select({text:quizQuestionsTable.questionText}).from(quizAnswersTable)
       .innerJoin(quizQuestionsTable,eq(quizQuestionsTable.id,quizAnswersTable.questionId))
@@ -204,12 +205,12 @@ export async function generateQuizFromNodeScope(
       .where(and(eq(quizAssignmentsTable.studentId,input.studentId),inArray(quizQuestionsTable.nodeId,nodeIds))) : [];
   const avoidQuestionTexts = [...new Set(priorQuestions.map(q=>q.text))];
   const exposedFamilies = new Set(avoidQuestionTexts.map(normalizeQuestionText));
-  const canonicalTargets = input.generationPurpose === "retest" || input.generationPurpose === "standard"
+  const canonicalTargets = !input.assessmentConfig?.fullConfirmation && (input.generationPurpose === "retest" || input.generationPurpose === "standard")
     ? []
     : await resolveNormalQuizCanonicalTargets(nodeIds);
   let generated: GeneratedQuestion[];
   if (canonicalTargets.length > 0) {
-    const allocation = input.assessmentConfig ? allocateNodeQuestions(nodeIds, input.questionCount) : allocateQuestionsByNode(nodeIds, input.questionCount);
+    const allocation = input.assessmentConfig ? allocateNodeQuestions(nodeIds, input.questionCount, input.assessmentConfig) : allocateQuestionsByNode(nodeIds, input.questionCount);
     const batches: GeneratedQuestion[] = [];
     for (const target of canonicalTargets) {
       const nodeQuestionCount = allocation.get(target.nodeId) ?? 0;
@@ -247,7 +248,7 @@ export async function generateQuizFromNodeScope(
     }
     generated = batches;
   } else if (input.assessmentConfig) {
-    const allocation = allocateNodeQuestions(nodeIds, input.questionCount);
+    const allocation = allocateNodeQuestions(nodeIds, input.questionCount, input.assessmentConfig);
     const batches: GeneratedQuestion[] = [];
     for (const [nodeId, count] of allocation) {
       const generate = input.generateQuestions ?? generateQuizQuestions;
@@ -276,7 +277,7 @@ export async function generateQuizFromNodeScope(
   }
 
   if (input.assessmentConfig) {
-    const allocation = allocateNodeQuestions(nodeIds, input.questionCount);
+    const allocation = allocateNodeQuestions(nodeIds, input.questionCount, input.assessmentConfig);
     for (const [nodeId, count] of allocation) {
       const questions = generated.filter(q => q.nodeId === nodeId);
       const unique = new Set(questions.map(q => normalizeQuestionText(q.questionText)));
