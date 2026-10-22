@@ -18,6 +18,7 @@ interface NodeDetailLesson  { id: number; title: string }
 interface NodeDetailTopic   { id: number; title: string }
 
 interface NodeDetailLearnerState {
+  learningView?: {state:string;label:string;percent:number|null;correct:number|null;incorrect:number|null};
   masteryScore:    number;
   confidenceScore: number | null;
   masteryLevel:    "mastered" | "weak" | "in_progress" | "not_started";
@@ -256,7 +257,7 @@ function PanelContent({
   launchError: string | null;
   onLaunch: () => Promise<void>;
 }) {
-  const mCfg = knowledgeStateConfig(data.learnerState.knowledgeState);
+  const mCfg = knowledgeStateConfig(data.learnerState.learningView?.state==="PRACTICE_COMPLETE"?"MASTERED":data.learnerState.knowledgeState);
 
   return (
     <>
@@ -335,14 +336,14 @@ function PanelContent({
         {/* State badge */}
         <div className="flex items-center gap-3">
           <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${mCfg.bg} ${mCfg.colour}`}>
-            {data.learnerState.knowledgeStateLabel}
+            {data.learnerState.learningView?.label??data.learnerState.knowledgeStateLabel}
           </span>
         </div>
 
         {/* Mastery score */}
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Յուրացում</span>
-          <span className="text-sm font-bold text-white">{data.learnerState.masteryScore}%</span>
+          <span className="text-sm text-muted-foreground">Ընթացիկ արդյունք</span>
+          <span className="text-sm font-bold text-white">{data.learnerState.learningView ? (data.learnerState.learningView.percent===null?"—":`${data.learnerState.learningView.percent}%`) : `${data.learnerState.masteryScore}%`}</span>
         </div>
 
         {data.learnerState.targetCognitiveLevel && (

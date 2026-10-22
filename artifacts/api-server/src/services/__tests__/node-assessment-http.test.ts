@@ -1,3 +1,4 @@
+import { learningView, learningSummary } from "../knowledge-tree-presentation.js";
 import { generateQuizFromNodeScope } from "../quiz-creation.js";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -138,6 +139,16 @@ try {
   const teacherOverview:any=await(await fetch(`${base}/quizzes/${repro}/results/${studentId}`,{headers:auth(teacherId!,"teacher")})).json();
   assert.equal(teacherOverview.overviewQuestions.length,9);assert.equal(teacherOverview.creationContext.subjectId,subjectId);
   assert.equal(teacherOverview.overviewQuestions.filter((q:any)=>q.isCorrect).length,9);
+  const currentStates=[...(await resolveKnowledgeTreeStates(studentId!,three)).values()];
+  const beforeStates=currentStates.map(n=>({knowledgeState:n.knowledgeState,masteryScore:n.masteryScore}));
+  const views=currentStates.map(learningView);
+  assert.ok(views.every(v=>v.percent===100));
+  assert.ok(views.every(v=>v.state==="PRACTICE_COMPLETE"||v.state==="MASTERED"));
+  const summary=learningSummary(currentStates);
+  assert.equal(summary.completed+summary.mastered,3);assert.equal(summary.partial,0);
+  assert.deepEqual(currentStates.map(n=>({knowledgeState:n.knowledgeState,masteryScore:n.masteryScore})),beforeStates);
+  assert.equal(learningView({knowledgeState:"NOT_STUDIED"}).percent,null);
+  console.log("PASS tree presentation: 3 completed nodes at 100%, no stale partial counts, independent mastery unchanged, unstudied score absent");
   console.log("PASS complete overview 9/9, immutable historic answers, completed dashboard card without continue, teacher creation context");
 
   const noMore=await fetch(`${base}/quizzes/${repro}/take`,{headers});assert.equal(noMore.status,409);

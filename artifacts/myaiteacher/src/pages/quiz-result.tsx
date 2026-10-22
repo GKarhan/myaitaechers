@@ -1,4 +1,4 @@
-import { NodeAssessmentBadge, type AssessmentView } from "@/components/NodeAssessmentBadge";
+import { type AssessmentView } from "@/components/NodeAssessmentBadge";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -206,11 +206,7 @@ export default function QuizResult() {
           {!isTeacherView && result.session?.status==="ACTIVE" && progress.remainingQuestionIds.length>0 && <Link href={`/quiz/${id}/take`} className="block rounded-xl bg-primary px-4 py-3 text-center font-bold">Շարունակել սովորել · {progress.remainingQuestionIds.length} հարց</Link>}
           {progress.remainingQuestionIds.length===0 && <p className="text-teal-300">Բոլոր սխալներն ուղղված են։ Վարժանքն ավարտված է։</p>}
           {!isTeacherView && result.session && <button disabled={finishing} onClick={finishSession} className="rounded-xl border px-4 py-2">{finishing?"Ավարտվում է...":"Ավարտել"}</button>}
-          {isTeacherView && <details className="text-sm text-muted-foreground"><summary>Յուրացման հաստատում</summary>
-            <p>Նոր հարցերի առաջին ինքնուրույն պատասխանները՝ նախկին ստուգումները ներառյալ։ Արդեն տեսած հարցերի կրկնությունը մնում է վարժանք։</p>
-            <p>{result.totalCorrect}/{result.totalQuestions} · {result.scorePercent}%</p>
-            <p>Ամբողջությամբ յուրացված հանգույցներ՝ {result.nodeBreakdown?.filter(n=>n.assessment?.status==="SUCCESS").length??0}</p>
-          </details>}
+
         </section>}
 
         {!isTeacherView && (result.attempts?.length ?? 0) > 0 && (
@@ -247,7 +243,7 @@ export default function QuizResult() {
                 {item && <><p>Սկզբում՝ {item.initial.correct}/{item.initial.total} · {item.initial.percent}%</p><p>Ընթացիկ՝ 🟢 {item.current.correct} ճիշտ · 🔴 {item.current.incorrect} սխալ · {item.current.percent}%</p>
                   <p className={item.practiceComplete?"text-teal-300":"text-amber-300"}>{item.practiceComplete?(node.assessment?.status==="SUCCESS"?"Ամբողջությամբ յուրացված հանգույցներ":"Վարժանքն ավարտված է։"):"Շարունակել սովորել"}</p></>}
                 {node.assessment?.status==="NEEDS_SUPPORT" && <p className="text-rose-300">Լրացուցիչ աջակցության կարիք։ Դիտել բացատրությունները և դիմել ուսուցչին։</p>}
-                {isTeacherView && <details className="text-sm text-muted-foreground"><summary>Յուրացման հաստատում</summary><NodeAssessmentBadge assessment={node.assessment}/></details>}
+
               </div>;
             })}
           </section>
