@@ -4949,7 +4949,7 @@ export default function TeacherDashboard() {
   const [quizBooks,     setQuizBooks]       = useState<{id:number;name:string}[]>([]);
   const [quizCreating,  setQuizCreating]    = useState(false);
   const [quizError,     setQuizError]       = useState<string|null>(null);
-  const [quizGenerationMode, setQuizGenerationMode] = useState<"standard" | "canonical">("canonical");
+  const [quizGenerationMode, setQuizGenerationMode] = useState<"standard" | "canonical">("standard");
   const [quizType,      setQuizType]        = useState<"lesson"|"summary">("lesson");
   // ── Node drill-down (single-lesson mode) ──────────────────────────────────
   const [quizNodeIds,      setQuizNodeIds]      = useState<number[]>([]);
@@ -7598,7 +7598,7 @@ export default function TeacherDashboard() {
                 <option value="standard">Սովորական թեստ · դասի բովանդակությունից</option>
                 <option value="canonical">Գիտելիքահեն թեստ · MicroNode / Bloom (փորձնական)</option>
               </select>
-              <p className="text-xs text-muted-foreground">Սովորական թեստի արդյունքը ինքնաբերաբար չի հաստատում MicroNode-ի յուրացումը։</p>
+              <p className="text-xs text-muted-foreground">Տոկոսը հաշվվում է ճիշտ/կատարված հարաբերությամբ, ոչ նախատեսված բայց չտրված հարցերով։</p>
             </div>
             {/* Title */}
             <div className="mb-4">

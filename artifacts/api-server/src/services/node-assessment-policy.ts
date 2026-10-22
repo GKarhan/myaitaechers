@@ -7,6 +7,11 @@ export function parseAssessmentConfig(value: unknown): AssessmentConfig | null {
     !["IN_CLASS", "AT_HOME", "CLASS_THEN_HOME", "ANYWHERE"].includes(v.context ?? "")) return null;
   return v as AssessmentConfig;
 }
+/** Explicit advanced mode stays explicit; node-only pilot is the default. */
+export function resolveQuizGenerationMode(requested:unknown,config:unknown):"standard"|"canonical"|null {
+  if(requested===undefined)return parseAssessmentConfig(config)?"standard":"canonical";
+  return requested==="standard"||requested==="canonical"?requested:null;
+}
 export function allocateNodeQuestions(nodeIds: readonly number[], count: number): Map<number, number> {
   const ids = [...new Set(nodeIds)];
   if (!ids.length || !Number.isInteger(count) || count < ids.length || count > Math.min(50, ids.length * 3))

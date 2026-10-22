@@ -2,7 +2,7 @@ import { getQuizLearningProgress } from "../services/quiz-learning-progress.js";
 import { filterAutomaticAssessmentScope } from "../services/quiz-session.js";
 import { normalizeQuestionText } from "../services/quiz-question-quality.js";
 import { resolveKnowledgeTreeStates } from "../services/knowledge-tree-state.js";
-import { parseAssessmentConfig, allocateNodeQuestions, aggregateAssessments } from "../services/node-assessment-policy.js";
+import { parseAssessmentConfig, resolveQuizGenerationMode, allocateNodeQuestions, aggregateAssessments } from "../services/node-assessment-policy.js";
 import { Router } from "express";
 import {
   db,
@@ -437,7 +437,7 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
     nodeIds: explicitNodeIds,
     quizType: requestedQuizType,
     assessmentConfig: requestedAssessmentConfig,
-    generationMode = "canonical",
+    generationMode: requestedGenerationMode,
     questionCount = 10,
     difficultyMode = "MIXED",
     title,
@@ -457,7 +457,8 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
 
   const assessmentConfig = requestedAssessmentConfig == null ? undefined : parseAssessmentConfig(requestedAssessmentConfig);
   if (requestedAssessmentConfig != null && !assessmentConfig) { res.status(400).json({error:"INVALID_ASSESSMENT_CONFIG"}); return; }
-  if (!["canonical", "standard"].includes(generationMode)) {
+  const generationMode=resolveQuizGenerationMode(requestedGenerationMode,assessmentConfig);
+  if (!generationMode) {
     res.status(400).json({ error: "Invalid quiz generation mode" });
     return;
   }
