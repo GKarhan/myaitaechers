@@ -34,6 +34,8 @@ type AssignedQuiz = {
   totalCorrect: number | null; totalQuestions: number | null;
   scorePercent: number | null;
   canContinue?: boolean;
+  practiceComplete?:boolean; hasActiveAttempt?:boolean;
+  learningProgress?:{initial:{correct:number;total:number;percent:number};current:{correct:number;incorrect:number;total:number;percent:number};remainingQuestionIds:number[];history:unknown[]};
   sessionState?: { knowsCount: number; learningCount: number } | null;
 };
 
@@ -381,31 +383,26 @@ export default function Dashboard() {
               >
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-base leading-snug">{qz.title}</h3>
-                  {qz.status === "COMPLETED" && qz.totalCorrect !== null && (
-                    <p className="text-xs text-teal-400 mt-1">
-                      Ավարտված · {qz.totalCorrect}/{qz.totalQuestions} ({qz.scorePercent}%)
-                    </p>
-                  )}
-                  {qz.sessionState && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Գիտի՝ {qz.sessionState.knowsCount} · Սովորելու՝ {qz.sessionState.learningCount}
-                    </p>
-                  )}
+                  {qz.learningProgress && qz.learningProgress.history.length>0 ? <div className="text-xs mt-2 space-y-1">
+                    <p>Սկզբնական արդյունք՝ {qz.learningProgress.initial.correct}/{qz.learningProgress.initial.total} · {qz.learningProgress.initial.percent}%</p>
+                    <p className="text-teal-400">Ընթացիկ՝ 🟢 {qz.learningProgress.current.correct} ճիշտ · 🔴 {qz.learningProgress.current.incorrect} սխալ · {qz.learningProgress.current.percent}%</p>
+                    {qz.practiceComplete && <p>Բոլոր սխալներն ուղղված են։ Վարժանքն ավարտված է։</p>}
+                  </div>:null}
                 </div>
-                {qz.status === "COMPLETED" ? (
+                {(qz.learningProgress?.history.length??0)>0 ? (
                   <div className="flex flex-wrap gap-2">
                     <Link
                       href={`/quiz/${qz.quizId}/result`}
                       className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-teal-400/15 text-teal-400 border border-teal-400/20 font-semibold text-sm hover:bg-teal-400/25 transition-all whitespace-nowrap"
                     >
-                      Տեսնել արդյունք
+                      Դիտել արդյունքները
                     </Link>
                     {qz.canContinue && (
                       <Link
                         href={`/quiz/${qz.quizId}/take`}
                         className="flex items-center justify-center px-5 py-2.5 rounded-xl bg-primary text-white font-semibold text-sm whitespace-nowrap"
                       >
-                        Շարունակել
+                        {qz.hasActiveAttempt?"Շարունակել":`Շարունակել սովորել · ${qz.learningProgress?.remainingQuestionIds.length??0} հարց`}
                       </Link>
                     )}
                   </div>
@@ -414,7 +411,7 @@ export default function Dashboard() {
                     href={`/quiz/${qz.quizId}/take`}
                     className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
                   >
-                    ▶ ՍԿՍԵԼ ԹԵՍՏԵՐ
+                    {qz.hasActiveAttempt?"Շարունակել":"Սկսել"}
                   </Link>
                 )}
               </div>
@@ -841,8 +838,8 @@ export default function Dashboard() {
   /* ── QUIZZES ── */
   const SectionQuizzes = () => {
     const quizzes = assignedQuizzes ?? [];
-    const pending   = quizzes.filter((q) => q.status !== "COMPLETED");
-    const completed = quizzes.filter((q) => q.status === "COMPLETED");
+    const pending   = quizzes.filter((q) => !(q.practiceComplete ?? q.status === "COMPLETED"));
+    const completed = quizzes.filter((q) => q.practiceComplete ?? q.status === "COMPLETED");
     return (
       <div>
         <h2 className="text-lg font-bold mb-6">📋 Իմ թեստերը</h2>

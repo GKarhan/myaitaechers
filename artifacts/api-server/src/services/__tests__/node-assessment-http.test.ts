@@ -119,13 +119,31 @@ try {
   const before=await answer(repro,[true,true,false,true,false,true,false,false,false],false);
   assert.equal(before.learningProgress.initial.correct,4);assert.equal(before.learningProgress.remainingQuestionIds.length,5);
   assert.deepEqual(before.learningProgress.nodes.map((n:any)=>n.current.correct),[2,2,0]);
+  const partialCards:any=await(await fetch(`${base}/quizzes/assigned`,{headers})).json();
+  const partialCard=partialCards.find((q:any)=>q.quizId===repro);
+  assert.equal(partialCard.totalCorrect,4);assert.equal(partialCard.totalQuestions,9);
+  assert.equal(partialCard.learningProgress.remainingQuestionIds.length,5);
+  assert.equal(partialCard.practiceComplete,false);assert.equal(partialCard.canContinue,true);
   const after=await answer(repro,[true,true,true,true,false],false);
   assert.equal(after.practiceTotalQuestions,5);assert.equal(after.learningProgress.current.correct,8);assert.equal(after.learningProgress.remainingQuestionIds.length,1);
   const final=await answer(repro,[true],false);assert.equal(final.practiceTotalQuestions,1);assert.equal(final.learningProgress.current.correct,9);
+  assert.equal(final.questions.length,1);assert.equal(final.overviewQuestions.length,9);
+  assert.equal(final.overviewQuestions.filter((q:any)=>q.isCorrect).length,9);
+  const oldView:any=await(await fetch(`${base}/quizzes/${repro}/my-result?attemptId=${before.attemptId}`,{headers})).json();
+  assert.equal(oldView.questions.length,9);assert.equal(oldView.questions.filter((q:any)=>q.isCorrect).length,4);
+  assert.equal(oldView.overviewQuestions.filter((q:any)=>q.isCorrect).length,9);
+  const assigned:any=await(await fetch(`${base}/quizzes/assigned`,{headers})).json();
+  const card=assigned.find((q:any)=>q.quizId===repro);
+  assert.equal(card.totalCorrect,9);assert.equal(card.totalQuestions,9);assert.equal(card.scorePercent,100);assert.equal(card.practiceComplete,true);assert.equal(card.canContinue,false);
+  const teacherOverview:any=await(await fetch(`${base}/quizzes/${repro}/results/${studentId}`,{headers:auth(teacherId!,"teacher")})).json();
+  assert.equal(teacherOverview.overviewQuestions.length,9);assert.equal(teacherOverview.creationContext.subjectId,subjectId);
+  assert.equal(teacherOverview.overviewQuestions.filter((q:any)=>q.isCorrect).length,9);
+  console.log("PASS complete overview 9/9, immutable historic answers, completed dashboard card without continue, teacher creation context");
+
   const noMore=await fetch(`${base}/quizzes/${repro}/take`,{headers});assert.equal(noMore.status,409);
   console.log("PASS 288 corrective cycle: 4/9 -> five wrong questions -> one wrong question -> 9/9, no infinite retries");
-  const teacherNoStudent=await fetch(`${base}/quizzes/${repro}/reconfirm`,{method:"POST",headers:auth(teacherId!,"teacher"),body:JSON.stringify({})});assert.equal(teacherNoStudent.status,400);
-  const teacherForeignStudent=await fetch(`${base}/quizzes/${repro}/reconfirm`,{method:"POST",headers:auth(teacherId!,"teacher"),body:JSON.stringify({studentId:teacherId})});assert.equal(teacherForeignStudent.status,404);
+  const teacherNoStudent=await fetch(`${base}/quizzes/${repro}/reconfirm`,{method:"POST",headers:auth(teacherId!,"teacher"),body:JSON.stringify({})});assert.equal(teacherNoStudent.status,410);
+  const teacherForeignStudent=await fetch(`${base}/quizzes/${repro}/reconfirm`,{method:"POST",headers:auth(teacherId!,"teacher"),body:JSON.stringify({studentId:teacherId})});assert.equal(teacherForeignStudent.status,410);
   let replacements=0;
   const regenerated=await generateQuizFromNodeScope({title:tag,teacherId:teacherId!,subjectId:subjectId!,nodeIds:[node.id],questionCount:3,difficultyMode:"MIXED",generationPurpose:"standard",assessmentConfig:{version:"NODE_V1",purpose:"CHECK",context:"ANYWHERE"},generateQuestions:async()=>{
     replacements++;
