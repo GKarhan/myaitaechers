@@ -1,3 +1,4 @@
+import { getLessonFinalAssessmentHandoff } from "../services/lesson-final-assessment.js";
 import { Router } from "express";
 import {
   db, chatMessagesTable, lessonsTable, lessonSessionsTable,
@@ -5275,6 +5276,7 @@ router.get("/chat/session-state", requireAuth, async (req: AuthRequest, res) => 
     activeHelpCount:       (sessionRow as any).activeHelpCount       ?? 0,
     activeAssistanceLevel: (sessionRow as any).activeAssistanceLevel ?? "none",
     nodeTeachingStage,
+    finalAssessment: await getLessonFinalAssessmentHandoff(sessionRow),
     status:                sessionRow.status,
     currentPhase:          sessionRow.currentPhase,
     // V2-R1 canonical state additions
