@@ -1,7 +1,6 @@
-import { customFetch } from "@workspace/api-client-react";
+import LearningScopeDialog from "./LearningScopeDialog";
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
-import { useAuth } from "@/lib/auth";
+import { Link } from "wouter";
 import { lessonStatusBadge } from "@/lib/student-nav";
 
 export type StudentLessonCardLesson = {
@@ -40,34 +39,16 @@ export default function StudentLessonCard({
   quizzes?: LinkedQuiz[];
 }) {
   const badge = lessonStatusBadge(lesson.mySessionStatus);
-  const { token } = useAuth();
-  const [, setLocation] = useLocation();
-  const [relearnPending, setRelearnPending] = useState(false);
-  const [relearnError, setRelearnError] = useState<string | null>(null);
 
   const hasSession = lesson.mySessionStatus != null;
+  const [scopeOpen,setScopeOpen]=useState(false);
 
-  const handleRelearn = async () => {
-    setRelearnPending(true);
-    setRelearnError(null);
-    try {
-      await customFetch(`/api/lessons/${lesson.id}/start-fresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      });
-      setLocation(`/chat/${lesson.id}`);
-    } catch (error) {
-      const data = (error as { data?: { message?: string; error?: string } })?.data;
-      setRelearnError(data?.message ?? data?.error ?? "Սխալ տեղի ունեցավ։ Խնդրում ենք փորձել կրկին։");
-    } finally {
-      setRelearnPending(false);
-    }
-  };
 
   const btnCls = "flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0 disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
     <div className="rounded-2xl border border-white/10 bg-card/60 p-5 flex flex-col gap-4 hover:border-white/20 transition-colors">
+      {scopeOpen && <LearningScopeDialog lessonId={lesson.id} title={lesson.title} onClose={()=>setScopeOpen(false)}/>}
       {/* ── Top row: metadata + start button ── */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-5">
         <div className="flex-1 min-w-0 space-y-2.5">
@@ -90,23 +71,12 @@ export default function StudentLessonCard({
               <span>Էջ {lesson.pagesFrom ?? "?"}–{lesson.pagesTo ?? "?"}</span>
             )}
           </div>
-          {relearnError && (
-            <p className="text-xs text-red-400">{relearnError}</p>
-          )}
+
         </div>
-        {hasSession ? (
-          <button
-            onClick={handleRelearn}
-            disabled={relearnPending}
-            className={btnCls}
-          >
-            {relearnPending ? "⏳ ..." : "↺ Կրկին սովորել"}
-          </button>
-        ) : (
-          <Link href={`/lessons/${lesson.id}`} className={btnCls}>
-            ▶ Սովորել
-          </Link>
-        )}
+        <div className="flex flex-col gap-2 shrink-0">
+          <button onClick={()=>setScopeOpen(true)} className={btnCls}>Սովորել</button>
+          {hasSession && lesson.mySessionStatus === "active" && <Link href={`/chat/${lesson.id}`} className="text-center text-sm text-secondary py-2">Շարունակել</Link>}
+        </div>
       </div>
 
       {/* ── Linked tests block ──
