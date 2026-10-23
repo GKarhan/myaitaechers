@@ -19,6 +19,7 @@ export default function LearningScopeDialog({lessonId,title,onClose}:{lessonId:n
   useEffect(()=>{const listener=(e:KeyboardEvent)=>{if(e.key==="Escape"&&!pending)onClose();};window.addEventListener("keydown",listener);return()=>window.removeEventListener("keydown",listener);},[onClose,pending]);
   async function start(){if(pending)return;setPending(true);setError("");try{
     await customFetch(`/api/lessons/${lessonId}/start-fresh`,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({nodeIds:mode==="LESSON"?null:selected})});
+    await customFetch("/api/chat",{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({lessonId,message:"Սկսենք"})});
     queryClient.removeQueries({queryKey:getGetChatHistoryQueryKey({lessonId})});
     queryClient.removeQueries({queryKey:["teacher-session-state",lessonId]});
     navigate(`/chat/${lessonId}`);
