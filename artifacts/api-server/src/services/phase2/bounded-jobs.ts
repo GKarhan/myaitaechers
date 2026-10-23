@@ -6,6 +6,8 @@ import {
 } from "../ai.js";
 import { containsHiddenExerciseContent } from "../../lib/exercise-content-boundary.js";
 
+import { generateDistinctTask } from "../../lib/distinct-teaching-task.js";
+
 const MODEL = "deepseek/deepseek-chat-v3-0324";
 
 export const phase2TheoryResultSchema = z.object({
@@ -477,11 +479,11 @@ export async function callPhase2TheoryJob(
   }
 }
 
-export function callPhase2TaskJob(
+export async function callPhase2TaskJob(
   messages: ChatMessage[],
   lessonContext: string,
 ): Promise<Phase2TaskCandidate> {
-  return runBoundedJob({
+  return generateDistinctTask(messages, async (correction) => runBoundedJob({
     name: "phase2_task_candidate",
     schema: phase2TaskCandidateSchema,
     maxTokens: 1100,
@@ -498,10 +500,12 @@ export function callPhase2TaskJob(
       ARMENIAN_ONLY,
       "Protocol option keys must use Latin A, B, C, D; correct_option must be exactly one of those keys, not an Armenian display label or option text.",
       "Prefer short positive statements over negative yes/no questions. For true_false include an explicit learner directive beginning with Ընտրիր before one positive declarative statement; the server renders fixed true/false choices.",
+      "Never repeat a question already shown in assistant history. Use a different example or situation at the same authorized cognitive level; changing option order alone is insufficient.",
+      correction,
       "AUTHORITATIVE EDUCATIONAL CONTEXT:",
       lessonContext,
     ].join("\n"),
-  });
+  }));
 }
 
 export function callPhase2EvaluationJob(
