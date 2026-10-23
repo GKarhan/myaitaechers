@@ -78,7 +78,8 @@ export default function Chat() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("SESSION_STATE_UNAVAILABLE");
-      return response.json() as Promise<{ hasActiveTask: boolean; activeHelpCount: number;
+      return response.json() as Promise<{ hasActiveTask: boolean; activeHelpCount: number; introConfirmed?: boolean; currentPhase?: number; nodeTeachingStage?: string;
+        answerOptions?: Array<{key:string;text:string}>;
         finalAssessment?: {state:string;href:string|null} }>;
     },
   });
@@ -108,10 +109,8 @@ export default function Chat() {
     scrollToBottom();
   }, [chatHistory, sendMessageMutation.isPending, helpCards]);
 
-  const handleSend = () => {
-    if (!message.trim() || sendMessageMutation.isPending) return;
-
-    const currentMsg = message;
+  const sendText = (currentMsg: string) => {
+    if (!currentMsg.trim() || sendMessageMutation.isPending) return;
     setMessage("");
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -139,6 +138,8 @@ export default function Chat() {
       }
     );
   };
+
+  const handleSend = () => sendText(message);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -323,6 +324,22 @@ export default function Chat() {
                   {sessionState.finalAssessment.state === "COMPLETED" ? "Արդյունքներ" : "Սկսենք ստուգումը"}
                 </Link>
               ) : <p className="text-sm text-muted-foreground">Save failed։ Դիմիր ուսուցչին։</p>}
+            </div>
+          )}
+          {!sendMessageMutation.isPending && !sessionStateRefreshing && (
+            <div className="flex flex-wrap gap-2">
+              {sessionState?.hasActiveTask && sessionState.answerOptions?.map(option => (
+                <button key={option.key} onClick={() => sendText(option.key)}
+                  className="rounded-lg border border-primary px-4 py-2 text-sm hover:bg-primary/20">
+                  {option.key}) {option.text}
+                </button>
+              ))}
+              {sessionState && !sessionState.hasActiveTask && (sessionState.currentPhase ?? 0) <= 2 && (
+                <button onClick={() => sendText(sessionState.introConfirmed ? "Շարունակենք" : "Սկսենք")}
+                  className="rounded-lg bg-primary px-4 py-2 font-semibold">
+                  {sessionState.introConfirmed ? "Շարունակենք" : "Սկսենք"}
+                </button>
+              )}
             </div>
           )}
           {sendMessageMutation.isError && (
