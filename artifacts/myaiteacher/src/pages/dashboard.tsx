@@ -1,3 +1,4 @@
+import { armenianDate } from "@/lib/armenian-date";
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -180,7 +181,7 @@ export default function Dashboard() {
   const hwDone    = hwItems.filter((h) => h.status === "graded");
 
   const className  = (schedule as any[])[0]?.className ?? "";
-  const todayDate  = new Date().toLocaleDateString("hy-AM", { day: "numeric", month: "long", year: "numeric" });
+  const todayDate  = armenianDate(new Date());
   const todayArm   = new Date().toLocaleDateString("hy-AM", { weekday: "long" });
   const todayItems = [...schedule]
     .filter((s) => s.day.toLowerCase().replace(/\./g, "") === todayArm.toLowerCase().replace(/\./g, ""))
@@ -243,23 +244,7 @@ export default function Dashboard() {
               <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-3">Իմ դասերը</h3>
               <div className="space-y-3">
                 {assignedLessons.map((lesson) => (
-                  <div
-                    key={`ai-${lesson.subject}-${lesson.id}`}
-                    className="rounded-2xl border border-white/10 bg-card/60 p-4 flex items-center gap-4"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs text-muted-foreground mb-0.5">
-                        {lesson.subject} · {lesson.teacherName}
-                      </div>
-                      <div className="font-medium text-sm truncate">{lesson.title}</div>
-                    </div>
-                    <Link
-                      href={`/lessons/${lesson.id}`}
-                      className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-xs font-bold hover:opacity-90 transition-all whitespace-nowrap"
-                    >
-                      {lesson.mySessionStatus === "active" ? "ՇԱՐՈՒՆԱԿԵԼ" : "ՍԿՍԵԼ"}
-                    </Link>
-                  </div>
+                  <StudentLessonCard key={`ai-${lesson.id}`} lesson={lesson} />
                 ))}
               </div>
             </div>
