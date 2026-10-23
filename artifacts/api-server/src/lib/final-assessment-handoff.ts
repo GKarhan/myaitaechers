@@ -2,7 +2,7 @@ import { parseAssessmentConfig } from "../services/node-assessment-policy.js";
 import { normalizeQuestionText } from "../services/quiz-question-quality.js";
 
 export type FinalAssessmentHandoff = {
-  state: "NOT_READY" | "WAITING_FOR_QUIZ" | "READY" | "COMPLETED";
+  state: "NOT_READY" | "WAITING_FOR_QUIZ" | "READY" | "COMPLETED" | "SCOPE_COMPLETE";
   quizId: number | null;
   href: string | null;
 };
