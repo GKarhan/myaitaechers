@@ -16,6 +16,7 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   lessonId: integer("lesson_id")
     .notNull()
     .references(() => lessonsTable.id, { onDelete: "cascade" }),
+  learningScope: jsonb("learning_scope").$type<{version:1;mode:"LESSON"|"NODES";nodeIds:number[]} | null>(),
   currentPhase: integer("current_phase").notNull().default(1),
   status: text("status").notNull().default("active"),
   masteryScore: integer("mastery_score"),
