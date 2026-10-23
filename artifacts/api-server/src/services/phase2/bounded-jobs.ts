@@ -24,10 +24,10 @@ export function normalizeTaskOptionKey(value: string): string {
   return aliases[key] ?? key;
 }
 
-export const phase2TaskCandidateSchema = z.object({
+export const phase2TaskCandidateSchema = z.strictObject({
   student_message: z.string().min(1),
   interaction_type: phase2TaskInteractionTypeSchema,
-  options: z.array(z.object({
+  options: z.array(z.strictObject({
     key: z.string().transform(normalizeTaskOptionKey).pipe(z.string().regex(/^[A-Z]$/u)),
     text: z.string().min(1),
   })).nullable(),
@@ -324,7 +324,7 @@ function formatForSchema<T>(name: string, schema: z.ZodType<T>) {
     json_schema: {
       name,
       strict: true,
-      schema: z.toJSONSchema(schema, { io: "input" }),
+      schema: z.toJSONSchema(schema, name === "phase2_task_candidate" ? { io: "input" } : {}),
     },
   };
 }
