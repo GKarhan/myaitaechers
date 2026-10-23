@@ -7,7 +7,8 @@ for(const answer of ["Բ","բ","B","b)","2","Սխալ"])
 for(const answer of ["Ա","ա","A","1","Ճիշտ"])
   assert.equal(normalizeObjectiveMicroCheckAnswer(answer,"true_false"),"TRUE");
 assert.notEqual(normalizeObjectiveMicroCheckAnswer("Գ","true_false"),"FALSE");
-assert.doesNotThrow(() => z.toJSONSchema(phase2TaskCandidateSchema, {io:"input"}));
+const providerSchema = z.toJSONSchema(phase2TaskCandidateSchema, {io:"input"});
+assert.equal(providerSchema.additionalProperties,false);
 const candidate={student_message:"Ո՞ր տարբերակն է դիտում։",interaction_type:"multiple_choice",options:[{key:"A",text:"Տարբերակ մեկ"},{key:"B",text:"Տարբերակ երկու"}],correct_option:"Բ",question_template:null};
 assert.equal(phase2TaskCandidateSchema.parse(candidate).correct_option,"B");
 assert.equal(phase2TaskCandidateSchema.parse({...candidate,correct_option:candidate.options[1]!.text}).correct_option,"B");
