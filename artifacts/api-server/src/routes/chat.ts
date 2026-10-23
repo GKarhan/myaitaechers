@@ -2170,7 +2170,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .where(eq(lessonNodesTable.lessonId, lessonId))
           .orderBy(asc(lessonNodesTable.sequence), asc(lessonNodesTable.id)),
       ]);
-      const outcomesBlock = approvedOutcomes.map((o) => `• ${o.text}`).join("\n");
+      const outcomesBlock = approvedOutcomes.flatMap((o) => o.text.split(/[•\n]+/u)).map(text => text.trim()).filter(Boolean).map(text => `• ${text}`).join("\n");
       const goalBlock = lesson.lessonGoal?.trim();
       const planBlock = planNodes.map((node, index) => `${index + 1}. ${node.title}`).join("\n");
       const greetLine = studentName
@@ -3195,6 +3195,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           "Server action: DELIVER_FEEDBACK",
         ].join("\n"),
         _stage3HiddenExerciseContent,
+        retryEvaluation.status,
       );
       assertFeedbackOnly(feedback);
       const [feedbackMessage] = await db
@@ -4591,6 +4592,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           "The feedback must not include a new question, answer options, source exercise text, or a next task.",
         ].join("\n"),
         _stage3HiddenExerciseContent,
+        _evaluatedTurnAuthority?.status ?? aiResult.answer_evaluation.status,
       );
       assertFeedbackOnly(feedback);
       const acknowledgement = serverOwnedFeedbackAcknowledgement(
@@ -4610,7 +4612,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             _evaluatedTurnAuthority.status as "CORRECT" | "INCORRECT" | "PARTIALLY_CORRECT",
           );
         }
-        studentMessage = acknowledgement
+        studentMessage = acknowledgement && feedback.student_message !== acknowledgement
           ? `${acknowledgement}\n${feedback.student_message}`
           : feedback.student_message;
       } catch (authorityError) {
@@ -5273,6 +5275,11 @@ router.get("/chat/session-state", requireAuth, async (req: AuthRequest, res) => 
 
   res.json({
     hasActiveTask,
+    answerOptions: hasActiveTask && sessionRow.activeObjectiveTaskPayload
+      ? sessionRow.activeObjectiveTaskPayload.interactionType === "true_false"
+        ? [{key:"Ա",text:"Ճիշտ"},{key:"Բ",text:"Սխալ"}]
+        : sessionRow.activeObjectiveTaskPayload.options ?? []
+      : [],
     activeHelpCount:       (sessionRow as any).activeHelpCount       ?? 0,
     activeAssistanceLevel: (sessionRow as any).activeAssistanceLevel ?? "none",
     nodeTeachingStage,
