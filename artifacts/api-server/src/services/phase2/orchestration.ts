@@ -543,8 +543,8 @@ export function normalizeObjectiveMicroCheckAnswer(
     .toLocaleLowerCase();
 
   if (interactionType === "true_false") {
-    if (["ճիշտ", "true", "այո"].includes(normalized)) return "TRUE";
-    if (["սխալ", "false", "ոչ"].includes(normalized)) return "FALSE";
+    if (["ճիշտ", "true", "այո", "ա", "a", "1"].includes(normalized)) return "TRUE";
+    if (["սխալ", "false", "ոչ", "բ", "b", "2"].includes(normalized)) return "FALSE";
     return normalized.toUpperCase();
   }
 
