@@ -1,3 +1,4 @@
+import { customFetch } from "@workspace/api-client-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -50,18 +51,14 @@ export default function StudentLessonCard({
     setRelearnPending(true);
     setRelearnError(null);
     try {
-      const res = await fetch(`/api/lessons/${lesson.id}/start-fresh`, {
+      await customFetch(`/api/lessons/${lesson.id}/start-fresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setRelearnError((body as any)?.error ?? "Չhardvets nkartvats dasn sksnel");
-        return;
-      }
-      setLocation(`/lessons/${lesson.id}`);
-    } catch {
-      setRelearnError("Ցanцavorutyun: krknakel, kardatsek");
+      setLocation(`/chat/${lesson.id}`);
+    } catch (error) {
+      const data = (error as { data?: { message?: string; error?: string } })?.data;
+      setRelearnError(data?.message ?? data?.error ?? "Սխալ տեղի ունեցավ։ Խնդրում ենք փորձել կրկին։");
     } finally {
       setRelearnPending(false);
     }
