@@ -227,7 +227,7 @@ test("T — THEORY rejects leading Latin and Armenian option fragments", () => {
 
 test("U — server-owned acknowledgement polarity is canonical", () => {
   assert.equal(serverOwnedFeedbackAcknowledgement("CORRECT"), "Ճիշտ պատասխան է։");
-  assert.equal(serverOwnedFeedbackAcknowledgement("INCORRECT"), "Պատասխանը ճիշտ չէ։");
+  assert.equal(serverOwnedFeedbackAcknowledgement("INCORRECT"), "Ոչինչ, սա հաճախ է շփոթեցնում։");
   assert.equal(serverOwnedFeedbackAcknowledgement("PARTIALLY_CORRECT"), "Պատասխանը մասամբ ճիշտ է։");
 });
 
