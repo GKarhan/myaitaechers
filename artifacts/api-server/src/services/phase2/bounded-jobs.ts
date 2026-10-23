@@ -18,15 +18,34 @@ const phase2TaskInteractionTypeSchema = z.enum([
   "constructed_response",
 ]);
 
+export function normalizeTaskOptionKey(value: string): string {
+  const key = value.normalize("NFKC").trim().replace(/[.)\s]+$/u, "").toUpperCase();
+  const aliases: Record<string, string> = {"Ա":"A", "Բ":"B", "Գ":"C", "Դ":"D", "Ե":"E", "Զ":"F"};
+  return aliases[key] ?? key;
+}
+
 export const phase2TaskCandidateSchema = z.object({
   student_message: z.string().min(1),
   interaction_type: phase2TaskInteractionTypeSchema,
   options: z.array(z.object({
-    key: z.string().regex(/^[A-Z]$/u),
+    key: z.string().transform(normalizeTaskOptionKey).pipe(z.string().regex(/^[A-Z]$/u)),
     text: z.string().min(1),
   })).nullable(),
-  correct_option: z.string().nullable(),
+  correct_option: z.string().transform(normalizeTaskOptionKey).nullable(),
   question_template: z.string().nullable(),
+}).transform(candidate => {
+  // Repair only unambiguous aliases of the same visible answer, never infer
+  // an answer from the question or relax the unknown-answer rejection.
+  if (candidate.interaction_type === "multiple_choice" && candidate.correct_option &&
+      !candidate.options?.some(o => o.key === candidate.correct_option)) {
+    const matches = candidate.options?.filter(o => normalizeTaskOptionKey(o.text) === candidate.correct_option) ?? [];
+    if (matches.length === 1) return {...candidate, correct_option: matches[0]!.key};
+  }
+  if (candidate.interaction_type === "true_false") {
+    const aliases: Record<string, string> = {A:"TRUE", B:"FALSE", "ՃԻՇՏ":"TRUE", "ՍԽԱԼ":"FALSE"};
+    return {...candidate, correct_option: candidate.correct_option ? aliases[candidate.correct_option] ?? candidate.correct_option : null};
+  }
+  return candidate;
 }).superRefine((candidate, ctx) => {
   if (!hasVisibleTaskStem(candidate.student_message)) {
     ctx.addIssue({
@@ -34,6 +53,9 @@ export const phase2TaskCandidateSchema = z.object({
       path: ["student_message"],
       message: "task candidate must contain an explicit visible, answerable task stem",
     });
+  }
+  if (candidate.options && new Set(candidate.options.map(o => o.key)).size !== candidate.options.length) {
+    ctx.addIssue({code:"custom",path:["options"],message:"option keys must be unique after normalization"});
   }
   if (candidate.interaction_type === "multiple_choice") {
     if (!candidate.options || candidate.options.length < 2) {
@@ -279,7 +301,7 @@ export function serverOwnedFeedbackAcknowledgement(
     case "CORRECT":
       return "Ճիշտ պատասխան է։";
     case "INCORRECT":
-      return "Պատասխանը ճիշտ չէ։";
+      return "Ոչինչ, սա հաճախ է շփոթեցնում։";
     case "PARTIALLY_CORRECT":
       return "Պատասխանը մասամբ ճիշտ է։";
     default:
@@ -302,7 +324,7 @@ function formatForSchema<T>(name: string, schema: z.ZodType<T>) {
     json_schema: {
       name,
       strict: true,
-      schema: z.toJSONSchema(schema),
+      schema: z.toJSONSchema(schema, { io: "input" }),
     },
   };
 }
@@ -474,6 +496,8 @@ export function callPhase2TaskJob(
       "student_message-ում գրիր միայն առաջադրանքի հարցի տեքստը, երբեք մի՛ կրկնիր ընտրանքները։",
       "Մի՛ նշիր source exercise identity կամ textbook provenance։",
       ARMENIAN_ONLY,
+      "Protocol option keys must use Latin A, B, C, D; correct_option must be exactly one of those keys, not an Armenian display label or option text.",
+      "Prefer short positive statements over negative yes/no questions. For true_false include an explicit learner directive beginning with Ընտրիր before one positive declarative statement; the server renders fixed true/false choices.",
       "AUTHORITATIVE EDUCATIONAL CONTEXT:",
       lessonContext,
     ].join("\n"),
@@ -506,7 +530,10 @@ export function callPhase2FeedbackJob(
   messages: ChatMessage[],
   feedbackContext: string,
   hiddenContents: readonly (string | null | undefined)[] = [],
+  authoritativeStatus?: string,
 ): Promise<Phase2FeedbackResult> {
+  const acknowledgement = serverOwnedFeedbackAcknowledgement(authoritativeStatus ?? "");
+  if (acknowledgement) return Promise.resolve({student_message: acknowledgement});
   return runBoundedJob({
     name: "phase2_feedback_result",
     schema: phase2FeedbackResultSchema,
