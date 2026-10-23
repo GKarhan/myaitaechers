@@ -1,3 +1,4 @@
+import { armenianDate } from "@/lib/armenian-date";
 import { Link } from "wouter";
 
 export type StudentQuizCardQuiz = {
@@ -27,8 +28,8 @@ export type StudentQuizCardQuiz = {
 };
 
 const QUIZ_STATUS_LABEL: Record<string, string> = {
-  ASSIGNED:    "Ուղարկված",
-  IN_PROGRESS: "Ուղարկված",
+  ASSIGNED:    "Հանձնարարված",
+  IN_PROGRESS: "Ընթացքի մեջ",
   COMPLETED:   "✅",
 };
 
@@ -40,9 +41,7 @@ const QUIZ_STATUS_CLS: Record<string, string> = {
 
 export default function StudentQuizCard({ quiz }: { quiz: StudentQuizCardQuiz }) {
   const hasResults = (quiz.learningProgress?.history.length ?? 0) > 0 || quiz.status === "COMPLETED";
-  const dateStr = new Date(quiz.assignedAt).toLocaleDateString("hy-AM", {
-    day: "numeric", month: "long",
-  });
+  const dateStr = armenianDate(quiz.assignedAt,false);
 
   if (hasResults) {
     return (
@@ -90,7 +89,7 @@ export default function StudentQuizCard({ quiz }: { quiz: StudentQuizCardQuiz })
           </span>
           {quiz.dueAt && (
             <span className="text-xs text-muted-foreground">
-              Deadline: {new Date(quiz.dueAt).toLocaleDateString("hy-AM")}
+              Վերջնաժամկետ՝ {armenianDate(quiz.dueAt)}
             </span>
           )}
         </div>

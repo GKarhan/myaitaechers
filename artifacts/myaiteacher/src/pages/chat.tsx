@@ -78,7 +78,7 @@ export default function Chat() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("SESSION_STATE_UNAVAILABLE");
-      return response.json() as Promise<{ hasActiveTask: boolean; activeHelpCount: number; introConfirmed?: boolean; currentPhase?: number; nodeTeachingStage?: string;
+      return response.json() as Promise<{ hasActiveTask: boolean; activeHelpCount: number; learningScope?: {mode:string;nodeIds:number[]}|null; scopeNodes?: Array<{id:number;title:string}>; currentNodeTitle?:string|null; introConfirmed?: boolean; currentPhase?: number; nodeTeachingStage?: string;
         answerOptions?: Array<{key:string;text:string}>;
         finalAssessment?: {state:string;href:string|null} }>;
     },
@@ -223,29 +223,33 @@ export default function Chat() {
       {/* Header */}
       <header className="shrink-0 border-b border-card-border bg-card/80 backdrop-blur-lg sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-4">
-          <Link href={lessonId ? `/lesson/${lessonId}` : `/dashboard`} className="p-2 -ml-2 text-muted-foreground hover:text-white rounded-full hover:bg-white/5 transition-colors">
+          <Link href="/dashboard?section=tasks" aria-label="Իմ դասերը" title="Իմ դասերը" className="p-2 -ml-2 text-muted-foreground hover:text-white rounded-full hover:bg-white/5 transition-colors">
             ←
           </Link>
           <div className="flex flex-col">
             <div className="font-bold flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
-              AI Ուսուցիչ
+              ԱԲ ուսուցիչ
             </div>
             {lessonId && (
               <div className="text-xs text-muted-foreground truncate max-w-[200px] sm:max-w-sm">
-                Դաս #{lessonId}
+                {sessionState?.currentNodeTitle ?? `Դաս #${lessonId}`}
               </div>
             )}
           </div>
         </div>
       </header>
 
+      {sessionState?.scopeNodes && <details className="shrink-0 border-b border-card-border px-4 py-2 text-sm text-muted-foreground">
+        <summary className="max-w-4xl mx-auto cursor-pointer">{sessionState.learningScope?.mode === "NODES" ? "Ընտրված թեմաներ" : "Դասի պլան"} ({sessionState.scopeNodes.length})</summary>
+        <ol className="max-w-4xl mx-auto py-2 space-y-1">{sessionState.scopeNodes.map((n,i)=><li key={n.id}>{i+1}. {n.title}</li>)}</ol>
+      </details>}
       {/* Messages */}
       <main className="flex-1 overflow-y-auto p-4 space-y-6">
         <div className="max-w-4xl mx-auto space-y-6 flex flex-col">
           {messages.length === 0 ? (
             <div className="self-start max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 bg-card border-l-4 border-secondary border-y border-r border-card-border shadow-lg">
-              <div className="text-xs font-medium text-secondary mb-1">AI Ուսուցիչ</div>
+              <div className="text-xs font-medium text-secondary mb-1">ԱԲ ուսուցիչ</div>
               <div className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap">
                 Բարև, {user.fullName}! Ես AI ուսուցիչն եմ։ Ի՞նչ հարց ունես։
               </div>
@@ -262,7 +266,7 @@ export default function Chat() {
                       : 'self-start bg-card border-l-4 border-secondary border-y border-r border-card-border rounded-bl-sm'
                   }`}
                 >
-                  {!isUser && <div className="text-xs font-medium text-secondary mb-1">AI Ուսուցիչ</div>}
+                  {!isUser && <div className="text-xs font-medium text-secondary mb-1">ԱԲ ուսուցիչ</div>}
                   <div className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap">
                     {msg.content}
                   </div>
@@ -288,7 +292,7 @@ export default function Chat() {
 
           {sendMessageMutation.isPending && (
             <div className="self-start max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 bg-card border-l-4 border-secondary border-y border-r border-card-border shadow-lg rounded-bl-sm flex items-center gap-2">
-              <div className="text-xs font-medium text-secondary mr-2">AI Ուսուցիչ</div>
+              <div className="text-xs font-medium text-secondary mr-2">ԱԲ ուսուցիչ</div>
               <div className="flex gap-1">
                 <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.3s]"></span>
                 <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.15s]"></span>
@@ -317,8 +321,8 @@ export default function Chat() {
         <div className="max-w-4xl mx-auto space-y-2">
           {!sendMessageMutation.isPending && !sessionStateRefreshing && sessionState?.finalAssessment && sessionState.finalAssessment.state !== "NOT_READY" && (
             <div className="rounded-xl border border-secondary p-3 space-y-2">
-              <p className="font-semibold">Ամփոփիչ ստուգում</p>
-              {sessionState.finalAssessment.href ? (
+              <p className="font-semibold">{sessionState.finalAssessment.state === "SCOPE_COMPLETE" ? "Ընտրված թեմաների ուսուցումն ավարտված է" : "Ամփոփիչ ստուգում"}</p>
+              {sessionState.finalAssessment.state === "SCOPE_COMPLETE" ? <Link href="/dashboard?section=tasks" className="inline-flex rounded-lg bg-primary px-4 py-2">Իմ դասերը</Link> : sessionState.finalAssessment.href ? (
                 <Link href={sessionState.finalAssessment.href}
                   className="inline-flex rounded-lg bg-primary px-4 py-2 font-semibold">
                   {sessionState.finalAssessment.state === "COMPLETED" ? "Արդյունքներ" : "Սկսենք ստուգումը"}

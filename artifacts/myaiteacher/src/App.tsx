@@ -13,7 +13,6 @@ import SubjectDetail from "@/pages/subject-detail";
 import KnowledgeTree from "@/pages/knowledge-tree";
 import KtSubjectSelect from "@/pages/kt-subject-select";
 import LessonDetail from "@/pages/lesson-detail";
-import LessonPage from "@/pages/lesson-page";
 import Chat from "@/pages/chat";
 import Books from "@/pages/books";
 import Homework from "@/pages/homework";
@@ -41,7 +40,7 @@ function Router() {
       <Route path="/subjects/:id" component={SubjectDetail} />
       <Route path="/kt-subjects" component={KtSubjectSelect} />
       <Route path="/knowledge-tree/:id" component={KnowledgeTree} />
-      <Route path="/lessons/:id" component={LessonPage} />
+      <Route path="/lessons/:id" component={LessonDetail} />
       <Route path="/lesson/:id" component={LessonDetail} />
       <Route path="/chat/:id" component={Chat} />
       <Route path="/books" component={Books} />

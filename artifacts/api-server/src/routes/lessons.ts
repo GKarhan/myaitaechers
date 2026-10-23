@@ -1,3 +1,4 @@
+import { createLearningScope } from "../lib/learning-scope.js";
 import {prepareTextSource} from "../services/mapping-v2/prepare-text-source.js";
 import {TEXT_SOURCE_SPAN_PROMPT} from "../services/mapping-v2/source-spans.js";
 import {readFileSync} from "node:fs";
@@ -1318,15 +1319,25 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
     return;
   }
 
+  if(req.userRole !== "teacher" && req.userRole !== "admin" && !["active","assigned"].includes(lesson.status)) {
+    res.status(403).json({error:"LESSON_NOT_ACTIVE"});return;
+  }
+  const approvedNodes = await db.select({id:lessonNodesTable.id}).from(lessonNodesTable)
+    .where(and(eq(lessonNodesTable.lessonId,lessonId),eq(lessonNodesTable.status,"approved")))
+    .orderBy(asc(lessonNodesTable.sequence),asc(lessonNodesTable.id));
+  let learningScope;
+  try {learningScope=createLearningScope(req.body?.nodeIds,approvedNodes.map(n=>n.id));}
+  catch(error){res.status(400).json({error:(error as Error).message});return;}
   const c6Decision = await resolveCanonicalC6Decision({
     learnerId: req.userId!,
     lessonId,
+    scopeNodeIds:learningScope.nodeIds,
     entryIntent: "NORMAL_LEARNING",
   });
   if (isC6DeliveryBlocked(c6Decision)) {
     res.status(409).json({
       error: "C6_TARGET_UNAVAILABLE",
-      message: "Այս դասի առաջին հասանելի հանգույցի ճանաչողական ուղին հաստատված չէ։",
+      message: c6Decision.prerequisiteStatus === "REDIRECTED" ? "Այս թեմայից առաջ անհրաժեշտ է սովորել նախորդ հանգույցը։ Ընտրիր նաև այն կամ ամբողջ դասը։" : "Այս դասի առաջին հասանելի հանգույցի ճանաչողական ուղին հաստատված չէ։",
       reasonCode: c6Decision.reasonCode,
     });
     return;
@@ -1354,6 +1365,7 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
     await db.transaction(async (tx) => {
       await tx.update(lessonSessionsTable)
         .set({
+          learningScope,
           currentPhase:           selectedInitialPhase,
           status:                 "active",
           masteryScore:           null,
@@ -1376,6 +1388,8 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
           activeLessonExerciseId:     null,
           activeCognitiveLevelId:     c6Decision.nextTargetCognitiveLevelId,
           activeTaskProvenance:       null,
+          activeTaskReference:        null,
+          activeTaskSnapshot:         null,
           activeObjectiveTaskPayload: null,
           activeAttemptSequence:      0,
           activeHelpCount:            0,
@@ -1402,6 +1416,7 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
     const [session] = await db.insert(lessonSessionsTable).values({
       userId: req.userId!,
       lessonId,
+      learningScope,
       currentPhase: selectedInitialPhase,
       status: "active",
       currentNodeId: c6Decision.microNodeId,
@@ -1413,7 +1428,7 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
     logger.info({ sessionId, lessonId, userId: req.userId!, c6TargetNodeId: c6Decision.microNodeId, c6TargetLevelId: c6Decision.nextTargetCognitiveLevelId }, "start-fresh: no existing session, created new");
   }
 
-  res.json({ sessionId, lessonId, currentNodeId: c6Decision.microNodeId, currentPhase: selectedInitialPhase });
+  res.json({ sessionId, lessonId, learningScope, currentNodeId: c6Decision.microNodeId, currentPhase: selectedInitialPhase });
 });
 
 // ── V2-R4A.3: POST /lessons/:lessonId/session/finish ─────────────────────────

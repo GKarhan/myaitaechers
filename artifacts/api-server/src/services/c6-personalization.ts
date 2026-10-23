@@ -107,6 +107,8 @@ export function isC6DeliveryBlocked(decision: C6Decision): boolean {
 export type ResolveC6DecisionInput = {
   /** Trusted server session scope, never learner-supplied progress. */
   teachingSessionId?: number;
+  /** Server-validated scope at fresh entry; otherwise loaded from the owned session. */
+  scopeNodeIds?: number[];
   learnerId: number;
   lessonId: number;
   entryIntent?: C6EntryIntent;
@@ -311,11 +313,16 @@ export function resolveC6DecisionFromSnapshot(
   const nodes = [...input.nodes].sort((a, b) => a.sequence - b.sequence || a.id - b.id);
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const dependencies = input.dependencies ?? [];
+  const scope = input.scopeNodeIds ? new Set(input.scopeNodeIds) : null;
+  const eligible = (node:C6NodeSnapshot) => (!scope || scope.has(node.id)) &&
+    (scope || node.knowledgeState !== "MASTERED") && !node.teachingProgress?.covered;
+  if(scope && (!scope.size || [...scope].some(id=>!byId.has(id))))
+    return unavailableDecision(input,"DEPENDENCY_TARGET_MISSING","INVALID_GRAPH");
 
   const requested = input.requestedMicroNodeId == null
     ? null
     : byId.get(input.requestedMicroNodeId) ?? null;
-  if (input.requestedMicroNodeId != null && !requested) {
+  if (input.requestedMicroNodeId != null && (!requested || scope && !scope.has(input.requestedMicroNodeId))) {
     return unavailableDecision(
       input,
       "DEPENDENCY_TARGET_MISSING",
@@ -335,21 +342,21 @@ export function resolveC6DecisionFromSnapshot(
 
   let candidate: C6NodeSnapshot | null = requested;
   let advancing = input.afterMicroNodeId != null;
-  if ((candidate?.knowledgeState === "MASTERED" || candidate?.teachingProgress?.covered) && intent === "NORMAL_LEARNING") {
+  if (((!scope && candidate?.knowledgeState === "MASTERED") || candidate?.teachingProgress?.covered) && intent === "NORMAL_LEARNING") {
     const currentIndex = nodes.findIndex((node) => node.id === candidate!.id);
     candidate = nodes.slice(currentIndex + 1).find(
-      (node) => node.knowledgeState !== "MASTERED" && !node.teachingProgress?.covered,
+      eligible,
     ) ?? null;
     advancing = true;
   }
   if (!candidate) {
     candidate = candidatesAfterAnchor.find(
-      (node) => node.knowledgeState !== "MASTERED" && !node.teachingProgress?.covered,
+      eligible,
     ) ?? null;
   }
   if (!candidate) {
     const done = unavailableDecision(input, "NO_ELIGIBLE_MICRONODE", "NOT_APPLICABLE");
-    return nodes.some((node) => node.teachingProgress) ? { ...done, teachingOnly: true } : done;
+    return scope || nodes.some((node) => node.teachingProgress) ? { ...done, teachingOnly: true } : done;
   }
 
   const prerequisite = resolveRequiredPrerequisites(candidate, byId, dependencies);
@@ -357,6 +364,8 @@ export function resolveC6DecisionFromSnapshot(
     return unavailableDecision(input, prerequisite.reasonCode, "INVALID_GRAPH");
   }
   const target = prerequisite.node;
+  if(scope && !scope.has(target.id))
+    return unavailableDecision(input,"DEPENDENCY_TARGET_MISSING","REDIRECTED");
   const prerequisiteStatus: C6PrerequisiteStatus = prerequisite.redirected
     ? "REDIRECTED"
     : dependencies.some(
@@ -387,7 +396,9 @@ export function resolveC6DecisionFromSnapshot(
 
   const hasAcceptedCognitiveTarget =
     target.curriculumTargetCognitiveLevelId !== null;
-  const nextTargetCognitiveLevelId = !isExplicitReview && target.teachingProgress
+  const nextTargetCognitiveLevelId = scope && !target.teachingProgress
+    ? orderedApplicablePath(target)[0]?.id ?? null
+    : !isExplicitReview && target.teachingProgress
     ? target.teachingProgress.nextLevelId
     : isExplicitReview && hasAcceptedCognitiveTarget
     ? target.curriculumTargetCognitiveLevelId
@@ -403,7 +414,7 @@ export function resolveC6DecisionFromSnapshot(
         : next.reasonCode;
 
   return {
-    ...(target.teachingProgress && !isExplicitReview ? { teachingOnly: true } : {}),
+    ...((scope || target.teachingProgress) && !isExplicitReview ? { teachingOnly: true } : {}),
     learnerId: input.learnerId ?? 0,
     lessonId: input.lessonId ?? 0,
     microNodeId: target.id,
@@ -425,6 +436,11 @@ export function resolveC6DecisionFromSnapshot(
 export async function resolveCanonicalC6Decision(
   input: ResolveC6DecisionInput,
 ): Promise<C6Decision> {
+  const [ownedSession] = await db.select().from(lessonSessionsTable).where(and(
+    eq(lessonSessionsTable.userId,input.learnerId),eq(lessonSessionsTable.lessonId,input.lessonId),
+    ...(input.teachingSessionId ? [eq(lessonSessionsTable.id,input.teachingSessionId)] : []),
+  )).limit(1);
+  const scopeNodeIds = input.scopeNodeIds ?? ownedSession?.learningScope?.nodeIds;
   const nodes = await db
     .select({
       id: lessonNodesTable.id,
@@ -491,9 +507,8 @@ export async function resolveCanonicalC6Decision(
     pathByNodeId.set(level.lessonNodeId, path);
   }
 
-  const [teachingSession] = input.teachingSessionId && input.entryIntent !== "EXPLICIT_REVIEW" ? await db.select()
-    .from(lessonSessionsTable).where(and(eq(lessonSessionsTable.id, input.teachingSessionId),
-      eq(lessonSessionsTable.userId, input.learnerId), eq(lessonSessionsTable.lessonId, input.lessonId))).limit(1) : [];
+  const teachingSession = input.scopeNodeIds ? undefined : input.entryIntent !== "EXPLICIT_REVIEW" &&
+    (input.teachingSessionId || scopeNodeIds) ? ownedSession : undefined;
   const teachingEvidence = teachingSession ? await db.select().from(evidenceEventsTable).where(and(
     eq(evidenceEventsTable.lessonSessionId, teachingSession.id),
     eq(evidenceEventsTable.userId, input.learnerId),
@@ -531,6 +546,7 @@ export async function resolveCanonicalC6Decision(
   return resolveC6DecisionFromSnapshot({
     ...input,
     nodes: snapshots,
+    scopeNodeIds,
     dependencies,
   });
 }

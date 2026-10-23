@@ -1090,6 +1090,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   };
 
   type SessionRef = {
+    learningScope: (typeof lessonSessionsTable.$inferSelect)["learningScope"];
     id: number; currentPhase: number; currentNodeId: number | null; status: string;
     lastQuestionAsked: string | null; askedQuestionTemplates: string[]; nodeAttemptCount: number;
     reviewQuestionCount: number; deepDiveExerciseIndex: number;
@@ -1179,6 +1180,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       if (sessionRow) {
         session = {
           id: sessionRow.id,
+          learningScope:sessionRow.learningScope,
           currentPhase: sessionRow.currentPhase,
           currentNodeId: sessionRow.currentNodeId ?? null,
           status: sessionRow.status,
@@ -1487,13 +1489,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const allNodes = await db
         .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence, title: lessonNodesTable.title })
         .from(lessonNodesTable)
-        .where(eq(lessonNodesTable.lessonId, lessonId))
+        .where(and(eq(lessonNodesTable.lessonId, lessonId),eq(lessonNodesTable.status,"approved"),
+          ...(session?.learningScope ? [inArray(lessonNodesTable.id,session.learningScope.nodeIds)] : [])))
         .orderBy(asc(lessonNodesTable.sequence));
 
       const totalNodes      = allNodes.length;
       const currentNodeEntry = allNodes.find((n) => n.id === session?.currentNodeId);
-      const currentNodeSeq   = currentNodeEntry?.sequence ?? (totalNodes + 1);
-      const completedNodes   = session?.currentNodeId != null ? currentNodeSeq - 1 : totalNodes;
+      const currentNodeSeq   = currentNodeEntry?.sequence ?? Number.MAX_SAFE_INTEGER;
+      const completedNodes   = session?.currentNodeId != null ? Math.max(0,allNodes.findIndex(n=>n.id===session?.currentNodeId)) : totalNodes;
       // Titles of all nodes whose sequence comes before the current node — used in
       // the structured context header to explicitly forbid the AI from reteaching them.
       const completedNodeTitles = allNodes
@@ -1667,7 +1670,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       progressIndicator = {
         current_node_name: topicName,
-        step:            Math.min(currentNodeSeq, Math.max(totalNodes, 1)),
+        step:            Math.min(completedNodes + 1, Math.max(totalNodes, 1)),
         total_steps:     totalNodes,
         completed_nodes: completedNodes,
         total_nodes:     totalNodes,
@@ -1736,7 +1739,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         // The lessonId guard is mandatory for the IS NULL branch (prevents cross-lesson leaks).
         // Phase 2 is deliberately kept node-specific (relatedNodeId = currentNodeId only),
         // so unassigned exercises never appear during in-node teaching.
-        const nodeOrNullFilter = allNodeIds.length > 0
+        const nodeOrNullFilter = session?.learningScope?.mode === "NODES"
+          ? inArray(lessonExercisesTable.relatedNodeId, allNodeIds)
+          : allNodeIds.length > 0
           ? or(
               inArray(lessonExercisesTable.relatedNodeId, allNodeIds),
               isNull(lessonExercisesTable.relatedNodeId),
@@ -1768,6 +1773,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .where(and(
             eq(lessonExercisesTable.lessonId, lessonId),
             eq(lessonExercisesTable.assignment, "HOMEWORK"),
+            ...(session?.learningScope?.mode === "NODES" ? [inArray(lessonExercisesTable.relatedNodeId,allNodeIds)] : []),
             // Gate 1.4: only approved exercises reach AI Teacher. Fail-closed.
             eq(lessonExercisesTable.status, "approved"),
           ))
@@ -2013,6 +2019,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       lessonContext = [
         structuredHeader,
+        session?.learningScope ? `LEARNING_SCOPE: ${session.learningScope.mode}; allowed node IDs=${session.learningScope.nodeIds.join(",")}. Teach only this set. Finishing this set is instructional coverage, not proof of mastery or completion of the entire lesson. Never introduce an unselected node.` : "",
         _c7ExecutionTarget ? buildC7TargetContext(_c7ExecutionTarget) : "",
         absoluteRuleBlock,
         studentName ? `STUDENT_NAME: ${studentName}` : "",
@@ -2024,7 +2031,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           : "",
         coreProblem ? `CORE_PROBLEM: ${coreProblem}` : "",
         coreIdea    ? `CORE_IDEA: ${coreIdea}`       : "",
-        `PHASE: ${phase} | PROGRESS: node ${currentNodeSeq}/${totalNodes} | completed: ${completedNodes}/${totalNodes}`,
+        `PHASE: ${phase} | PROGRESS: node ${Math.min(completedNodes+1,totalNodes)}/${totalNodes} | completed: ${completedNodes}/${totalNodes}`,
         phase1ProgressLine,
         stageDirectiveLine,
         (() => {
@@ -2165,13 +2172,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .from(lessonOutcomesTable)
           .where(and(eq(lessonOutcomesTable.lessonId, lessonId), eq(lessonOutcomesTable.status, "approved")))
           .orderBy(asc(lessonOutcomesTable.sequence), asc(lessonOutcomesTable.id)),
-        db.select({ title: lessonNodesTable.title })
+        db.select({ id:lessonNodesTable.id,title: lessonNodesTable.title, learningObjective:lessonNodesTable.learningObjective })
           .from(lessonNodesTable)
-          .where(eq(lessonNodesTable.lessonId, lessonId))
+          .where(and(eq(lessonNodesTable.lessonId, lessonId),eq(lessonNodesTable.status,"approved"),
+            ...(session.learningScope ? [inArray(lessonNodesTable.id,session.learningScope.nodeIds)] : [])))
           .orderBy(asc(lessonNodesTable.sequence), asc(lessonNodesTable.id)),
       ]);
-      const outcomesBlock = approvedOutcomes.flatMap((o) => o.text.split(/[•\n]+/u)).map(text => text.trim()).filter(Boolean).map(text => `• ${text}`).join("\n");
-      const goalBlock = lesson.lessonGoal?.trim();
+      const outcomesBlock = (session.learningScope?.mode === "NODES" ? planNodes.map(n=>({text:n.learningObjective ?? n.title})) : approvedOutcomes).flatMap((o) => o.text.split(/[•\n]+/u)).map(text => text.trim()).filter(Boolean).map(text => `• ${text}`).join("\n");
+      const goalBlock = session.learningScope?.mode === "NODES" ? planNodes.map(n=>n.title).join(" · ") : lesson.lessonGoal?.trim();
       const planBlock = planNodes.map((node, index) => `${index + 1}. ${node.title}`).join("\n");
       const greetLine = studentName
         ? `\u0532\u0561\u0580\u0587, ${studentName}: \ud83d\udc4b`
@@ -5283,6 +5291,11 @@ router.get("/chat/session-state", requireAuth, async (req: AuthRequest, res) => 
     activeHelpCount:       (sessionRow as any).activeHelpCount       ?? 0,
     activeAssistanceLevel: (sessionRow as any).activeAssistanceLevel ?? "none",
     nodeTeachingStage,
+    learningScope:sessionRow.learningScope,
+    scopeNodes:await db.select({id:lessonNodesTable.id,title:lessonNodesTable.title}).from(lessonNodesTable)
+      .where(and(eq(lessonNodesTable.lessonId,lessonId),eq(lessonNodesTable.status,"approved"),
+        ...(sessionRow.learningScope ? [inArray(lessonNodesTable.id,sessionRow.learningScope.nodeIds)] : [])))
+      .orderBy(asc(lessonNodesTable.sequence),asc(lessonNodesTable.id)),
     finalAssessment: await getLessonFinalAssessmentHandoff(sessionRow),
     status:                sessionRow.status,
     currentPhase:          sessionRow.currentPhase,
