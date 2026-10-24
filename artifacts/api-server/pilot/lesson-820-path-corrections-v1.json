@@ -1,0 +1,41 @@
+{
+  "repairKey": "lesson820-source-bound-paths-v1",
+  "lessonId": 820,
+  "reviewedBy": "assistant",
+  "teacherApprovalRequired": true,
+  "reason": "Source-bound wording corrections; no Bloom level, evidence budget, source text or approval changed.",
+  "changes": [
+    {
+      "nodeId": 2588,
+      "levelId": 310,
+      "before": {
+        "performance_objective": "Թվարկել երկարության, ժամանակի և զանգվածի ՄՀ հիմնական միավորները։"
+      },
+      "after": {
+        "performance_objective": "Թվարկել երկարության, ժամանակի և զանգվածի միավորները՝ մետր, վայրկյան, կիլոգրամ։"
+      }
+    },
+    {
+      "nodeId": 2588,
+      "levelId": 311,
+      "before": {
+        "performance_objective": "Բացատրել, թե ինչու են այս միավորները համարվում հիմնական։",
+        "success_criterion": "Նշում է, որ այս միավորներից են բխում մյուս բոլոր ածանցյալ միավորները։"
+      },
+      "after": {
+        "performance_objective": "Բացատրել, թե որ մեծությունն է չափվում մետրով, վայրկյանով և կիլոգրամով։",
+        "success_criterion": "Ճիշտ կապում է մետրը երկարության, վայրկյանը ժամանակի և կիլոգրամը զանգվածի հետ։"
+      }
+    },
+    {
+      "nodeId": 2592,
+      "levelId": 319,
+      "before": {
+        "success_criterion": "Ճիշտ թվարկում է բոլոր երեք քայլերը։"
+      },
+      "after": {
+        "success_criterion": "Ճիշտ թվարկում է սանդղակի բաժանման արժեքը որոշելու բոլոր երեք քայլերը։"
+      }
+    }
+  ]
+}

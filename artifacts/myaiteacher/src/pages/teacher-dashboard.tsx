@@ -14,6 +14,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { getMapApprovalFeedback } from "@/lib/map-approval-feedback";
 import { getGoalOutcomeDraftState } from "@/lib/goal-outcome-draft-state";
 import {
   Dialog,
@@ -345,8 +346,8 @@ function CompleteMapApproval({lessonId,courseId,status}:{lessonId:number;courseI
  async function approve(accepted=false){setBusy(true);setIssues([]);
   try {const r=await mappingApiResponse(`/api/lessons/${lessonId}/final-approve`,{method:'POST',headers:{Authorization:`Bearer ${token??''}`,'Content-Type':'application/json'},body:JSON.stringify({overrideWarnings:accepted})});const d=await r.json();
    if(d.approved){await qc.invalidateQueries({queryKey:getGetCourseLessonsQueryKey(courseId)});await qc.invalidateQueries({queryKey:getGetLessonNodesQueryKey(lessonId)});return;}
-   const messages=(d.reviewIssues??d.hardBlockers??d.errors??[]).map((i:{messageArm?:string;message?:string})=>i.messageArm??i.message??'').filter(Boolean);setIssues(messages);
-   if(d.confirmationRequired&&!accepted&&window.confirm(messages.join('\n')))await approve(true);
+   const {messages,canConfirm}=getMapApprovalFeedback(d);setIssues(messages);
+   if(canConfirm&&!accepted&&window.confirm(messages.join('\n')))await approve(true);
   }catch(e){setIssues([e instanceof Error?e.message:String(e)]);}finally{setBusy(false);}
  }
  return <div className="rounded-lg border border-primary/20 p-3 space-y-2">
