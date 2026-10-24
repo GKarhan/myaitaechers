@@ -62,9 +62,10 @@ const anchors = (value: string) => new Set(normalize(value).split(" ").filter((t
 function withoutSourceBackedEquations(value: string, source: string): string {
   const equationKey = (text: string) => text.normalize("NFKC")
     .replace(/,/g, ".").replace(/\s+/gu, "");
-  const sourceKey = equationKey(source);
-  return value.replace(/(?<![\p{L}\p{N}_])[A-Za-z]\s*=\s*(?:\([0-9.,\s+\-−±*/×÷:]+\)|[+\-]?\d+(?:[.,]\d+)?)/gu,
-    equation => sourceKey.includes(equationKey(equation)) ? " " : equation);
+  const equationPattern = /(?<![\p{L}\p{N}_])[A-Za-z]\s*=\s*(?:\([0-9.,\s+\-−±*/×÷:]+\)|[+\-]?\d+(?:[.,]\d+)?)/gu;
+  const sourceEquations = new Set([...source.matchAll(equationPattern)].map(match => equationKey(match[0])));
+  return value.replace(equationPattern,
+    equation => sourceEquations.has(equationKey(equation)) ? " " : equation);
 }
 
 /**
