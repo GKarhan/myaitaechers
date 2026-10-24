@@ -121,3 +121,32 @@ assert.throws(()=>validateCompleteMap(brokenLinks,blocks,[1]),error=>{
  assert.ok(!JSON.stringify(details).includes(blocks[0].sourceText));return true;
 });
 console.log('PASS combined validation: source, Bloom and broken exercise links reported together without raw source leakage');
+
+// New wire format has exactly one slot per level and one source of ceiling truth.
+const nodeSchema=request.response_format.json_schema.schema.properties.topics.items.properties.nodes.items;
+assert.equal(nodeSchema.properties.cognitivePath.type,'object');
+assert.equal(nodeSchema.properties.cognitivePath.additionalProperties,false);
+assert.deepEqual(nodeSchema.properties.cognitivePath.required,['remember','understand','apply','analyze','evaluate','create']);
+assert.ok(!('targetBloom' in nodeSchema.properties));
+assert.ok(!nodeSchema.required.includes('targetBloom'));
+const slots=structuredClone(providerMap) as any;
+const slottedNode=slots.topics[0].nodes[0];
+const {level,...payload}=slottedNode.cognitivePath[0];
+slottedNode.cognitivePath={remember:null,understand:payload,apply:null,analyze:null,evaluate:null,create:null};
+delete slottedNode.targetBloom;
+let persistedDraft:any;
+const slottedResult=await generateCompleteMap(blocks,context,{
+ complete:async()=>({choices:[{finish_reason:'stop',message:{content:JSON.stringify(slots)}}]}),
+ onDraft:async draft=>{persistedDraft=draft;},
+});
+assert.equal(slottedResult.generationAttempts,1);
+assert.equal(slottedResult.map.topics[0].nodes[0].targetBloom,'understand');
+assert.deepEqual(slottedResult.map.topics[0].nodes[0].cognitivePath,map.topics[0].nodes[0].cognitivePath);
+assert.ok(Array.isArray(persistedDraft.topics[0].nodes[0].cognitivePath));
+const allNull=structuredClone(slots);allNull.topics[0].nodes[0].cognitivePath.understand=null;
+await assert.rejects(()=>generateCompleteMap(blocks,context,{complete:async()=>({choices:[{finish_reason:'stop',message:{content:JSON.stringify(allNull)}}]})}),/COMPLETE_MAP_SCHEMA_INVALID/);
+const unexpected=structuredClone(slots);unexpected.topics[0].nodes[0].cognitivePath.fake=payload;
+await assert.rejects(()=>generateCompleteMap(blocks,context,{complete:async()=>({choices:[{finish_reason:'stop',message:{content:JSON.stringify(unexpected)}}]})}),/COMPLETE_MAP_SCHEMA_INVALID/);
+const conflictingTarget=structuredClone(slots);conflictingTarget.topics[0].nodes[0].targetBloom='create';
+await assert.rejects(()=>generateCompleteMap(blocks,context,{complete:async()=>({choices:[{finish_reason:'stop',message:{content:JSON.stringify(conflictingTarget)}}]})}),/COMPLETE_MAP_SCHEMA_INVALID/);
+console.log('PASS Bloom slots: one slot per level, derived ceiling, unchanged canonical payloads, canonical draft persistence, empty/foreign/conflicting slots rejected');

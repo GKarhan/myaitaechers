@@ -1,4 +1,5 @@
 import {z} from 'zod/v4';
+import {providerCognitivePathSchema} from './provider-cognitive-path.js';
 import {completeMapSchema,sourceHash,type SourceBlock} from './contract.js';
 import {sourceRoles} from './source-references.js';
 import {COMPLETE_MAPPING_PROMPT,selectAdapter} from './prompts.js';
@@ -11,6 +12,11 @@ export function buildCompleteMapRequest(blocks:SourceBlock[],context:CompleteMap
  delete schema.properties.schemaVersion;
  schema.required=schema.required.filter((key:string)=>key!=='schemaVersion');
  const node=schema.properties.topics.items.properties.nodes.items.properties;
+ const providerPath=z.toJSONSchema(providerCognitivePathSchema) as Record<string,any>;delete providerPath.$schema;
+ node.cognitivePath=providerPath;
+ delete node.targetBloom;
+ const nodeSchema=schema.properties.topics.items.properties.nodes.items;
+ nodeSchema.required=nodeSchema.required.filter((key:string)=>key!=='targetBloom');
  node.sourceBlockIndices.items={type:'integer',enum:roles.theory};
  node.sourceBlockIndices.description='Theory-source indices only. Exercise links belong in exercises[].nodeIds.';
  if(context.outcomes.length)node.outcomeIds.items={type:'integer',enum:context.outcomes.map(o=>o.id)};
