@@ -55,6 +55,18 @@ const normalize = (value: string) => value.normalize("NFKC").toLocaleLowerCase("
 const numbers = (value: string) => value.match(/\d+(?:[\/.,:]\d+)*/g) ?? [];
 const anchors = (value: string) => new Set(normalize(value).split(" ").filter((token) => token.length >= 4));
 
+/** Allow a scientific variable only inside an equation actually present in source.
+ * Decimal commas/dots and whitespace are presentation differences; prose and
+ * invented equations remain subject to the Armenian-only check.
+ */
+function withoutSourceBackedEquations(value: string, source: string): string {
+  const equationKey = (text: string) => text.normalize("NFKC")
+    .replace(/,/g, ".").replace(/\s+/gu, "");
+  const sourceKey = equationKey(source);
+  return value.replace(/(?<![\p{L}\p{N}_])[A-Za-z]\s*=\s*(?:\([0-9.,\s+\-−±*/×÷:]+\)|[+\-]?\d+(?:[.,]\d+)?)/gu,
+    equation => sourceKey.includes(equationKey(equation)) ? " " : equation);
+}
+
 /**
  * Deliberately conservative objective classifier. Only unambiguous observable
  * verbs establish a floor. Vague verbs such as "explain", "identify", or
@@ -66,14 +78,14 @@ export function getHighConfidenceLearningObjectiveFloor(
 ): CognitiveLevel | null {
   const objective = normalize(learningObjective ?? "");
   if (!objective) return null;
-  const createVerb = /(?:^|\s)(?:create|design|compose|develop|construct|ստեղծ\p{L}*|նախագծ\p{L}*|կազմ\p{L}*|մշակ\p{L}*)(?:\s|$)/iu;
-  const evaluateVerb = /(?:^|\s)(?:evaluate|justify|critique|assess|գնահատ\p{L}*|հիմնավոր\p{L}*|քննադատ\p{L}*)(?:\s|$)/iu;
-  const explicitAnalyzeVerb = /(?:^|\s)(?:analyze|differentiate|classify|վերլուծ\p{L}*|դասակարգ\p{L}*)(?:\s|$)/iu;
+  const createVerb = /(?:^|\s)(?:create|design|compose|develop|construct|ստեղծ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ)|նախագծ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ)|կազմ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ)|մշակ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ))(?:\s|$)/iu;
+  const evaluateVerb = /(?:^|\s)(?:evaluate|justify|critique|assess|գնահատ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ)|հիմնավոր(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ)|քննադատ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ))(?:\s|$)/iu;
+  const explicitAnalyzeVerb = /(?:^|\s)(?:analyze|differentiate|classify|վերլուծ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ)|դասակարգ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ))(?:\s|$)/iu;
   // Comparison wording is not analytical by itself. Require an observable
   // analytical object or basis (parts, alternatives, evidence, relationships,
   // causes, errors, or structure) before it establishes an Analyze floor.
-  const analyticalComparison = /(?:^|\s)(?:compare|համեմատ\p{L}*)(?:\s+\p{L}+){0,6}\s+(?:alternative\p{L}*|part\p{L}*|evidence|relationship\p{L}*|cause\p{L}*|error\p{L}*|structure\p{L}*|այլընտր\p{L}*|մաս\p{L}*|ապացույց\p{L}*|կապ\p{L}*|պատճառ\p{L}*|սխալ\p{L}*|կառուցվածք\p{L}*|հիմնավոր\p{L}*)(?:\s|$)/iu;
-  const applyVerb = /(?:^|\s)(?:calculate|use|apply|solve|հաշվ\p{L}*|օգտագործ\p{L}*|կիրառ\p{L}*|լուծ\p{L}*)(?:\s|$)/iu;
+  const analyticalComparison = /(?:^|\s)(?:compare|համեմատ\p{L}*)(?:\s+\p{L}+){0,6}\s+(?:alternative\p{L}*|part\p{L}*|evidence|relationship\p{L}*|cause\p{L}*|error\p{L}*|structure\p{L}*|այլընտր\p{L}*|մաս\p{L}*|ապացույց\p{L}*|կապ\p{L}*|պատճառ\p{L}*|սխալ\p{L}*|կառուցվածք\p{L}*|հիմնավոր(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ))(?:\s|$)/iu;
+  const applyVerb = /(?:^|\s)(?:calculate|use|apply|solve|հաշվ(?:արկ)?(?:ել|ում|իր|եք|ի|են|ես|ենք|եմ)|օգտագործ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ)|կիրառ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ)|լուծ(?:ել|ալ|ում|իր|եք|ի|են|ես|ենք|եմ))(?:\s|$)/iu;
   if (createVerb.test(objective)) return "create";
   if (evaluateVerb.test(objective)) return "evaluate";
   if (explicitAnalyzeVerb.test(objective) || analyticalComparison.test(objective)) return "analyze";
@@ -115,7 +127,7 @@ export function validateCognitivePathGrounding(
     for (const value of [level.performanceObjective ?? "", level.successCriterion ?? ""]) {
       const text = normalize(value);
       if (!text) { add("EMPTY_REQUIRED_FIELD"); continue; }
-      if (!armenianLetter.test(value) || latinLetter.test(value)) add("NON_ARMENIAN_REQUIRED_TEXT");
+      if (!armenianLetter.test(value) || latinLetter.test(withoutSourceBackedEquations(value, theoryContent ?? ""))) add("NON_ARMENIAN_REQUIRED_TEXT");
       if (numbers(text).some((number) => !sourceNumbers.has(number))) add("NOVEL_NUMERIC_CLAIM");
       const overlap = [...anchors(text)].filter(sharesTopicAnchor).length;
       if (overlap === 0) add("LOW_SOURCE_ANCHOR");
