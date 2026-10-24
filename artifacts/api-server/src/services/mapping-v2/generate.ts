@@ -1,10 +1,10 @@
 import {openrouter} from '@workspace/integrations-openrouter-ai';
-import {COMPLETE_MAP_VERSION,CompleteMapSchemaError,validateCompleteMap,type SourceBlock} from './contract.js';
+import {COMPLETE_MAP_VERSION,CompleteMapSchemaError,CompleteMapCognitivePathError,validateCompleteMap,type SourceBlock} from './contract.js';
 import {SourceReferenceValidationError} from './source-references.js';
 import {buildCompleteMapRequest,type CompleteMapContext} from './complete-request.js';
 type Completion={choices:{finish_reason:string|null;message:{content:string|null}}[];usage?:unknown};
 function repairDiagnostics(error:unknown):unknown|null {
- if(error instanceof SourceReferenceValidationError||error instanceof CompleteMapSchemaError)return error.diagnostics;
+ if(error instanceof SourceReferenceValidationError||error instanceof CompleteMapSchemaError||error instanceof CompleteMapCognitivePathError)return error.diagnostics;
  if(error instanceof Error&&/^(DUPLICATE_|INVALID_|CYCLIC_PREREQUISITES|EXERCISE_LEVEL_NOT_IN_NODE_PATH|UNCOVERED_REQUIRED_OUTCOME)/u.test(error.message))return {code:error.message};
  return null;
 }
@@ -28,7 +28,7 @@ export async function generateCompleteMap(blocks:SourceBlock[],context:CompleteM
    const feedback=JSON.stringify({validationErrors:diagnostics,rejectedCandidate:serverPackage});
    if(feedback.length+built.request.messages.reduce((n,m)=>n+m.content.length,0)>180000)throw error;
    request={...built.request,messages:[...built.request.messages,{role:'user' as const,content:
-    'Correct the invalid candidate below using the SAME supplied source blocks and outcomes. Return the entire corrected map once. Do not invent source text or weaken constraints. Every source task must have exactly one exercise owner or a NEIGHBOR_SECTION exclusion when it belongs to another lesson. Never duplicate a source index across different exercises. Match exercise cognitive levels to EVERY linked node path. Validation data and candidate JSON follow:\n'+feedback}]};
+    'Correct the invalid candidate below using the SAME supplied source blocks and outcomes. Return the entire corrected map once. Do not invent source text or weaken constraints. Every source task must have exactly one exercise owner or a NEIGHBOR_SECTION exclusion when it belongs to another lesson. Never duplicate a source index across different exercises. Match exercise cognitive levels to EVERY linked node path. For EACH cognitivePathIssues entry: use each Bloom level at most once, combine objectives and criteria belonging to the same level without losing required content, order levels strictly remember < understand < apply < analyze < evaluate < create, and make the last level equal targetBloom. Resolve depth from supplied outcomes and source; do not automatically raise the ceiling or drop required performance merely to pass validation. Recheck ALL nodes and linked exercises before returning. Validation data and candidate JSON follow:\n'+feedback}]};
   }
  }
  throw Error('COMPLETE_MAP_VALIDATION_FAILED');
