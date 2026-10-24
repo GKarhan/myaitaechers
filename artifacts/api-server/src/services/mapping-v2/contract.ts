@@ -39,12 +39,25 @@ export class CompleteMapCognitivePathError extends Error {
   this.diagnostics={cognitivePathIssues:issues};
  }
 }
+/** Independent semantic checks must all reach the same bounded correction. */
+export class CompleteMapValidationError extends Error {
+ readonly diagnostics: { validationErrors: Array<{code:string; details:unknown}> };
+ constructor(errors:Error[]) {
+  super(errors[0].message);this.name='CompleteMapValidationError';
+  this.diagnostics={validationErrors:errors.map(error=>({
+   code:error.message,details:'diagnostics' in error?error.diagnostics:null,
+  }))};
+ }
+}
 export function validateCompleteMap(value:unknown,blocks:SourceBlock[],outcomes:number[]):CompleteMap{
  const parsed=completeMapSchema.safeParse(value);if(!parsed.success)throw new CompleteMapSchemaError(parsed.error.issues);
  const m=parsed.data,nodes=m.topics.flatMap(t=>t.nodes),ids=new Set(nodes.map(n=>n.id)),topics=new Set(m.topics.map(t=>t.id));
- const unique=(values:unknown[],reason:string)=>{if(new Set(values).size!==values.length)throw Error(reason);};
+ const errors:Error[]=[];
+ const capture=(check:()=>void)=>{try{check();}catch(error){if(!(error instanceof Error))throw error;errors.push(error);}};
+ const requireValid=(valid:boolean,code:string)=>{if(!valid)errors.push(Error(code));};
+ const unique=(values:unknown[],reason:string)=>requireValid(new Set(values).size===values.length,reason);
  unique(nodes.map(n=>n.id),'DUPLICATE_NODE_ID');unique(m.topics.map(t=>t.id),'DUPLICATE_TOPIC_ID');unique(m.exercises.map(e=>e.id),'DUPLICATE_EXERCISE_ID');
- assertSourceReferences(m,blocks);
+ capture(()=>assertSourceReferences(m,blocks));
  const cognitivePathIssues=nodes.flatMap(n=>{
   const pathLevels=n.cognitivePath.map(p=>p.level),ranks=pathLevels.map(level=>bloomLevels.indexOf(level));
   const duplicateLevels=[...new Set(pathLevels.filter((level,index)=>pathLevels.indexOf(level)!==index))];
@@ -53,20 +66,22 @@ export function validateCompleteMap(value:unknown,blocks:SourceBlock[],outcomes:
   return duplicateLevels.length||!ascending||!finalLevelMatchesTarget
    ?[{nodeId:n.id,targetBloom:n.targetBloom,pathLevels,duplicateLevels,ascending,finalLevelMatchesTarget}]:[];
  });
- if(cognitivePathIssues.length)throw new CompleteMapCognitivePathError(cognitivePathIssues);
+ if(cognitivePathIssues.length)errors.push(new CompleteMapCognitivePathError(cognitivePathIssues));
  for(const n of nodes){
   unique(n.prerequisiteNodeIds,'DUPLICATE_PREREQUISITE');unique(n.outcomeIds,'DUPLICATE_OUTCOME');
-  if(n.outcomeIds.some(id=>!outcomes.includes(id)))throw Error('INVALID_OUTCOME_REFERENCE');
-  if(n.prerequisiteNodeIds.some(id=>!ids.has(id)||id===n.id))throw Error('INVALID_PREREQUISITE');
+  requireValid(!n.outcomeIds.some(id=>!outcomes.includes(id)),'INVALID_OUTCOME_REFERENCE');
+  requireValid(!n.prerequisiteNodeIds.some(id=>!ids.has(id)||id===n.id),'INVALID_PREREQUISITE');
  }
  const visiting=new Set<string>(),done=new Set<string>(),byId=new Map(nodes.map(n=>[n.id,n]));
- const visit=(id:string)=>{if(visiting.has(id))throw Error('CYCLIC_PREREQUISITES');if(done.has(id))return;visiting.add(id);byId.get(id)!.prerequisiteNodeIds.forEach(visit);visiting.delete(id);done.add(id);};nodes.forEach(n=>visit(n.id));
+ const visit=(id:string)=>{if(visiting.has(id))throw Error('CYCLIC_PREREQUISITES');if(done.has(id))return;visiting.add(id);byId.get(id)!.prerequisiteNodeIds.forEach(visit);visiting.delete(id);done.add(id);};if(ids.size===nodes.length&&!errors.some(e=>e.message==='INVALID_PREREQUISITE'))capture(()=>nodes.forEach(n=>visit(n.id)));
  for(const e of m.exercises){
-  unique(e.nodeIds,'DUPLICATE_EXERCISE_NODE_LINK');if(e.nodeIds.some(id=>!ids.has(id))||e.topicId!==null&&!topics.has(e.topicId))throw Error('INVALID_EXERCISE_LINK');
-  if(e.sourceType==='textbook'&&(!e.sourceBlockIndices.length||e.generatedText.trim()))throw Error('INVALID_TEXTBOOK_PROVENANCE');
-  if(e.sourceType==='ai_generated'&&(e.sourceBlockIndices.length||!e.generatedText.trim()))throw Error('INVALID_AI_PROVENANCE');
-  if(e.nodeIds.some(id=>!byId.get(id)!.cognitivePath.some(p=>p.level===e.cognitiveLevel)))throw Error('EXERCISE_LEVEL_NOT_IN_NODE_PATH');
+  unique(e.nodeIds,'DUPLICATE_EXERCISE_NODE_LINK');requireValid(!e.nodeIds.some(id=>!ids.has(id))&&(e.topicId===null||topics.has(e.topicId)),'INVALID_EXERCISE_LINK');
+  requireValid(!(e.sourceType==='textbook'&&(!e.sourceBlockIndices.length||e.generatedText.trim())),'INVALID_TEXTBOOK_PROVENANCE');
+  requireValid(!(e.sourceType==='ai_generated'&&(e.sourceBlockIndices.length||!e.generatedText.trim())),'INVALID_AI_PROVENANCE');
+  requireValid(!e.nodeIds.some(id=>byId.has(id)&&!byId.get(id)!.cognitivePath.some(p=>p.level===e.cognitiveLevel)),'EXERCISE_LEVEL_NOT_IN_NODE_PATH');
  }
- if(outcomes.some(id=>!nodes.some(n=>n.outcomeIds.includes(id))))throw Error('UNCOVERED_REQUIRED_OUTCOME');
+ requireValid(!outcomes.some(id=>!nodes.some(n=>n.outcomeIds.includes(id))),'UNCOVERED_REQUIRED_OUTCOME');
+ if(errors.length===1)throw errors[0];
+ if(errors.length>1)throw new CompleteMapValidationError(errors);
  return m;
 }
