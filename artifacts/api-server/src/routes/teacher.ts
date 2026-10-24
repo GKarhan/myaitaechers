@@ -7,6 +7,7 @@ import { db, usersTable, teachersTable, classesTable, classStudentsTable, lesson
 import { eq, and, inArray, avg, count, desc, ne, sql } from "drizzle-orm";
 import { requireTeacher, requireAuth, type AuthRequest } from "../middlewares/auth";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
+import { createTeacherAuthoredLesson, parseAuthoredOutcomes } from "../lib/teacher-authored-lesson.js";
 import { validateOptionalLessonPageRange } from "../lib/lesson-page-range.js";
 
 import { persistUpload, readUpload, deleteUpload, uploadFilename, UploadedFileMissingError } from "../lib/durable-uploads.js";
@@ -171,6 +172,8 @@ router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) =>
     textbookResourceId?: number; lessonGoal?: string; lessonOutcomes?: string[];
   };
   if (!title) { res.status(400).json({ error: "title partadir e" }); return; }
+  const outcomes = parseAuthoredOutcomes(lessonOutcomes);
+  if (!outcomes.valid) { res.status(400).json({ error: outcomes.error }); return; }
   const pageRange = validateOptionalLessonPageRange(pagesFrom, pagesTo);
   if (!pageRange.valid) { res.status(400).json({ error: pageRange.error }); return; }
   let resolvedSubjectId = subjectId;
@@ -179,7 +182,7 @@ router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) =>
     const [s] = await db.select().from(subjectsTable).limit(1);
     resolvedSubjectId = s?.id;
   }
-  const [lesson] = await db.insert(lessonsTable).values({
+  const lesson = await createTeacherAuthoredLesson({
     subjectId: resolvedSubjectId, title,
     description: description ?? "", bloomLevel: bloomLevel ?? 1, content: content ?? "",
     teacherId: req.userId!, classId: classId ?? null,
@@ -190,9 +193,9 @@ router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) =>
     chapterTitle: chapterTitle ?? null, paragraphNumber: paragraphNumber ?? null,
     textbookResourceId: textbookResourceId ?? null,
     ...(lessonGoal !== undefined && { lessonGoal }),
-    ...(lessonOutcomes !== undefined && { lessonOutcomes }),
+    ...(lessonOutcomes !== undefined && { lessonOutcomes: outcomes.outcomes }),
     status: "draft",
-  }).returning();
+  });
   res.status(201).json(lesson);
 });
 
@@ -662,6 +665,8 @@ router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Au
     textbookResourceId?: number; lessonGoal?: string; lessonOutcomes?: string[];
   };
   if (!title) { res.status(400).json({ error: "title partadir e" }); return; }
+  const outcomes = parseAuthoredOutcomes(lessonOutcomes);
+  if (!outcomes.valid) { res.status(400).json({ error: outcomes.error }); return; }
   const pageRange = validateOptionalLessonPageRange(pagesFrom, pagesTo);
   if (!pageRange.valid) { res.status(400).json({ error: pageRange.error }); return; }
 
@@ -690,7 +695,7 @@ router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Au
     }
   }
 
-  const [lesson] = await db.insert(lessonsTable).values({
+  const lesson = await createTeacherAuthoredLesson({
     subjectId: parentCourse.subjectId, title,
     description: description ?? "", bloomLevel: bloomLevel ?? 1, content: content ?? "",
     teacherId: req.userId!, courseId,
@@ -699,9 +704,9 @@ router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Au
     chapterTitle: chapterTitle ?? null, paragraphNumber: paragraphNumber ?? null,
     textbookResourceId: textbookResourceId ?? null,
     ...(lessonGoal !== undefined && { lessonGoal }),
-    ...(lessonOutcomes !== undefined && { lessonOutcomes }),
+    ...(lessonOutcomes !== undefined && { lessonOutcomes: outcomes.outcomes }),
     status: "draft",
-  }).returning();
+  });
   res.status(201).json(lesson);
 });
 
