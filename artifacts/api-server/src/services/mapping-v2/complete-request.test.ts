@@ -65,3 +65,32 @@ let outageCalls=0;
 await assert.rejects(()=>generateCompleteMap(blocks,context,{complete:async()=>{outageCalls++;throw Error('provider unavailable');}}),/provider unavailable/);
 assert.equal(outageCalls,1,'transport failures are not validation retries');
 console.log('PASS one bounded corrective request for invalid references; persistent invalid output still rejected; transport errors not retried');
+
+// All path contradictions must reach the single repair call, not only the first node.
+const inconsistent=structuredClone(providerMap) as any;
+const base=inconsistent.topics[0].nodes[0];
+base.targetBloom='remember';
+const other=structuredClone(base);other.id='N2';other.targetBloom='understand';
+other.cognitivePath.push(structuredClone(other.cognitivePath[0]));
+inconsistent.topics[0].nodes.push(other);
+let pathCalls=0;
+const fixedPath=await generateCompleteMap(blocks,context,{complete:async req=>{
+ pathCalls++;
+ if(pathCalls===2){
+  const content=req.messages.at(-1)!.content;
+  assert.ok(content.includes('cognitivePathIssues'));
+  assert.ok(content.includes('"nodeId":"N1"'));
+  assert.ok(content.includes('"nodeId":"N2"'));
+  assert.ok(content.includes('"finalLevelMatchesTarget":false'));
+  assert.ok(content.includes('"duplicateLevels":["understand"]'));
+  assert.ok(content.includes('do not automatically raise the ceiling'));
+ }
+ return {choices:[{finish_reason:'stop',message:{content:JSON.stringify(pathCalls===1?inconsistent:providerMap)}}]};
+}});
+assert.equal(pathCalls,2);assert.equal(fixedPath.generationAttempts,2);
+let persistentPaths=0;
+await assert.rejects(()=>generateCompleteMap(blocks,context,{complete:async()=>{
+ persistentPaths++;return {choices:[{finish_reason:'stop',message:{content:JSON.stringify(inconsistent)}}]};
+}}),/INVALID_COGNITIVE_CEILING/);
+assert.equal(persistentPaths,2);
+console.log('PASS aggregated cognitive path repair: both ceiling and duplicate-level issues supplied; invalid second response still blocked');
