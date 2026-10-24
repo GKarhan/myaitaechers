@@ -94,3 +94,30 @@ await assert.rejects(()=>generateCompleteMap(blocks,context,{complete:async()=>{
 }}),/INVALID_COGNITIVE_CEILING/);
 assert.equal(persistentPaths,2);
 console.log('PASS aggregated cognitive path repair: both ceiling and duplicate-level issues supplied; invalid second response still blocked');
+
+// Regression: source-disposition failure must not consume repair before Bloom is checked.
+const mixed=structuredClone(providerMap) as any;
+mixed.excludedBlocks.push({blockIndex:0,kind:'HEADER_FOOTER',reason:'heading'});
+mixed.topics[0].nodes[0].targetBloom='remember';
+let mixedCalls=0;
+const mixedResult=await generateCompleteMap(blocks,context,{complete:async req=>{
+ mixedCalls++;
+ if(mixedCalls===2){
+  const content=req.messages.at(-1)!.content;
+  assert.ok(content.includes('CONFLICTING_SOURCE_DISPOSITION'));
+  assert.ok(content.includes('INVALID_COGNITIVE_CEILING'));
+  assert.ok(content.includes('cognitivePathIssues'));
+  assert.ok(content.includes('mixed heading-plus-theory block'));
+ }
+ return {choices:[{finish_reason:'stop',message:{content:JSON.stringify(mixedCalls===1?mixed:providerMap)}}]};
+}});
+assert.equal(mixedCalls,2);assert.equal(mixedResult.generationAttempts,2);
+const brokenLinks=structuredClone(mixed);brokenLinks.schemaVersion='P1.2.2';brokenLinks.exercises[0].nodeIds=['missing'];
+assert.throws(()=>validateCompleteMap(brokenLinks,blocks,[1]),error=>{
+ const details=(error as any).diagnostics.validationErrors;
+ assert.ok(details.some((e:any)=>e.code==='CONFLICTING_SOURCE_DISPOSITION'));
+ assert.ok(details.some((e:any)=>e.code==='INVALID_COGNITIVE_CEILING'));
+ assert.ok(details.some((e:any)=>e.code==='INVALID_EXERCISE_LINK'));
+ assert.ok(!JSON.stringify(details).includes(blocks[0].sourceText));return true;
+});
+console.log('PASS combined validation: source, Bloom and broken exercise links reported together without raw source leakage');
