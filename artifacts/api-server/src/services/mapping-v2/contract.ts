@@ -29,15 +29,33 @@ export class CompleteMapSchemaError extends Error{
   this.diagnostics={schemaIssues:issues.map(i=>({path:i.path.map(p=>typeof p==='symbol'?String(p):p),code:i.code}))};
  }
 }
+export class CompleteMapCognitivePathError extends Error {
+ readonly diagnostics: { cognitivePathIssues: Array<{
+  nodeId:string; targetBloom:string; pathLevels:string[];
+  duplicateLevels:string[]; ascending:boolean; finalLevelMatchesTarget:boolean;
+ }> };
+ constructor(issues:CompleteMapCognitivePathError['diagnostics']['cognitivePathIssues']) {
+  super('INVALID_COGNITIVE_CEILING');this.name='CompleteMapCognitivePathError';
+  this.diagnostics={cognitivePathIssues:issues};
+ }
+}
 export function validateCompleteMap(value:unknown,blocks:SourceBlock[],outcomes:number[]):CompleteMap{
  const parsed=completeMapSchema.safeParse(value);if(!parsed.success)throw new CompleteMapSchemaError(parsed.error.issues);
  const m=parsed.data,nodes=m.topics.flatMap(t=>t.nodes),ids=new Set(nodes.map(n=>n.id)),topics=new Set(m.topics.map(t=>t.id));
  const unique=(values:unknown[],reason:string)=>{if(new Set(values).size!==values.length)throw Error(reason);};
  unique(nodes.map(n=>n.id),'DUPLICATE_NODE_ID');unique(m.topics.map(t=>t.id),'DUPLICATE_TOPIC_ID');unique(m.exercises.map(e=>e.id),'DUPLICATE_EXERCISE_ID');
  assertSourceReferences(m,blocks);
+ const cognitivePathIssues=nodes.flatMap(n=>{
+  const pathLevels=n.cognitivePath.map(p=>p.level),ranks=pathLevels.map(level=>bloomLevels.indexOf(level));
+  const duplicateLevels=[...new Set(pathLevels.filter((level,index)=>pathLevels.indexOf(level)!==index))];
+  const ascending=ranks.every((rank,index)=>index===0||rank>ranks[index-1]);
+  const finalLevelMatchesTarget=pathLevels.at(-1)===n.targetBloom;
+  return duplicateLevels.length||!ascending||!finalLevelMatchesTarget
+   ?[{nodeId:n.id,targetBloom:n.targetBloom,pathLevels,duplicateLevels,ascending,finalLevelMatchesTarget}]:[];
+ });
+ if(cognitivePathIssues.length)throw new CompleteMapCognitivePathError(cognitivePathIssues);
  for(const n of nodes){
-  unique(n.cognitivePath.map(p=>p.level),'DUPLICATE_COGNITIVE_LEVEL');unique(n.prerequisiteNodeIds,'DUPLICATE_PREREQUISITE');unique(n.outcomeIds,'DUPLICATE_OUTCOME');
-  const ranks=n.cognitivePath.map(p=>bloomLevels.indexOf(p.level));if(ranks.some((r,i)=>i>0&&r<=ranks[i-1])||n.cognitivePath.at(-1)?.level!==n.targetBloom)throw Error('INVALID_COGNITIVE_CEILING');
+  unique(n.prerequisiteNodeIds,'DUPLICATE_PREREQUISITE');unique(n.outcomeIds,'DUPLICATE_OUTCOME');
   if(n.outcomeIds.some(id=>!outcomes.includes(id)))throw Error('INVALID_OUTCOME_REFERENCE');
   if(n.prerequisiteNodeIds.some(id=>!ids.has(id)||id===n.id))throw Error('INVALID_PREREQUISITE');
  }
